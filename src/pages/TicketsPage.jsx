@@ -125,33 +125,65 @@ const TicketsPage = () => {
   const [activeFilter, setActiveFilter] = useState('ВСЕ');
   const [search, setSearch] = useState('');
   const { tickets } = useTickets();
+  const navigate = useNavigate();
 
   // Use demo data if no Firestore tickets
   const data = tickets && tickets.length > 0 ? {} : DEMO_TICKETS;
 
+  const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORCA', 'MY TASK'];
+
   return (
     <div className="animate-fade">
-      {/* Page title */}
-      <div className="flex items-center justify-between mb-5">
+      {/* Top Page Header (matches screenshot) */}
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-            Все клубы: {activeClub}
+          <h1 className="text-xl font-bold italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)' }}>
+            <span style={{ color: 'var(--accent-purple)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            </span>
+            Все клубы: {activeClub === 'ВСЕ' ? 'ALL' : activeClub}
           </h1>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            🌐 ГЛОБАЛЬНЫЙ МОНИТОРИНГ
+          <p className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+            <span style={{ color: 'var(--accent-purple)' }}>📍</span> ГЛОБАЛЬНЫЙ МОНИТОРИНГ
           </p>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {/* Club Pills Container */}
+          <div className="flex items-center gap-1 p-1 rounded-full" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            {CLUBS_TABS.map(c => (
+              <button
+                key={c}
+                onClick={() => setActiveClub(c)}
+                className="px-4 py-1.5 rounded-full text-xs font-bold transition-all"
+                style={{
+                  background: activeClub === c ? 'var(--accent-purple)' : 'transparent',
+                  color: activeClub === c ? '#fff' : 'var(--text-secondary)',
+                  letterSpacing: '0.02em'
+                }}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+
+          <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-xs font-bold transition-transform hover:-translate-y-0.5" style={{ background: '#b275ff', boxShadow: '0 4px 12px rgba(178,117,255,0.3)' }}>
+            <Plus size={16} strokeWidth={3} />
+            СОЗДАТЬ ЗАЯВКУ
+          </button>
         </div>
       </div>
 
       {/* Search + Filters */}
       <div className="flex items-center gap-4 mb-5">
-        <div className="relative flex-1 max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+        <div className="relative flex-1 max-w-lg">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
           <input
-            className="input-app w-full pl-9"
+            className="input-app w-full pl-10"
             placeholder="Поиск..."
             value={search}
             onChange={e => setSearch(e.target.value)}
+            style={{ borderRadius: '12px' }}
           />
         </div>
         <div className="flex items-center gap-1">
@@ -170,7 +202,18 @@ const TicketsPage = () => {
       {/* Kanban Board */}
       <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 220px)' }}>
         {COLUMNS.map(col => {
-          const colTickets = data[col.id] || [];
+          let colTickets = data[col.id] || [];
+          
+          // Filter by Active Club
+          if (activeClub !== 'ВСЕ') {
+            colTickets = colTickets.filter(t => t.club === activeClub);
+          }
+          
+          // Filter by Search
+          if (search) {
+            colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
+          }
+
           return (
             <div key={col.id} className="kanban-col">
               <div className="kanban-header">
@@ -183,7 +226,7 @@ const TicketsPage = () => {
                 ))}
                 {colTickets.length === 0 && (
                   <div
-                    className="text-center py-8 text-xs"
+                    className="text-center py-8 text-xs font-medium"
                     style={{ color: 'var(--text-muted)' }}
                   >
                     ПУСТО
