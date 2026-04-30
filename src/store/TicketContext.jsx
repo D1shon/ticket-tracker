@@ -44,6 +44,27 @@ export const TicketProvider = ({ children }) => {
 
     const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "modified") {
+          const newData = change.doc.data();
+          const oldData = allTicketsRef.current.find(t => t.id === change.doc.id);
+          
+          if (oldData && oldData.status !== newData.status) {
+            const statusLabels = {
+              'new': 'Новая',
+              'in_progress': 'В работе',
+              'paused': 'На паузе',
+              'waiting': 'Ожидание',
+              'closed': 'Закрыто'
+            };
+            toast(`Статус изменен: ${statusLabels[newData.status] || newData.status}`, {
+              description: `Заявка "${newData.title}"`,
+              duration: 5000,
+            });
+          }
+        }
+      });
+
       const ticketsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
