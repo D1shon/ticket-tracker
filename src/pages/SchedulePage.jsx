@@ -256,35 +256,38 @@ const SchedulePage = () => {
               })}
               
               {/* Add Employee Row */}
-              <tr className="bg-purple-500/[0.02]">
-                <td className="px-6 py-5 sticky left-0 z-20 bg-[#121214] border-r border-white/5">
+              <tr className="group/add cursor-pointer">
+                <td 
+                  colSpan={daysInMonth.length + 5} 
+                  className="px-6 py-5 sticky left-0 z-20 bg-[#0f0f11] border-t border-white/5"
+                >
                   <div className="flex items-center gap-4">
-                    <button 
-                      onClick={handleAdd}
-                      className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center hover:bg-purple-500/40 transition-all shadow-lg"
-                    >
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center group-hover/add:bg-purple-500/20 transition-all shadow-lg shadow-purple-500/5">
                       <Plus size={16} strokeWidth={3} />
-                    </button>
-                    <input 
-                      type="text"
-                      value={newEmpName}
-                      disabled={isSaving}
-                      onChange={(e) => setNewEmpName(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                      placeholder={isSaving ? "Сохранение..." : "Добавить сотрудника..."}
-                      className={`bg-transparent border-none text-sm font-bold placeholder:text-white/10 outline-none w-full transition-all ${
-                        isSaving ? 'text-white/20' : 'text-purple-400/80 hover:text-purple-400 focus:text-purple-400'
-                      }`}
-                    />
+                    </div>
+                    <div className="flex-1 relative">
+                      <input 
+                        type="text"
+                        value={newEmpName}
+                        disabled={isSaving}
+                        onChange={(e) => setNewEmpName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                        placeholder={isSaving ? "Сохранение..." : "Добавить нового сотрудника..."}
+                        className={`bg-transparent border-none text-sm font-bold placeholder:text-white/20 outline-none w-full transition-all ${
+                          isSaving ? 'text-white/20' : 'text-purple-400/80 group-hover/add:text-purple-400 focus:text-purple-400'
+                        }`}
+                      />
+                      {newEmpName && !isSaving && (
+                        <button 
+                          onClick={handleAdd}
+                          className="absolute right-0 top-1/2 -translate-y-1/2 px-4 py-1.5 rounded-lg bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-purple-500/20 hover:bg-purple-600 transition-all animate-in fade-in slide-in-from-right-2"
+                        >
+                          ОК
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </td>
-                {daysInMonth.map(day => (
-                  <td key={day.toString()} className="border-r border-white/5"></td>
-                ))}
-                <td className="bg-purple-500/5"></td>
-                <td className="bg-blue-500/5"></td>
-                <td className="bg-orange-500/5"></td>
-                <td className="sticky right-0 z-20 bg-[#121214] border-l border-white/5"></td>
               </tr>
             </tbody>
           </table>
