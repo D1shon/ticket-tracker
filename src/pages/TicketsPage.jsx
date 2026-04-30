@@ -39,7 +39,7 @@ const formatTimeAgo = (date) => {
   return 'Сегодня';
 };
 
-const TicketCard = ({ ticket }) => {
+const TicketCard = ({ ticket, columnId }) => {
   const navigate = useNavigate();
   const clubClass = clubColors[ticket.club] || 'badge-4you';
   const priority = priorityLabels[ticket.priority] || priorityLabels.medium;
@@ -62,16 +62,18 @@ const TicketCard = ({ ticket }) => {
       )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-          <span className="text-xs" style={{ letterSpacing: '0.02em', fontSize: 11 }}>{ticket.createdAt === 'около 1 месяца' ? 'около 1 месяца' : formatTimeAgo(ticket.createdAt)}</span>
+          <span className="text-xs" style={{ letterSpacing: '0.02em', fontSize: 11 }}>{ticket.createdAt}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
-            className="p-1.5 rounded-lg"
-            style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)', transition: 'all 0.15s' }}
-          >
-            <Play size={14} fill="currentColor" />
-          </button>
+          {columnId === 'new' && (
+            <button
+              onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
+              className="p-1.5 rounded-lg"
+              style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)', transition: 'all 0.15s' }}
+            >
+              <Play size={14} fill="currentColor" />
+            </button>
+          )}
           <button
             onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
             className="p-1.5 rounded-lg"
@@ -88,27 +90,32 @@ const TicketCard = ({ ticket }) => {
 const DEMO_TICKETS = {
   new: [
     { id: 1, title: 'Переход на летний режим вентиляции', club: '4YOU', priority: 'medium', createdAt: 'около 1 месяца' },
-    { id: 2, title: 'Заменять натяжные потолки, по возможности поменять освещение', club: 'COLIBRI', priority: 'low', createdAt: new Date(Date.now() - 90*24*3600000) },
-    { id: 3, title: 'Сделать отдельную кухню для сотрудников', club: 'COLIBRI', priority: 'low', createdAt: new Date(Date.now() - 90*24*3600000) },
-    { id: 4, title: 'Кабинет напротив ОП оборудовать под переговорную с клиентами', club: 'COLIBRI', priority: 'low', createdAt: new Date(Date.now() - 90*24*3600000) },
-    { id: 5, title: 'Закрыть частично стекло в ОП (матовой пленкой, либо цветы)', club: 'COLIBRI', priority: 'medium', createdAt: new Date(Date.now() - 90*24*3600000) },
-    { id: 6, title: 'Разобрать склад, сделать стелажи', club: 'COLIBRI', priority: 'low', createdAt: new Date(Date.now() - 90*24*3600000) },
-    { id: 7, title: 'Единый музыкальный плейлист для всей сети HJ', club: '4YOU', priority: 'medium', createdAt: new Date(Date.now() - 90*24*3600000) },
-    { id: 8, title: 'Экраны в залах выровнять под один уровень', club: '4YOU', priority: 'medium', createdAt: new Date(Date.now() - 90*24*3600000) },
+    { id: 2, title: 'Заменять натяжные потолки, по возможности поменять освещение', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
+    { id: 3, title: 'Сделать отдельную кухню для сотрудников', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
+    { id: 4, title: 'Кабинет напротив ОП оборудовать под переговорную с клиентами', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
+    { id: 5, title: 'Закрыть частично стекло в ОП (матовой пленкой, либо цветы)', club: 'COLIBRI', priority: 'medium', createdAt: '3 месяца' },
+    { id: 6, title: 'Разобрать склад, сделать стелажи', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
+    { id: 7, title: 'Единый музыкальный плейлист для всей сети HJ', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
+    { id: 8, title: 'Экраны в залах выровнять под один уровень', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
   ],
   in_progress: [
-    { id: 9, title: 'Переустановка счётчиков гор воды и пломбировка', club: '4YOU', priority: 'medium', createdAt: new Date(Date.now() - 60*24*3600000) },
-    { id: 10, title: 'Сделать новую систему розеток + упорядочить шнуры', club: 'COLIBRI', priority: 'medium', createdAt: new Date(Date.now() - 30*24*3600000) },
-    { id: 11, title: 'Закрепить стальные кассеты (стены) по всему объекту', club: '4YOU', priority: 'medium', createdAt: new Date(Date.now() - 60*24*3600000) },
-    { id: 12, title: 'Заказ подставок для гантелей в зал Legs', club: '4YOU', priority: 'medium', createdAt: new Date(Date.now() - 60*24*3600000) },
-    { id: 13, title: 'Решить проблему в залах кардио с повышением температуры', club: 'COLIBRI', priority: 'critical', createdAt: new Date(Date.now() - 30*24*3600000) },
+    { id: 9, title: 'Переустановка счетчиков гор воды и пломбировка', club: '4YOU', priority: 'medium', createdAt: 'около 2 месяцев' },
+    { id: 10, title: 'Сделать новую систему розеток + упорядочить шнуры', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
+    { id: 11, title: 'Закрепить стальные кассеты (стены) по всему объекту', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
+    { id: 12, title: 'Заказ подставок для гантелей в зал Legs', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
+    { id: 13, title: 'Решить проблему в залах кардио с повышением температуры', club: 'COLIBRI', priority: 'critical', createdAt: '3 месяца' },
+    { id: 14, title: 'Изготовить форму для админов, сервисников', club: 'COLIBRI', priority: 'medium', createdAt: '3 месяца' },
+    { id: 15, title: 'Трещина в Legs на потолке огромная', club: '4YOU', priority: 'critical', createdAt: '3 месяца' },
+    { id: 16, title: 'Разработка и создание униформы для сотрудников', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
+    { id: 17, title: 'Подсветка мерч зоны, сделать гардеробный шкаф закрытый', club: 'COLIBRI', priority: 'medium', createdAt: '3 месяца' },
+    { id: 18, title: 'Сбой в оборудовании, одна лампа в буте не горит', club: 'VILLA', priority: 'medium', createdAt: '3 месяца' },
   ],
   paused: [
-    { id: 14, title: 'Фен Борк сломан (на ремонте)', club: '4YOU', priority: 'critical', createdAt: new Date(Date.now() - 60*24*3600000), subtitle: 'Ждём детали для сервис центра' },
+    { id: 19, title: 'Фен Борк сломан (на ремонте)', club: '4YOU', priority: 'critical', createdAt: '2 месяца', subtitle: 'Ждём детали для сервис центра' },
   ],
   waiting: [
-    { id: 15, title: 'Работа с кровлей, протечки', club: '4YOU', priority: 'medium', createdAt: new Date(Date.now() - 30*24*3600000) },
-    { id: 16, title: 'Разборка серверной', club: 'COLIBRI', priority: 'medium', createdAt: new Date(Date.now() - 60*24*3600000), subtitle: 'Ждём Владимира, подтверди заяв' },
+    { id: 20, title: 'Работа с кровлей, протечки', club: '4YOU', priority: 'medium', createdAt: '1 месяц' },
+    { id: 21, title: 'Разборка серверной', club: 'COLIBRI', priority: 'medium', createdAt: '2 месяца', subtitle: 'Ждём Владимира, подтверди заяв' },
   ],
   closed: [],
 };
@@ -172,7 +179,7 @@ const TicketsPage = () => {
               </div>
               <div>
                 {colTickets.map(ticket => (
-                  <TicketCard key={ticket.id} ticket={ticket} />
+                  <TicketCard key={ticket.id} ticket={ticket} columnId={col.id} />
                 ))}
                 {colTickets.length === 0 && (
                   <div
