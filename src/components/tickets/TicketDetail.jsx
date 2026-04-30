@@ -175,41 +175,41 @@ const TicketDetail = () => {
 
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [messages]);
 
-  const sendMessage = (text) => {
-    const t = (text || msgInput).trim();
-    if (!t) return;
-    setMessages(prev => [...prev, { id: Date.now(), text: t, author: 'Вы', time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }]);
-    if (!text) setMsgInput('');
-  };
+  const fileInputRef = useRef(null);
+  const [attachment, setAttachment] = useState(null);
 
-  const handleReasonConfirm = (reason) => {
-    const stateMap = { pause: 'pause', wait: 'wait', finish: 'idle' };
-    const labelMap = { pause: '⏸ Пауза', wait: '⏳ Ожидание', finish: '✅ Завершено' };
-    const colorMap = { pause: '#f59e0b', wait: '#9b5de5', finish: '#22c55e' };
-
-    setTimerState(stateMap[pendingAction]);
-    setStatusReport({
-      action: pendingAction,
-      label: labelMap[pendingAction],
-      color: colorMap[pendingAction],
-      reason,
+  const sendMessage = () => {
+    const t = (msgInput).trim();
+    if (!t && !attachment) return;
+    
+    const newMsg = { 
+      id: Date.now(), 
+      text: t, 
+      author: 'Вы', 
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-    });
-    setPendingAction(null);
+      attachment: attachment
+    };
+    
+    setMessages(prev => [...prev, newMsg]);
+    setMsgInput('');
+    setAttachment(null);
   };
 
-  // Clear report when going back to work
-  const handleWorkClick = () => {
-    setStatusReport(null);
-    setPendingAction(null);
-    setTimerState(s => s === 'work' ? 'idle' : 'work');
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setAttachment({
+        name: file.name,
+        url: URL.createObjectURL(file), // temporary local URL for preview
+        type: file.type
+      });
+    }
   };
 
   const sColor = { 'Новая': '#22c55e', 'В РАБОТЕ': '#9b5de5', 'ПАУЗА': '#f59e0b', 'ОЖИДАНИЕ': '#f97316', 'ЗАКРЫТО': '#55556a' }[ticket.status] || '#22c55e';
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 6 }}><ArrowLeft size={18} /></button>
@@ -304,18 +304,43 @@ const TicketDetail = () => {
               ) : messages.map(m => (
                 <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div style={{ background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }}>
-                    <div style={{ fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                    {m.text && <div style={{ fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{m.text}</div>}
+                    {m.attachment && (
+                      <div style={{ marginTop: m.text ? 8 : 0, padding: '8px 12px', background: 'rgba(0,0,0,0.1)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Paperclip size={14} color="#4f8ef7" />
+                        <a href={m.attachment.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#4f8ef7', textDecoration: 'none', wordBreak: 'break-all' }}>
+                          {m.attachment.name}
+                        </a>
+                      </div>
+                    )}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.author} · {m.time}</div>
                 </div>
               ))}
             </div>
+            
+            {/* Attachment Preview Area */}
+            {attachment && (
+              <div style={{ padding: '8px 16px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Paperclip size={14} color="#4f8ef7" />
+                  <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{attachment.name}</span>
+                </div>
+                <button onClick={() => setAttachment(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+            
             <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
               <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}><Smile size={18} /></button>
-              <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}><Paperclip size={18} /></button>
+              <button onClick={() => fileInputRef.current?.click()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
+                <Paperclip size={18} color={attachment ? '#4f8ef7' : 'currentColor'} />
+              </button>
               <input value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Ваше сообщение..."
                 style={{ flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
-              <button onClick={() => sendMessage()} style={{ background: 'linear-gradient(135deg, #7c3aed, #9b5de5)', border: 'none', borderRadius: 10, padding: '10px 14px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 2px 8px rgba(124,58,237,0.4)' }}>
+              <button onClick={sendMessage} style={{ background: 'linear-gradient(135deg, #7c3aed, #9b5de5)', border: 'none', borderRadius: 10, padding: '10px 14px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 2px 8px rgba(124,58,237,0.4)' }}>
                 <Send size={16} />
               </button>
             </div>
