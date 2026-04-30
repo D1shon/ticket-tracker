@@ -292,4 +292,6 @@ const SchedulePage = () => {
       </div>
     </div>
   );
+};
+
 export default SchedulePage;
