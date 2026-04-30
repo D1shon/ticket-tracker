@@ -177,6 +177,7 @@ const TicketDetail = () => {
 
   const fileInputRef = useRef(null);
   const [attachment, setAttachment] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const sendMessage = () => {
     const t = (msgInput).trim();
@@ -329,11 +330,22 @@ const TicketDetail = () => {
                   <div style={{ background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }}>
                     {m.text && <div style={{ fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{m.text}</div>}
                     {m.attachment && (
-                      <div style={{ marginTop: m.text ? 8 : 0, padding: '8px 12px', background: 'rgba(0,0,0,0.1)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Paperclip size={14} color="#4f8ef7" />
-                        <a href={m.attachment.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#4f8ef7', textDecoration: 'none', wordBreak: 'break-all' }}>
-                          {m.attachment.name}
-                        </a>
+                      <div style={{ marginTop: m.text ? 8 : 0 }}>
+                        {m.attachment.type && m.attachment.type.startsWith('image/') ? (
+                          <button 
+                            onClick={() => setPreviewImage(m.attachment.url)} 
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block' }}
+                          >
+                            <img src={m.attachment.url} alt={m.attachment.name} style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 8, objectFit: 'cover' }} />
+                          </button>
+                        ) : (
+                          <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.1)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Paperclip size={14} color="#4f8ef7" />
+                            <a href={m.attachment.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#4f8ef7', textDecoration: 'none', wordBreak: 'break-all' }}>
+                              {m.attachment.name}
+                            </a>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -400,6 +412,32 @@ const TicketDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div 
+          onClick={() => setPreviewImage(null)} 
+          style={{ 
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+            background: 'rgba(0,0,0,0.85)', zIndex: 99999, 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+            padding: 40, cursor: 'zoom-out'
+          }}
+        >
+          <button 
+            onClick={() => setPreviewImage(null)} 
+            style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', padding: 8, color: 'white', cursor: 'pointer', display: 'flex' }}
+          >
+            <X size={24} />
+          </button>
+          <img 
+            src={previewImage} 
+            alt="Preview" 
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} 
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 };
