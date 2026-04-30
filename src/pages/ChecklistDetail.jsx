@@ -8,49 +8,66 @@ import { toast } from 'sonner';
 const ChecklistDetail = () => {
   const { shiftId, cardId } = useParams();
   const navigate = useNavigate();
-  const { addTicket } = useTickets(); // Assuming addTicket exists in context
+  const { addTicket } = useTickets();
   
   const shift = SHIFTS_DATA.find(s => s.id === shiftId);
   const cardData = CHECK_ITEMS[cardId];
   
-  const [checkedItems, setCheckedItems] = useState(() => {
-    const saved = localStorage.getItem(`checklist-${shiftId}-${cardId}`);
+  // State for each item: 'ok', 'issue', or null
+  const [itemStates, setItemStates] = useState(() => {
+    const saved = localStorage.getItem(`checklist-states-${shiftId}-${cardId}`);
     return saved ? JSON.parse(saved) : {};
   });
   
-  const [issue, setIssue] = useState('');
-  const [showIssueForm, setShowIssueForm] = useState(false);
+  // State for issue descriptions
+  const [itemIssues, setItemIssues] = useState(() => {
+    const saved = localStorage.getItem(`checklist-issues-${shiftId}-${cardId}`);
+    return saved ? JSON.parse(saved) : {};
+  });
 
   useEffect(() => {
-    localStorage.setItem(`checklist-${shiftId}-${cardId}`, JSON.stringify(checkedItems));
-  }, [checkedItems, shiftId, cardId]);
+    localStorage.setItem(`checklist-states-${shiftId}-${cardId}`, JSON.stringify(itemStates));
+    localStorage.setItem(`checklist-issues-${shiftId}-${cardId}`, JSON.stringify(itemIssues));
+  }, [itemStates, itemIssues, shiftId, cardId]);
 
   if (!shift || !cardData) {
-    return <div className="p-10 text-white/40">Загрузка или ошибка...</div>;
+    return <div className="p-10 text-white/40">Загрузка...</div>;
   }
 
-  const handleToggle = (index) => {
-    setCheckedItems(prev => ({ ...prev, [index]: !prev[index] }));
+  const handleStateChange = (index, state) => {
+    setItemStates(prev => ({ ...prev, [index]: state }));
+  };
+
+  const handleIssueChange = (index, text) => {
+    setItemIssues(prev => ({ ...prev, [index]: text }));
   };
 
   const handleComplete = async () => {
-    if (issue.trim() && !cardData.noTicket) {
-      // Create a ticket if there's an issue and it's not cleaning
-      const newTicket = {
-        title: `Проблема: ${cardData.title} (${shift.time})`,
-        subtitle: issue,
-        club: '4YOU', // For demo
-        priority: 'medium',
-        status: 'new',
-        createdAt: 'Только что'
-      };
-      
-      // If addTicket is available in context, use it. Otherwise just toast.
-      if (addTicket) {
-        await addTicket(newTicket);
-        toast.success('Заявка создана автоматически');
-      } else {
-        toast.info('Issue reported (TicketContext integration pending)');
+    // Create tickets for each item that has an issue
+    const issueIndices = Object.keys(itemStates).filter(idx => itemStates[idx] === 'issue');
+    
+    if (!cardData.noTicket) {
+      for (const idx of issueIndices) {
+        const problemDescription = itemIssues[idx];
+        const itemTitle = cardData.items[idx];
+        
+        if (problemDescription?.trim()) {
+          const newTicket = {
+            title: `${itemTitle} (${shift.time})`,
+            subtitle: problemDescription,
+            club: '4YOU', // Default for demo
+            priority: 'high',
+            status: 'new',
+            createdAt: 'Только что'
+          };
+          
+          if (addTicket) {
+            await addTicket(newTicket);
+          }
+        }
+      }
+      if (issueIndices.length > 0) {
+        toast.success(`${issueIndices.length} заявок создано автоматически`);
       }
     }
     
@@ -58,7 +75,7 @@ const ChecklistDetail = () => {
     navigate('/checklists');
   };
 
-  const allChecked = cardData.items.every((_, i) => checkedItems[i]);
+  const allAnswered = cardData.items.every((_, i) => itemStates[i] !== undefined && itemStates[i] !== null);
 
   return (
     <div className="animate-fade min-h-full" style={{ color: '#fff', fontFamily: 'Inter, sans-serif' }}>
@@ -78,72 +95,85 @@ const ChecklistDetail = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="max-w-4xl">
         {/* Items List */}
-        <div className="lg:col-span-2 flex flex-col gap-3">
+        <div className="flex flex-col gap-6 mb-12">
           {cardData.items.map((item, i) => (
-            <label 
-              key={i}
-              className={`flex items-center gap-4 p-5 rounded-2xl cursor-pointer transition-all border ${
-                checkedItems[i] ? 'bg-green-500/5 border-green-500/20' : 'bg-[#111113] border-white/5 hover:border-white/10'
-              }`}
-            >
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all ${
-                checkedItems[i] ? 'bg-green-500 border-green-500 text-white' : 'border-white/10 text-transparent'
-              }`}>
-                <ShieldCheck size={14} strokeWidth={3} />
+            <div key={i} className="flex flex-col gap-3">
+              <div 
+                className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
+                  itemStates[i] === 'ok' ? 'bg-green-500/5 border-green-500/20' : 
+                  itemStates[i] === 'issue' ? 'bg-red-500/5 border-red-500/20' : 
+                  'bg-[#111113] border-white/5'
+                }`}
+              >
+                <span className={`text-sm font-bold ${itemStates[i] ? 'text-white/90' : 'text-white/60'}`}>
+                  {item}
+                </span>
+                
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => handleStateChange(i, 'ok')}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${
+                      itemStates[i] === 'ok' 
+                        ? 'bg-green-500 border-green-500 text-white' 
+                        : 'bg-white/5 border-white/5 text-white/40 hover:text-white/60'
+                    }`}
+                  >
+                    Все хорошо
+                  </button>
+                  <button 
+                    onClick={() => handleStateChange(i, 'issue')}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${
+                      itemStates[i] === 'issue' 
+                        ? 'bg-red-500 border-red-500 text-white' 
+                        : 'bg-white/5 border-white/5 text-white/40 hover:text-white/60'
+                    }`}
+                  >
+                    Проблема
+                  </button>
+                </div>
               </div>
-              <input 
-                type="checkbox" 
-                className="hidden"
-                checked={!!checkedItems[i]}
-                onChange={() => handleToggle(i)}
-              />
-              <span className={`text-sm font-medium transition-colors ${checkedItems[i] ? 'text-white/90' : 'text-white/60'}`}>
-                {item}
-              </span>
-            </label>
+
+              {/* Conditional Issue Input */}
+              {itemStates[i] === 'issue' && (
+                <div className="animate-slide-down px-2">
+                  <textarea 
+                    value={itemIssues[i] || ''}
+                    onChange={(e) => handleIssueChange(i, e.target.value)}
+                    placeholder="Опишите проблему подробно..."
+                    className="w-full bg-[#151518] border border-red-500/20 rounded-2xl p-4 text-sm text-white/80 focus:border-red-500/40 outline-none transition-all resize-none h-24"
+                  />
+                  {!cardData.noTicket && (
+                    <p className="text-[9px] text-red-400/50 mt-2 ml-2 uppercase font-bold tracking-widest flex items-center gap-1">
+                      <AlertCircle size={10} /> Автоматически создаст заявку
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           ))}
         </div>
 
-        {/* Sidebar Actions */}
-        <div className="flex flex-col gap-6">
-          <div className="bg-[#111113] border border-white/5 rounded-3xl p-6">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-6 flex items-center gap-2">
-              <AlertCircle size={14} className="text-orange-500" />
-              Возникла проблема?
-            </h3>
-            
-            {!cardData.noTicket ? (
-              <div className="flex flex-col gap-4">
-                <textarea 
-                  value={issue}
-                  onChange={(e) => setIssue(e.target.value)}
-                  placeholder="Опишите проблему, если она есть. После подтверждения будет создана заявка."
-                  className="w-full h-32 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white/80 focus:border-purple-500/50 outline-none transition-all resize-none"
-                />
-                <p className="text-[10px] text-white/30 italic">
-                  * По этой категории проблем автоматически создается тикет в техподдержку.
-                </p>
-              </div>
-            ) : (
-              <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 text-[11px] text-blue-400/80 leading-relaxed">
-                Для чек-листа по уборке автоматическое создание заявок отключено. Обо всех серьезных проблемах сообщайте напрямую администратору.
-              </div>
-            )}
-          </div>
-
+        {/* Action Button */}
+        <div className="flex items-center gap-4 pt-8 border-t border-white/5">
+          <button 
+            onClick={() => navigate('/checklists')}
+            className="px-8 py-4 rounded-2xl bg-white/5 text-white/60 text-sm font-bold hover:bg-white/10 transition-all"
+          >
+            Отмена
+          </button>
           <button 
             onClick={handleComplete}
-            disabled={!allChecked}
-            className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-              allChecked 
+            disabled={!allAnswered}
+            className={`flex-1 py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+              allAnswered 
                 ? 'bg-[#7B3DFF] text-white shadow-xl shadow-purple-500/20 hover:-translate-y-0.5' 
                 : 'bg-white/5 text-white/20 cursor-not-allowed'
             }`}
           >
             <CheckCircle2 size={18} />
-            Завершить проверку
+            Подтвердить и завершить
           </button>
         </div>
       </div>

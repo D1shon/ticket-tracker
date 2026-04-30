@@ -9,11 +9,11 @@ const ChecklistPage = () => {
   const navigate = useNavigate();
 
   const isCheckComplete = (shiftId, cardId) => {
-    const saved = localStorage.getItem(`checklist-${shiftId}-${cardId}`);
+    const saved = localStorage.getItem(`checklist-states-${shiftId}-${cardId}`);
     if (!saved) return false;
-    const checked = JSON.parse(saved);
+    const states = JSON.parse(saved);
     const items = CHECK_ITEMS[cardId].items;
-    return items.every((_, i) => checked[i]);
+    return items.every((_, i) => states[i] === 'ok' || states[i] === 'issue');
   };
 
   return (
