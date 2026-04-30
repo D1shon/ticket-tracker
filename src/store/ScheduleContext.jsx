@@ -43,7 +43,7 @@ export const ScheduleProvider = ({ children }) => {
   useEffect(() => {
     if (!user) return;
 
-    const q = query(collection(db, 'employees'));
+    const q = query(collection(db, 'employees'), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEmployees(data);

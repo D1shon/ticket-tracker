@@ -98,10 +98,17 @@ const SchedulePage = () => {
     return { totalHours, salary, advance, toPay };
   };
 
-  const handleAdd = () => {
-    if (newEmpName.trim()) {
-      addEmployee(newEmpName.trim());
-      setNewEmpName('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleAdd = async () => {
+    if (newEmpName.trim() && !isSaving) {
+      setIsSaving(true);
+      try {
+        await addEmployee(newEmpName.trim());
+        setNewEmpName('');
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -244,10 +251,13 @@ const SchedulePage = () => {
                     <input 
                       type="text"
                       value={newEmpName}
+                      disabled={isSaving}
                       onChange={(e) => setNewEmpName(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                      placeholder="+ Добавить сотрудника"
-                      className="bg-transparent border-none text-sm font-bold text-purple-400 placeholder:text-white/20 outline-none w-full"
+                      placeholder={isSaving ? "Сохранение..." : "+ Добавить сотрудника"}
+                      className={`bg-transparent border-none text-sm font-bold placeholder:text-white/20 outline-none w-full transition-all ${
+                        isSaving ? 'text-white/20' : 'text-purple-400'
+                      }`}
                     />
                   </div>
                 </td>
