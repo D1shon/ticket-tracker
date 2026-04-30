@@ -13,10 +13,10 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Users,
-  Download,
   Trash2,
   Edit2,
-  Check
+  Check,
+  Plus
 } from 'lucide-react';
 import { useSchedule } from '../store/ScheduleContext';
 
@@ -43,6 +43,7 @@ const SchedulePage = () => {
   const [newEmpName, setNewEmpName] = useState('');
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({
@@ -98,8 +99,6 @@ const SchedulePage = () => {
     return { totalHours, salary, advance, toPay };
   };
 
-  const [isSaving, setIsSaving] = useState(false);
-
   const handleAdd = async () => {
     if (newEmpName.trim() && !isSaving) {
       setIsSaving(true);
@@ -153,10 +152,10 @@ const SchedulePage = () => {
 
       <div className="bg-[#0f0f11] rounded-3xl border border-white/5 overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1800px]">
+          <table className="w-full text-left border-collapse min-w-[1900px]">
             <thead>
               <tr className="bg-[#151518] text-[9px] uppercase tracking-widest font-black text-white/30 border-b border-white/5">
-                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/5 min-w-[250px]">Сотрудник</th>
+                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/5 min-w-[280px]">Сотрудник</th>
                 {daysInMonth.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const isHoliday = HOLIDAYS_2026.includes(dateStr);
@@ -181,26 +180,41 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 const isEditing = editingEmpId === emp.id;
                 return (
-                  <tr key={emp.id} className="hover:bg-white/[0.02] transition-all group">
+                  <tr key={emp.id} className="hover:bg-white/[0.04] transition-all group">
                     <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/5 group-hover:bg-[#151518] transition-all">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:text-purple-400 transition-colors">
+                          <Users size={14} />
+                        </div>
                         {isEditing ? (
                           <div className="flex items-center gap-2 flex-1">
                             <input 
                               autoFocus
-                              className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-sm font-bold text-white outline-none w-full"
+                              className="bg-white/10 border border-purple-500/30 rounded-lg px-2 py-1.5 text-sm font-bold text-white outline-none w-full"
                               value={editNameValue}
                               onChange={(e) => setEditNameValue(e.target.value)}
                               onKeyDown={(e) => e.key === 'Enter' && saveEditing(emp.id)}
                             />
-                            <button onClick={() => saveEditing(emp.id)} className="text-green-500"><Check size={14}/></button>
+                            <button onClick={() => saveEditing(emp.id)} className="w-8 h-8 rounded-lg bg-green-500/20 text-green-500 flex items-center justify-center hover:bg-green-500/30 transition-all">
+                              <Check size={14}/>
+                            </button>
                           </div>
                         ) : (
-                          <div className="flex items-center justify-between flex-1 group/name">
-                            <span className="text-sm font-bold text-white/90">{emp.name}</span>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                              <button onClick={() => startEditing(emp)} className="p-1 text-white/20 hover:text-white"><Edit2 size={12}/></button>
-                              <button onClick={() => removeEmployee(emp.id)} className="p-1 text-red-500/40 hover:text-red-500"><Trash2 size={12}/></button>
+                          <div className="flex items-center justify-between flex-1">
+                            <span className="text-sm font-bold text-white/90 group-hover:text-white transition-colors">{emp.name}</span>
+                            <div className="flex items-center gap-1">
+                              <button 
+                                onClick={() => startEditing(emp)} 
+                                className="p-2 rounded-lg hover:bg-white/5 text-white/10 hover:text-blue-400 transition-all"
+                              >
+                                <Edit2 size={13}/>
+                              </button>
+                              <button 
+                                onClick={() => removeEmployee(emp.id)} 
+                                className="p-2 rounded-lg hover:bg-white/5 text-white/10 hover:text-red-500 transition-all"
+                              >
+                                <Trash2 size={13}/>
+                              </button>
                             </div>
                           </div>
                         )}
@@ -242,27 +256,30 @@ const SchedulePage = () => {
               })}
               
               {/* Add Employee Row */}
-              <tr className="bg-white/[0.01]">
-                <td className="px-6 py-4 sticky left-0 z-20 bg-[#121214] border-r border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-white/5 border border-dashed border-white/20 flex items-center justify-center text-white/40">
-                      <Users size={14} />
-                    </div>
+              <tr className="bg-purple-500/[0.02]">
+                <td className="px-6 py-5 sticky left-0 z-20 bg-[#121214] border-r border-white/5">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={handleAdd}
+                      className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center hover:bg-purple-500/40 transition-all shadow-lg"
+                    >
+                      <Plus size={16} strokeWidth={3} />
+                    </button>
                     <input 
                       type="text"
                       value={newEmpName}
                       disabled={isSaving}
                       onChange={(e) => setNewEmpName(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                      placeholder={isSaving ? "Сохранение..." : "+ Добавить сотрудника"}
-                      className={`bg-transparent border-none text-sm font-bold placeholder:text-white/20 outline-none w-full transition-all ${
-                        isSaving ? 'text-white/20' : 'text-purple-400'
+                      placeholder={isSaving ? "Сохранение..." : "Добавить сотрудника..."}
+                      className={`bg-transparent border-none text-sm font-bold placeholder:text-white/10 outline-none w-full transition-all ${
+                        isSaving ? 'text-white/20' : 'text-purple-400/80 hover:text-purple-400 focus:text-purple-400'
                       }`}
                     />
                   </div>
                 </td>
                 {daysInMonth.map(day => (
-                  <td key={day.toString()} className="border-r border-white/5 bg-white/[0.01]"></td>
+                  <td key={day.toString()} className="border-r border-white/5"></td>
                 ))}
                 <td className="bg-purple-500/5"></td>
                 <td className="bg-blue-500/5"></td>
