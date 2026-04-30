@@ -129,7 +129,7 @@ const TicketCard = ({ ticket, columnId, isList = false }) => {
   );
 };
 
-const DEMO_TICKETS = {
+export const DEMO_TICKETS = {
   new: [
     { id: 1, title: 'Переход на летний режим вентиляции', club: '4YOU', priority: 'medium', createdAt: 'около 1 месяца' },
     { id: 2, title: 'Заменять натяжные потолки, по возможности поменять освещение', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
@@ -159,7 +159,12 @@ const DEMO_TICKETS = {
     { id: 20, title: 'Работа с кровлей, протечки', club: '4YOU', priority: 'medium', createdAt: '1 месяц' },
     { id: 21, title: 'Разборка серверной', club: 'COLIBRI', priority: 'medium', createdAt: '2 месяца', subtitle: 'Ждём Владимира, подтверди заяв' },
   ],
-  closed: [],
+  closed: [
+    { id: 22, title: 'Замена зеркала в женской раздевалке', club: '4YOU', priority: 'medium', createdAt: '2 недели назад', closedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() }, // Closed 2 hours ago (Stays in Tickets)
+    { id: 23, title: 'Починить беговую дорожку №4', club: '4YOU', priority: 'high', createdAt: '1 месяц назад', closedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() }, // Closed 2 days ago (Goes to Archive)
+    { id: 24, title: 'Обновление ПО на турникетах', club: 'COLIBRI', priority: 'medium', createdAt: '3 недели назад', closedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString() }, // Closed 3 days ago (Goes to Archive but for COLIBRI)
+    { id: 25, title: 'Установка дополнительных кулеров', club: '4YOU', priority: 'low', createdAt: '2 месяца назад', closedAt: new Date(Date.now() - 120 * 60 * 60 * 1000).toISOString() }, // Old ticket for 4YOU archive
+  ],
 };
 
 const TicketsPage = () => {
@@ -181,6 +186,18 @@ const TicketsPage = () => {
     if (activeClub !== 'ВСЕ') colTickets = colTickets.filter(t => t.club === activeClub);
     if (search) colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
     if (activeFilter !== 'ВСЕ' && col.label !== activeFilter) return [];
+    
+    // Hide archived tickets from the main board
+    if (col.id === 'closed') {
+      const now = new Date();
+      colTickets = colTickets.filter(t => {
+        if (!t.closedAt) return false; // For demo: hide if no closed date (assumes it's old)
+        const closedDate = new Date(t.closedAt);
+        const diffHours = (now - closedDate) / (1000 * 60 * 60);
+        return diffHours <= 24;
+      });
+    }
+
     return colTickets.map(t => ({ ...t, columnId: col.id, columnLabel: col.label, columnColor: col.color }));
   });
 
@@ -271,6 +288,15 @@ const TicketsPage = () => {
               if (activeClub !== 'ВСЕ') colTickets = colTickets.filter(t => t.club === activeClub);
               if (search) colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
               if (activeFilter !== 'ВСЕ' && col.label !== activeFilter) colTickets = []; // Hide tickets if filter doesn't match column
+
+              if (col.id === 'closed') {
+                const now = new Date();
+                colTickets = colTickets.filter(t => {
+                  if (!t.closedAt) return false;
+                  const closedDate = new Date(t.closedAt);
+                  return ((now - closedDate) / (1000 * 60 * 60)) <= 24;
+                });
+              }
 
               return (
                 <div key={col.id} className="kanban-col">

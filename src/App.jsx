@@ -13,6 +13,8 @@ import TicketDetail from './components/tickets/TicketDetail';
 import SchedulePage from './pages/SchedulePage';
 import ChecklistPage from './pages/ChecklistPage';
 
+import ArchivePage from './pages/ArchivePage';
+
 const ProtectedLayout = ({ children }) => {
   const { user, loading } = useTickets();
 
@@ -100,8 +102,11 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
 
-        {/* Placeholder pages */}
-        <Route path="/archive" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Архив — в разработке</div></ProtectedLayout>} />
+        <Route path="/archive" element={
+          <ProtectedLayout>
+            <ArchivePage />
+          </ProtectedLayout>
+        } />
         <Route path="/calls" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Созвоны — в разработке</div></ProtectedLayout>} />
         <Route path="/chat" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Чат — в разработке</div></ProtectedLayout>} />
         <Route path="/settings" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Настройки — в разработке</div></ProtectedLayout>} />
