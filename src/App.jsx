@@ -12,7 +12,7 @@ import TicketsPage from './pages/TicketsPage';
 import TicketDetail from './components/tickets/TicketDetail';
 import SchedulePage from './pages/SchedulePage';
 import ChecklistPage from './pages/ChecklistPage';
-
+import ChecklistDetail from './pages/ChecklistDetail';
 import ArchivePage from './pages/ArchivePage';
 
 const ProtectedLayout = ({ children }) => {
@@ -93,6 +93,11 @@ const AppContent = () => {
         <Route path="/checklists" element={
           <ProtectedLayout>
             <ChecklistPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/checklists/:shiftId/:cardId" element={
+          <ProtectedLayout>
+            <ChecklistDetail />
           </ProtectedLayout>
         } />
 
