@@ -18,8 +18,8 @@ const ProtectedLayout = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+        <div style={{ width: 40, height: 40, border: '3px solid rgba(79,142,247,0.2)', borderTop: '3px solid #4f8ef7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
       </div>
     );
   }
@@ -30,14 +30,12 @@ const ProtectedLayout = ({ children }) => {
   // }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex' }}>
       <Sidebar />
-      <div className="flex-1 flex flex-col pl-64">
+      <div style={{ flex: 1, marginLeft: '220px', display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <Header />
-        <main className="flex-1 p-8 mt-16 overflow-auto">
-          <div className="max-w-7xl mx-auto">
-            {children}
-          </div>
+        <main style={{ flex: 1, padding: '24px 28px', overflow: 'auto', marginTop: '52px' }}>
+          {children}
         </main>
       </div>
     </div>
@@ -55,14 +53,18 @@ const AppContent = () => {
         theme="dark"
         toastOptions={{
           style: { 
-            background: '#18181b', 
-            border: '1px solid #27272a',
-            borderRadius: '12px'
+            background: '#1a1a20', 
+            border: '1px solid #2a2a32',
+            borderRadius: '10px',
+            color: '#e8e8f0'
           }
         }}
       />
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to="/tickets" replace /> : <Login />} />
         
         <Route path="/dashboard" element={
           <ProtectedLayout>
@@ -81,7 +83,11 @@ const AppContent = () => {
             <ChecklistPage />
           </ProtectedLayout>
         } />
-        <Route path="/checklists" element={<Navigate to="/checklist" replace />} />
+        <Route path="/checklists" element={
+          <ProtectedLayout>
+            <ChecklistPage />
+          </ProtectedLayout>
+        } />
 
         <Route path="/schedule" element={
           <ProtectedLayout>
@@ -89,8 +95,14 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
 
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Placeholder pages */}
+        <Route path="/archive" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Архив — в разработке</div></ProtectedLayout>} />
+        <Route path="/calls" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Созвоны — в разработке</div></ProtectedLayout>} />
+        <Route path="/chat" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Чат — в разработке</div></ProtectedLayout>} />
+        <Route path="/settings" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Настройки — в разработке</div></ProtectedLayout>} />
+
+        <Route path="/" element={<Navigate to="/tickets" replace />} />
+        <Route path="*" element={<Navigate to="/tickets" replace />} />
       </Routes>
     </Router>
   );

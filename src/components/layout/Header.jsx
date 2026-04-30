@@ -1,36 +1,42 @@
-import React from 'react';
-import { Bell, Search, User } from 'lucide-react';
-import { useTickets } from '../../store/TicketContext';
+import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Plus, Bell } from 'lucide-react';
 
-const Header = () => {
-  const { user } = useTickets();
+const CLUBS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORCA', 'MY TASK'];
+
+const Header = ({ activeClub, setActiveClub, onCreateTicket }) => {
+  const location = useLocation();
+  const [localClub, setLocalClub] = useState('ВСЕ');
+
+  const club = activeClub || localClub;
+  const setClub = setActiveClub || setLocalClub;
 
   return (
-    <header className="h-16 glass fixed top-0 right-0 left-64 flex items-center justify-between px-6 z-30">
-      <div className="flex items-center bg-muted/50 px-3 py-1.5 rounded-xl w-96 border border-border">
-        <Search size={18} className="text-muted-foreground" />
-        <input 
-          type="text" 
-          placeholder="Поиск задач..." 
-          className="bg-transparent border-none focus:ring-0 text-sm ml-2 w-full text-foreground"
-        />
+    <header className="topbar" style={{ marginLeft: '220px' }}>
+      {/* Club tabs */}
+      <div className="flex items-center gap-1 flex-1">
+        {CLUBS.map(c => (
+          <button
+            key={c}
+            onClick={() => setClub(c)}
+            className={`club-tab ${club === c ? 'active' : ''}`}
+          >
+            {c}
+          </button>
+        ))}
       </div>
 
-      <div className="flex items-center gap-4">
-        <button className="p-2 hover:bg-muted rounded-full transition-all relative">
-          <Bell size={20} className="text-muted-foreground" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
+      {/* Right side */}
+      <div className="flex items-center gap-3">
+        <button className="relative p-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors">
+          <Bell size={18} color="var(--text-secondary)" strokeWidth={1.8} />
         </button>
-        
-        <div className="flex items-center gap-3 pl-4 border-l border-border">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-foreground">{user?.email?.split('@')[0]}</p>
-            <p className="text-xs text-muted-foreground capitalize">{user?.email?.split('@')[1]?.split('.')[0] || 'User'}</p>
-          </div>
-          <div className="w-10 h-10 bg-muted rounded-xl flex items-center justify-center border border-border">
-            <User size={20} className="text-muted-foreground" />
-          </div>
-        </div>
+        {onCreateTicket && (
+          <button onClick={onCreateTicket} className="btn-create flex items-center gap-1.5">
+            <Plus size={14} strokeWidth={2.5} />
+            СОЗДАТЬ ЗАЯВКУ
+          </button>
+        )}
       </div>
     </header>
   );

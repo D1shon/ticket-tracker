@@ -1,60 +1,76 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Ticket, 
   CheckSquare, 
   Calendar, 
-  Settings, 
-  LogOut 
+  Archive,
+  Phone,
+  MessageCircle,
+  Settings,
+  LogOut
 } from 'lucide-react';
 import { useTickets } from '../../store/TicketContext';
 
-const Sidebar = () => {
+const CLUBS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORCA', 'MY TASK'];
+
+const Sidebar = ({ activeClub, setActiveClub, onCreateTicket }) => {
   const { logout } = useTickets();
 
-  const menuItems = [
+  const topNav = [
     { icon: LayoutDashboard, label: 'Дашборд', path: '/dashboard' },
     { icon: Ticket, label: 'Заявки', path: '/tickets' },
-    { icon: CheckSquare, label: 'Чек-лист', path: '/checklist' },
+    { icon: Archive, label: 'Архив', path: '/archive' },
+    { icon: CheckSquare, label: 'Чек-листы', path: '/checklists' },
     { icon: Calendar, label: 'График', path: '/schedule' },
+    { icon: Phone, label: 'Созвоны', path: '/calls' },
+  ];
+
+  const bottomNav = [
+    { icon: MessageCircle, label: 'Чат', path: '/chat' },
+    { icon: Settings, label: 'Настройки', path: '/settings' },
   ];
 
   return (
-    <aside className="w-64 glass h-screen fixed left-0 top-0 flex flex-col p-4 z-40">
-      <div className="flex items-center gap-3 px-2 mb-8 mt-2">
-        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-bold text-white">H</div>
-        <span className="font-bold text-xl tracking-tight text-foreground">Herotrack</span>
+    <aside className="sidebar">
+      {/* Logo */}
+      <div className="sidebar-logo">
+        <div className="logo-text">HEROTRACK</div>
       </div>
 
-      <nav className="flex-1 space-y-1">
-        {menuItems.map((item) => (
+      {/* Main Nav */}
+      <nav className="flex-1 py-3">
+        {topNav.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
-            className={({ isActive }) => `
-              flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200
-              ${isActive 
-                ? 'bg-primary/10 text-primary font-medium' 
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'}
-            `}
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           >
-            <item.icon size={20} />
+            <item.icon size={17} strokeWidth={1.8} />
             <span>{item.label}</span>
           </NavLink>
         ))}
       </nav>
 
-      <div className="mt-auto space-y-1 border-t border-border pt-4">
-        <button className="flex items-center gap-3 px-3 py-2.5 w-full text-muted-foreground hover:bg-muted hover:text-foreground rounded-xl transition-all">
-          <Settings size={20} />
-          <span>Настройки</span>
-        </button>
-        <button 
+      {/* Bottom Nav */}
+      <div className="border-t border-app py-3">
+        {bottomNav.map(item => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          >
+            <item.icon size={17} strokeWidth={1.8} />
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+        <button
           onClick={logout}
-          className="flex items-center gap-3 px-3 py-2.5 w-full text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
+          className="nav-item w-full text-left"
+          style={{ color: 'var(--accent-red)' }}
         >
-          <LogOut size={20} />
+          <LogOut size={17} strokeWidth={1.8} />
           <span>Выйти</span>
         </button>
       </div>
