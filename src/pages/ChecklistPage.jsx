@@ -8,12 +8,18 @@ const ChecklistPage = () => {
   const [activeDay, setActiveDay] = useState('СЕГОДНЯ');
   const navigate = useNavigate();
 
-  const isCheckComplete = (shiftId, cardId) => {
+  const getCheckProgress = (shiftId, cardId) => {
     const saved = localStorage.getItem(`checklist-states-${shiftId}-${cardId}`);
-    if (!saved) return false;
+    if (!saved) return { answered: 0, total: CHECK_ITEMS[cardId].items.length };
     const states = JSON.parse(saved);
     const items = CHECK_ITEMS[cardId].items;
-    return items.every((_, i) => states[i] === 'ok' || states[i] === 'issue');
+    const answered = items.filter((_, i) => states[i] === 'ok' || states[i] === 'issue').length;
+    return { answered, total: items.length };
+  };
+
+  const isCheckComplete = (shiftId, cardId) => {
+    const { answered, total } = getCheckProgress(shiftId, cardId);
+    return answered === total && total > 0;
   };
 
   return (
@@ -131,7 +137,10 @@ const ChecklistPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-5 pt-0">
               {shift.cards.map(cardId => {
                 const card = CHECK_ITEMS[cardId];
-                const complete = isCheckComplete(shift.id, cardId);
+                const { answered, total } = getCheckProgress(shift.id, cardId);
+                const complete = answered === total;
+                const percent = (answered / total) * 100;
+                
                 return (
                   <div 
                     key={cardId}
@@ -145,11 +154,20 @@ const ChecklistPage = () => {
                     }`}>
                       {complete ? <ShieldCheck size={20} /> : <card.icon size={20} strokeWidth={2} />}
                     </div>
-                    <div className="text-center">
+                    <div className="text-center w-full">
                       <h4 className="text-xs font-bold text-white/90 mb-1 group-hover:text-white transition-colors">{card.title}</h4>
-                      <p className={`text-[10px] font-semibold uppercase tracking-wider ${complete ? 'text-green-500/60' : 'text-white/30'}`}>
-                        {complete ? 'Выполнено' : `${card.items.length} пунктов`}
-                      </p>
+                      <div className="flex flex-col items-center gap-2">
+                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${complete ? 'text-green-500/60' : 'text-white/30'}`}>
+                          {complete ? 'Выполнено' : `${answered} из ${total} выполнено`}
+                        </p>
+                        {/* Small Progress Bar */}
+                        <div className="w-20 h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-500 ${complete ? 'bg-green-500' : 'bg-[#7B3DFF]'}`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
