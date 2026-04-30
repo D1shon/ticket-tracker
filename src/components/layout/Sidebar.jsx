@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Ticket, 
@@ -13,16 +13,14 @@ import {
 } from 'lucide-react';
 import { useTickets } from '../../store/TicketContext';
 
-const CLUBS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORCA', 'MY TASK'];
-
-const Sidebar = ({ activeClub, setActiveClub, onCreateTicket }) => {
+const Sidebar = () => {
   const { logout } = useTickets();
 
   const topNav = [
     { icon: LayoutDashboard, label: 'Дашборд', path: '/dashboard' },
     { icon: Ticket, label: 'Заявки', path: '/tickets' },
     { icon: Archive, label: 'Архив', path: '/archive' },
-    { icon: CheckSquare, label: 'Чек-листы', path: '/checklists' },
+    { icon: CheckSquare, label: 'Чок-листы', path: '/checklists' },
     { icon: Calendar, label: 'График', path: '/schedule' },
     { icon: Phone, label: 'Созвоны', path: '/calls' },
   ];
@@ -34,12 +32,9 @@ const Sidebar = ({ activeClub, setActiveClub, onCreateTicket }) => {
 
   return (
     <aside className="sidebar">
-      {/* Logo */}
       <div className="sidebar-logo">
         <div className="logo-text">HEROTRACK</div>
       </div>
-
-      {/* Main Nav */}
       <nav className="flex-1 py-3">
         {topNav.map(item => (
           <NavLink
@@ -52,9 +47,7 @@ const Sidebar = ({ activeClub, setActiveClub, onCreateTicket }) => {
           </NavLink>
         ))}
       </nav>
-
-      {/* Bottom Nav */}
-      <div className="border-t border-app py-3">
+      <div className="py-3" style={{ borderTop: '1px solid var(--border)' }}>
         {bottomNav.map(item => (
           <NavLink
             key={item.path}
@@ -65,11 +58,7 @@ const Sidebar = ({ activeClub, setActiveClub, onCreateTicket }) => {
             <span>{item.label}</span>
           </NavLink>
         ))}
-        <button
-          onClick={logout}
-          className="nav-item w-full text-left"
-          style={{ color: 'var(--accent-red)' }}
-        >
+        <button onClick={logout} className="nav-item w-full text-left" style={{ color: '#ef4444' }}>
           <LogOut size={17} strokeWidth={1.8} />
           <span>Выйти</span>
         </button>
