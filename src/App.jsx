@@ -6,7 +6,6 @@ import { Toaster } from 'sonner';
 
 // Components & Pages
 import Sidebar from './components/layout/Sidebar';
-import Header from './components/layout/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TicketsPage from './pages/TicketsPage';
@@ -34,8 +33,7 @@ const ProtectedLayout = ({ children }) => {
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex' }}>
       <Sidebar />
       <div style={{ flex: 1, marginLeft: '220px', display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        <Header />
-        <main style={{ flex: 1, padding: '24px 28px', overflow: 'auto', marginTop: '52px' }}>
+        <main style={{ flex: 1, padding: '24px 28px', overflow: 'auto' }}>
           {children}
         </main>
       </div>

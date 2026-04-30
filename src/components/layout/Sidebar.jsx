@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Ticket, CheckSquare, Calendar, 
-  Archive, Phone, MessageCircle, Settings, LogOut, Sun, Moon
+  Archive, Phone, MessageCircle, Settings, LogOut, Sun, Moon, Bell
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -26,7 +26,7 @@ const Sidebar = () => {
   ];
 
   const bottomNav = [
-    { icon: MessageCircle, label: 'Чат',       path: '/chat' },
+    { icon: Bell,          label: 'Уведомления', path: '/notifications' },
     { icon: Settings,      label: 'Настройки', path: '/settings' },
   ];
 
