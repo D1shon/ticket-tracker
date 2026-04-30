@@ -40,7 +40,6 @@ const SchedulePage = () => {
     updateAdvance 
   } = useSchedule();
   
-  const [isAdding, setIsAdding] = useState(false);
   const [newEmpName, setNewEmpName] = useState('');
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -103,7 +102,6 @@ const SchedulePage = () => {
     if (newEmpName.trim()) {
       addEmployee(newEmpName.trim());
       setNewEmpName('');
-      setIsAdding(false);
     }
   };
 
@@ -126,14 +124,6 @@ const SchedulePage = () => {
         </div>
         
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setIsAdding(true)}
-            className="px-4 py-2 rounded-xl bg-[#7B3DFF] text-white text-xs font-bold shadow-lg shadow-purple-500/10 hover:-translate-y-0.5 transition-all flex items-center gap-2"
-          >
-            <Users size={14} />
-            Добавить
-          </button>
-          
           <div className="flex items-center gap-2 bg-[#111113] p-1 rounded-xl border border-white/5">
             <button 
               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -153,22 +143,6 @@ const SchedulePage = () => {
           </div>
         </div>
       </div>
-
-      {isAdding && (
-        <div className="bg-[#111113] border border-white/5 p-4 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
-          <input 
-            type="text"
-            autoFocus
-            value={newEmpName}
-            onChange={(e) => setNewEmpName(e.target.value)}
-            placeholder="ФИО нового сотрудника"
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-purple-500/50"
-            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          />
-          <button onClick={handleAdd} className="px-6 py-2 rounded-xl bg-white text-black text-xs font-bold">Добавить</button>
-          <button onClick={() => setIsAdding(false)} className="px-6 py-2 rounded-xl bg-white/5 text-white/60 text-xs font-bold">Отмена</button>
-        </div>
-      )}
 
       <div className="bg-[#0f0f11] rounded-3xl border border-white/5 overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
@@ -259,6 +233,32 @@ const SchedulePage = () => {
                   </tr>
                 );
               })}
+              
+              {/* Add Employee Row */}
+              <tr className="bg-white/[0.01]">
+                <td className="px-6 py-4 sticky left-0 z-20 bg-[#121214] border-r border-white/5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-white/5 border border-dashed border-white/20 flex items-center justify-center text-white/40">
+                      <Users size={14} />
+                    </div>
+                    <input 
+                      type="text"
+                      value={newEmpName}
+                      onChange={(e) => setNewEmpName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                      placeholder="+ Добавить сотрудника"
+                      className="bg-transparent border-none text-sm font-bold text-purple-400 placeholder:text-white/20 outline-none w-full"
+                    />
+                  </div>
+                </td>
+                {daysInMonth.map(day => (
+                  <td key={day.toString()} className="border-r border-white/5 bg-white/[0.01]"></td>
+                ))}
+                <td className="bg-purple-500/5"></td>
+                <td className="bg-blue-500/5"></td>
+                <td className="bg-orange-500/5"></td>
+                <td className="sticky right-0 z-20 bg-[#121214] border-l border-white/5"></td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -292,6 +292,4 @@ const SchedulePage = () => {
       </div>
     </div>
   );
-};
-
 export default SchedulePage;
