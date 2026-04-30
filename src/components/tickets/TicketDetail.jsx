@@ -206,6 +206,29 @@ const TicketDetail = () => {
     }
   };
 
+  const handleReasonConfirm = (reason) => {
+    const stateMap = { pause: 'pause', wait: 'wait', finish: 'idle' };
+    const labelMap = { pause: '⏸ Пауза', wait: '⏳ Ожидание', finish: '✅ Завершено' };
+    const colorMap = { pause: '#f59e0b', wait: '#9b5de5', finish: '#22c55e' };
+
+    setTimerState(stateMap[pendingAction]);
+    setStatusReport({
+      action: pendingAction,
+      label: labelMap[pendingAction],
+      color: colorMap[pendingAction],
+      reason,
+      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+    });
+    setPendingAction(null);
+  };
+
+  // Clear report when going back to work
+  const handleWorkClick = () => {
+    setStatusReport(null);
+    setPendingAction(null);
+    setTimerState(s => s === 'work' ? 'idle' : 'work');
+  };
+
   const sColor = { 'Новая': '#22c55e', 'В РАБОТЕ': '#9b5de5', 'ПАУЗА': '#f59e0b', 'ОЖИДАНИЕ': '#f97316', 'ЗАКРЫТО': '#55556a' }[ticket.status] || '#22c55e';
 
   return (
