@@ -10,6 +10,7 @@ import Header from './components/layout/Header';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TicketsPage from './pages/TicketsPage';
+import TicketDetail from './components/tickets/TicketDetail';
 import SchedulePage from './pages/SchedulePage';
 import ChecklistPage from './pages/ChecklistPage';
 
@@ -75,6 +76,12 @@ const AppContent = () => {
         <Route path="/tickets" element={
           <ProtectedLayout>
             <TicketsPage />
+          </ProtectedLayout>
+        } />
+
+        <Route path="/tickets/:id" element={
+          <ProtectedLayout>
+            <TicketDetail />
           </ProtectedLayout>
         } />
 

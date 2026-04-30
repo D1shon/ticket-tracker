@@ -1,160 +1,247 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  X, 
-  Send, 
-  Paperclip, 
-  Clock, 
-  CheckCircle2, 
-  Pause,
-  ChevronLeft
+  ArrowLeft, Star, Home, Edit2, Play, Pause, Clock, CheckCircle, 
+  Smile, Paperclip, Send, MessageSquare, User, Calendar, BookOpen
 } from 'lucide-react';
-import { useTickets } from '../store/TicketContext';
-import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
 
-const TicketDetail = ({ ticketId, onClose }) => {
-  const { tickets, updateTicket, addComment, uploadFile } = useTickets();
-  const [message, setMessage] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const scrollRef = useRef(null);
-  const fileInputRef = useRef(null);
+// Demo ticket data — in production this comes from Firestore
+const DEMO_TICKETS = {
+  1: {
+    id: 1, clubId: '1', club: '4YOU', title: 'Переход на летний режим вентиляции',
+    description: 'Переход на летний режим вентиляции – Валерий. Сания.',
+    status: 'Новая', priority: 'Средний',
+    assignee: 'Сания (4YOU)', createdAt: '30 мар. 2026, 13:00',
+    journal: [{ date: '22 мар.', text: 'Ежегодное ТО выполнено.' }],
+    messages: [],
+  },
+};
 
-  const ticket = tickets.find(t => t.id === ticketId);
+const TimerBox = ({ label, seconds, color }) => (
+  <div style={{
+    flex: 1, padding: '14px 16px', borderRadius: 10,
+    background: 'var(--bg-secondary)',
+    border: `1px solid ${color}33`,
+    textAlign: 'center',
+  }}>
+    <div style={{ fontSize: 24, fontWeight: 800, color, marginBottom: 4 }}>{seconds}с</div>
+    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.03em' }}>{label}</div>
+  </div>
+);
+
+const ActionBtn = ({ icon: Icon, label, color, bg, borderColor, onClick, active }) => (
+  <button onClick={onClick} style={{
+    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    gap: 8, padding: '14px 12px', borderRadius: 10, cursor: 'pointer',
+    background: active ? `${bg}33` : 'var(--bg-secondary)',
+    border: `1px solid ${active ? borderColor : 'var(--border)'}`,
+    color: active ? color : 'var(--text-muted)',
+    transition: 'all 0.15s',
+  }}>
+    <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>{label}</span>
+  </button>
+);
+
+const TicketDetail = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const ticket = DEMO_TICKETS[id] || DEMO_TICKETS[1];
+
+  const [timerState, setTimerState] = useState('idle'); // idle | work | pause | wait
+  const [times, setTimes] = useState({ work: 0, pause: 0, wait: 0 });
+  const [messages, setMessages] = useState(ticket.messages || []);
+  const [msgInput, setMsgInput] = useState('');
+  const [starred, setStarred] = useState(false);
+  const intervalRef = useRef(null);
+  const chatRef = useRef(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    clearInterval(intervalRef.current);
+    if (timerState === 'work') {
+      intervalRef.current = setInterval(() => setTimes(t => ({ ...t, work: t.work + 1 })), 1000);
+    } else if (timerState === 'pause') {
+      intervalRef.current = setInterval(() => setTimes(t => ({ ...t, pause: t.pause + 1 })), 1000);
+    } else if (timerState === 'wait') {
+      intervalRef.current = setInterval(() => setTimes(t => ({ ...t, wait: t.wait + 1 })), 1000);
     }
-  }, [ticket?.comments]);
+    return () => clearInterval(intervalRef.current);
+  }, [timerState]);
 
-  if (!ticket) return null;
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+  }, [messages]);
 
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!message.trim()) return;
-    
-    await addComment(ticketId, message);
-    setMessage('');
+  const sendMessage = () => {
+    if (!msgInput.trim()) return;
+    setMessages(prev => [...prev, {
+      id: Date.now(), text: msgInput,
+      author: 'Вы', time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    }]);
+    setMsgInput('');
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      const attachment = await uploadFile(file, (p) => setProgress(p));
-      await addComment(ticketId, `Отправлен файл: ${file.name}`, attachment);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setUploading(false);
-      setProgress(0);
-    }
-  };
+  const statusColor = { 'Новая': '#22c55e', 'В РАБОТЕ': '#9b5de5', 'ПАУЗА': '#f59e0b', 'ОЖИДАНИЕ': '#f97316', 'ЗАКРЫТО': '#55556a' };
+  const sColor = statusColor[ticket.status] || '#22c55e';
 
   return (
-    <div className="flex flex-col h-full glass rounded-2xl overflow-hidden border border-border shadow-2xl animate-in fade-in zoom-in-95 duration-300">
-      <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
-        <div className="flex items-center gap-4">
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-xl transition-all">
-            <ChevronLeft size={20} />
-          </button>
-          <div>
-            <h2 className="font-bold text-foreground line-clamp-1">{ticket.title}</h2>
-            <p className="text-xs text-muted-foreground uppercase tracking-widest font-mono">#{ticket.id?.slice(-6)}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-           <button 
-             onClick={() => updateTicket(ticketId, { status: 'completed' })}
-             className="p-2 text-green-500 hover:bg-green-500/10 rounded-xl transition-all"
-           >
-             <CheckCircle2 size={20} />
-           </button>
-           <button className="p-2 hover:bg-muted rounded-xl transition-all">
-             <X size={20} onClick={onClose} />
-           </button>
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
+      
+      {/* Breadcrumb */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 6 }}>
+          <ArrowLeft size={18} />
+        </button>
+        <button onClick={() => setStarred(s => !s)} style={{ background: 'none', border: 'none', color: starred ? '#f59e0b' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
+          <Star size={16} fill={starred ? '#f59e0b' : 'none'} />
+        </button>
+        <button onClick={() => navigate('/tickets')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
+          <Home size={15} />
+        </button>
+        <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(79,142,247,0.15)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.3)', padding: '2px 7px', borderRadius: 4 }}>
+          {ticket.club}
+        </span>
+        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+          {ticket.title}
+        </span>
+        <Edit2 size={13} color="var(--text-muted)" style={{ cursor: 'pointer' }} />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: sColor, background: `${sColor}18`, border: `1px solid ${sColor}40`, padding: '3px 10px', borderRadius: 6 }}>
+            ● {ticket.status}
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', padding: '3px 10px', borderRadius: 6 }}>
+            {ticket.priority}
+          </span>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6" ref={scrollRef}>
-        <div className="bg-muted/30 p-4 rounded-xl border border-border">
-          <h3 className="text-sm font-bold text-muted-foreground mb-2 uppercase tracking-wider">Описание</h3>
-          <p className="text-foreground leading-relaxed">{ticket.description}</p>
+      {/* Main 2-col layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16, flex: 1 }}>
+        
+        {/* LEFT: Description + Timer + Chat */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          
+          {/* Description */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <BookOpen size={13} color="#4f8ef7" />
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Описание задачи</span>
+            </div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.6 }}>
+              {ticket.description}
+            </p>
+          </div>
+
+          {/* Timer */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <Clock size={13} color="#4f8ef7" />
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Операционный таймер</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <TimerBox label="Активная работа" seconds={times.work} color="#22c55e" />
+              <TimerBox label="Пауза" seconds={times.pause} color="#f59e0b" />
+              <TimerBox label="Ожидание" seconds={times.wait} color="#9b5de5" />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <ActionBtn icon={Play}        label="В РАБОТУ"  color="#22c55e" bg="#22c55e" borderColor="#22c55e" active={timerState === 'work'} onClick={() => setTimerState(t => t === 'work' ? 'idle' : 'work')} />
+              <ActionBtn icon={Pause}       label="ПАУЗА"     color="#f59e0b" bg="#f59e0b" borderColor="#f59e0b" active={timerState === 'pause'} onClick={() => setTimerState(t => t === 'pause' ? 'idle' : 'pause')} />
+              <ActionBtn icon={Clock}       label="ОЖИДАНИЕ"  color="#9b5de5" bg="#9b5de5" borderColor="#9b5de5" active={timerState === 'wait'} onClick={() => setTimerState(t => t === 'wait' ? 'idle' : 'wait')} />
+              <ActionBtn icon={CheckCircle} label="ЗАВЕРШИТЬ" color="var(--text-muted)" bg="#55556a" borderColor="#55556a" active={false} onClick={() => { setTimerState('idle'); }} />
+            </div>
+          </div>
+
+          {/* Chat */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 280 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <MessageSquare size={13} color="#4f8ef7" />
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Чат / Обсуждение задачи</span>
+            </div>
+            
+            <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {messages.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', gap: 8 }}>
+                  <MessageSquare size={32} strokeWidth={1.2} />
+                  <span style={{ fontSize: 13 }}>Здесь пока пусто. Оставьте первый комментарий.</span>
+                </div>
+              ) : messages.map(m => (
+                <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <div style={{ background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{m.text}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.author} · {m.time}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Input */}
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
+                <Smile size={18} />
+              </button>
+              <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
+                <Paperclip size={18} />
+              </button>
+              <input
+                value={msgInput}
+                onChange={e => setMsgInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                placeholder="Ваше сообщение..."
+                style={{
+                  flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: 10, padding: '10px 14px', color: 'var(--text-primary)',
+                  fontSize: 13, outline: 'none',
+                }}
+              />
+              <button
+                onClick={sendMessage}
+                style={{
+                  background: 'linear-gradient(135deg, #7c3aed, #9b5de5)',
+                  border: 'none', borderRadius: 10, padding: '10px 14px',
+                  color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                  boxShadow: '0 2px 8px rgba(124,58,237,0.4)',
+                }}
+              >
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-4 pt-4">
-          <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Чат и история</h3>
-          {ticket.comments?.map((comment) => (
-            <div key={comment.id} className="flex flex-col gap-1 max-w-[85%]">
-              <div className="flex items-center gap-2 px-1">
-                <span className="text-[10px] font-bold text-primary uppercase">{comment.author?.split('@')[0]}</span>
-                <span className="text-[10px] text-muted-foreground">{comment.createdAt && format(new Date(comment.createdAt), 'HH:mm')}</span>
+        {/* RIGHT: Info panel */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 16 }}>
+              История и ресурсы
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <User size={14} color="var(--text-muted)" />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Исполнитель</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#4f8ef7' }}>{ticket.assignee}</span>
               </div>
-              <div className="bg-muted p-3 rounded-2xl rounded-tl-none border border-border/50 text-sm">
-                {comment.text}
-                {comment.attachment && (
-                  <div className="mt-3 p-2 bg-background/50 rounded-xl border border-border flex items-center gap-3">
-                     <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary">
-                       <Paperclip size={18} />
-                     </div>
-                     <div className="flex-1 overflow-hidden">
-                       <p className="text-xs font-bold truncate">{comment.attachment.name}</p>
-                       <a href={comment.attachment.url} target="_blank" className="text-[10px] text-primary hover:underline">Скачать</a>
-                     </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Calendar size={14} color="var(--text-muted)" />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Создана</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{ticket.createdAt}</span>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <BookOpen size={13} color="var(--text-muted)" />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Журнал объекта</span>
+                </div>
+                {ticket.journal.map((j, i) => (
+                  <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                    <span style={{ color: '#4f8ef7', fontWeight: 600 }}>{j.date}</span> — {j.text}
                   </div>
-                )}
+                ))}
               </div>
             </div>
-          ))}
+          </div>
         </div>
-      </div>
-
-      <div className="p-4 bg-muted/20 border-t border-border">
-        {uploading && (
-          <div className="mb-4 space-y-1">
-             <div className="flex justify-between text-[10px] font-bold text-primary px-1">
-               <span>Загрузка файла...</span>
-               <span>{Math.round(progress)}%</span>
-             </div>
-             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-               <div className="h-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }}></div>
-             </div>
-          </div>
-        )}
-        <form onSubmit={handleSend} className="flex items-end gap-3">
-          <div className="flex-1 relative">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Напишите сообщение..."
-              className="w-full bg-muted/50 border border-border rounded-xl py-3 pl-4 pr-12 text-sm focus:ring-2 focus:ring-primary/50 resize-none max-h-32 transition-all"
-              rows={1}
-            />
-            <button 
-              type="button"
-              onClick={() => fileInputRef.current.click()}
-              className="absolute right-3 bottom-3 p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
-            >
-              <Paperclip size={18} />
-            </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileUpload}
-              className="hidden" 
-            />
-          </div>
-          <button 
-            type="submit"
-            className="bg-primary hover:bg-primary/90 text-white p-3 rounded-xl transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
-            disabled={!message.trim()}
-          >
-            <Send size={20} />
-          </button>
-        </form>
       </div>
     </div>
   );
