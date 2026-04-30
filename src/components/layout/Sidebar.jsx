@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Ticket, CheckSquare, Calendar, 
   Archive, Phone, MessageCircle, Settings, LogOut, Sun, Moon, Bell
 } from 'lucide-react';
 
 const Sidebar = () => {
+  const navigate = useNavigate();
   // Load saved theme from localStorage (default: light)
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem('herotrack-theme') === 'dark';
@@ -33,8 +34,8 @@ const Sidebar = () => {
   const [unreadCount, setUnreadCount] = useState(2);
 
   const notifications = [
-    { id: 1, text: 'Пользователь Владимир оставил комментарий в заявке "Разборка серверной"', time: '10 мин назад' },
-    { id: 2, text: 'Алексей сменил статус заявки "Фен Борк сломан" на "В работе"', time: '1 час назад' }
+    { id: 1, text: 'Пользователь Владимир оставил комментарий в заявке "Разборка серверной"', time: '10 мин назад', ticketId: 21 },
+    { id: 2, text: 'Алексей сменил статус заявки "Фен Борк сломан" на "В работе"', time: '1 час назад', ticketId: 19 }
   ];
 
   return (
@@ -100,7 +101,15 @@ const Sidebar = () => {
             </div>
             <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
               {notifications.map(notif => (
-                <div key={notif.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', transition: 'background 0.2s', cursor: 'pointer' }} className="hover:bg-[rgba(123,61,255,0.05)]">
+                <div 
+                  key={notif.id} 
+                  onClick={() => {
+                    navigate(`/tickets/${notif.ticketId}`);
+                    setShowNotifications(false);
+                  }}
+                  style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', transition: 'background 0.2s', cursor: 'pointer' }} 
+                  className="hover:bg-[rgba(123,61,255,0.05)]"
+                >
                   <p style={{ fontSize: 12, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.4 }}>
                     {notif.text}
                   </p>
