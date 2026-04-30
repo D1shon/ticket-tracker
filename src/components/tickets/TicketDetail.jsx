@@ -156,7 +156,8 @@ const TicketDetail = () => {
   const ticket = DEMO_TICKETS[id] || DEMO_TICKETS[1];
 
   const [timerState, setTimerState] = useState('idle');
-  const [pendingAction, setPendingAction] = useState(null); // 'pause'|'wait'|'finish'|null
+  const [pendingAction, setPendingAction] = useState(null);
+  const [statusReport, setStatusReport] = useState(null); // { action, reason, time }
   const [times, setTimes] = useState({ work: 0, pause: 0, wait: 0 });
   const [messages, setMessages] = useState(ticket.messages || []);
   const [msgInput, setMsgInput] = useState('');
@@ -182,11 +183,26 @@ const TicketDetail = () => {
   };
 
   const handleReasonConfirm = (reason) => {
-    const stateMap   = { pause: 'pause', wait: 'wait', finish: 'idle' };
+    const stateMap = { pause: 'pause', wait: 'wait', finish: 'idle' };
+    const labelMap = { pause: '⏸ Пауза', wait: '⏳ Ожидание', finish: '✅ Завершено' };
+    const colorMap = { pause: '#f59e0b', wait: '#9b5de5', finish: '#22c55e' };
+
     setTimerState(stateMap[pendingAction]);
+    setStatusReport({
+      action: pendingAction,
+      label: labelMap[pendingAction],
+      color: colorMap[pendingAction],
+      reason,
+      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+    });
     setPendingAction(null);
-    // Post to chat as system note
-    sendMessage(`[${pendingAction === 'pause' ? '⏸ Пауза' : pendingAction === 'wait' ? '⏳ Ожидание' : '✅ Завершено'}] ${reason}`);
+  };
+
+  // Clear report when going back to work
+  const handleWorkClick = () => {
+    setStatusReport(null);
+    setPendingAction(null);
+    setTimerState(s => s === 'work' ? 'idle' : 'work');
   };
 
   const sColor = { 'Новая': '#22c55e', 'В РАБОТЕ': '#9b5de5', 'ПАУЗА': '#f59e0b', 'ОЖИДАНИЕ': '#f97316', 'ЗАКРЫТО': '#55556a' }[ticket.status] || '#22c55e';
@@ -235,7 +251,27 @@ const TicketDetail = () => {
               <TimerBox label="Ожидание"         seconds={times.wait}  color="#9b5de5" active={timerState === 'wait'} />
             </div>
 
-            {/* ── INLINE REASON PANEL (between timer and buttons) ── */}
+            {/* ── STATUS REPORT (shown after confirming reason) ── */}
+            {statusReport && !pendingAction && (
+              <div style={{
+                margin: '4px 0', padding: '14px 18px', borderRadius: 14,
+                background: `${statusReport.color}08`, border: `1px solid ${statusReport.color}30`,
+                display: 'flex', alignItems: 'flex-start', gap: 12,
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusReport.color, marginTop: 5, flexShrink: 0 }}></div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: statusReport.color, letterSpacing: '0.06em', marginBottom: 4 }}>
+                    {statusReport.label.toUpperCase()} · {statusReport.time}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5 }}>{statusReport.reason}</div>
+                </div>
+                <button onClick={() => setStatusReport(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* ── INLINE REASON PANEL ── */}
             {pendingAction && (
               <ReasonPanel
                 action={pendingAction}
@@ -246,7 +282,7 @@ const TicketDetail = () => {
 
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              <ActionBtn icon={Play}        label="В РАБОТУ"  color="#22c55e" bg="rgba(34,197,94,0.18)"   active={timerState === 'work'}  onClick={() => { setPendingAction(null); setTimerState(s => s === 'work' ? 'idle' : 'work'); }} />
+              <ActionBtn icon={Play}        label="В РАБОТУ"  color="#22c55e" bg="rgba(34,197,94,0.18)"   active={timerState === 'work'}  onClick={handleWorkClick} />
               <ActionBtn icon={Pause}       label="ПАУЗА"     color="#f59e0b" bg="rgba(245,158,11,0.18)"  active={timerState === 'pause' || pendingAction === 'pause'} onClick={() => setPendingAction(p => p === 'pause' ? null : 'pause')} />
               <ActionBtn icon={Package}     label="ОЖИДАНИЕ"  color="#9b5de5" bg="rgba(155,93,229,0.18)"  active={timerState === 'wait'  || pendingAction === 'wait'}  onClick={() => setPendingAction(p => p === 'wait'  ? null : 'wait')} />
               <ActionBtn icon={CheckCircle} label="ЗАВЕРШИТЬ" color="#8888a0" bg="rgba(136,136,160,0.12)" active={pendingAction === 'finish'} onClick={() => setPendingAction(p => p === 'finish' ? null : 'finish')} />
