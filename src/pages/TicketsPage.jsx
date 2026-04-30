@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Clock, ChevronRight } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 
@@ -39,11 +40,16 @@ const formatTimeAgo = (date) => {
 };
 
 const TicketCard = ({ ticket }) => {
+  const navigate = useNavigate();
   const clubClass = clubColors[ticket.club] || 'badge-4you';
   const priority = priorityLabels[ticket.priority] || priorityLabels.medium;
 
   return (
-    <div className="ticket-card">
+    <div
+      className="ticket-card"
+      onClick={() => navigate(`/tickets/${ticket.id}`)}
+      style={{ cursor: 'pointer' }}
+    >
       <div className="flex items-center gap-2 mb-3">
         <span className={`badge ${clubClass}`}>{ticket.club || '4YOU'}</span>
         <span className={`badge ${priority.cls} ml-auto`}>{priority.label}</span>
@@ -59,24 +65,18 @@ const TicketCard = ({ ticket }) => {
           <Clock size={11} />
           <span className="text-xs">{formatTimeAgo(ticket.createdAt)}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="p-1.5 rounded-md transition-colors"
-            style={{ background: 'rgba(79,142,247,0.15)', color: '#4f8ef7' }}
-          >
-            <ChevronRight size={14} />
-          </button>
-          <button
-            className="p-1.5 rounded-md transition-colors"
-            style={{ background: 'rgba(100,100,120,0.15)', color: 'var(--text-muted)' }}
-          >
-            <Plus size={14} />
-          </button>
-        </div>
+        <button
+          onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
+          className="p-1.5 rounded-md"
+          style={{ background: 'rgba(79,142,247,0.15)', color: '#4f8ef7' }}
+        >
+          <ChevronRight size={14} />
+        </button>
       </div>
     </div>
   );
 };
+
 
 const DEMO_TICKETS = {
   new: [
