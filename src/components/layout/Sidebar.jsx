@@ -21,7 +21,7 @@ const Sidebar = () => {
     { icon: LayoutDashboard, label: 'Дашборд',    path: '/dashboard' },
     { icon: Ticket,          label: 'Заявки',      path: '/tickets' },
     { icon: Archive,         label: 'Архив',       path: '/archive' },
-    { icon: CheckSquare,     label: 'Чок-листы',   path: '/checklists' },
+    { icon: CheckSquare,     label: 'Чек-листы',   path: '/checklists' },
     { icon: Calendar,        label: 'График',      path: '/schedule' },
     { icon: Phone,           label: 'Созвоны',     path: '/calls' },
   ];
