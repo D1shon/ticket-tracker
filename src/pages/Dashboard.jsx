@@ -1,13 +1,7 @@
 import React from 'react';
 import { Activity, AlertCircle, Clock, CheckCircle2, Zap } from 'lucide-react';
-
-const LIVE_TICKETS = [
-  { id: 1, club: '4YOU', title: 'Работа с кровлей, протечки', status: 'ПАУЗА', assignee: 'САНИЯР (4YOU) + ПРОФЕС...' },
-  { id: 2, club: '4YOU', title: 'Фен Борк сломан (на ремонте)', status: 'ПАУЗА', assignee: 'САНИЯР (4YOU) + ИНФРАСТРУКТУРА', alert: 'ЖДИ ДЕТАЛИ ДЛЯ СЕРВИС ЦЕНТРА' },
-  { id: 3, club: '4YOU', title: 'Трещина в Legs на потолке огромная', status: 'В РАБОТЕ', assignee: 'САНИЯР (4YOU) + ИНФРАСТРУКТУРА' },
-  { id: 4, club: '4YOU', title: 'Экраны в залах выровнять под один уровень', status: 'ПАУЗА', assignee: 'САНИЯР (4YOU) + ИНФРАСТРУКТУРА' },
-  { id: 5, club: '4YOU', title: 'Закрепить стальные кассеты (стены) по всему объекту', status: 'В РАБОТЕ', assignee: 'САНИЯР (4YOU) + ИНФРАСТРУКТУРА' },
-];
+import { useTickets } from '../store/TicketContext';
+import { DEMO_TICKETS } from './TicketsPage';
 
 const MANAGERS = [
   { name: 'Сания',    status: 'В РАБОТЕ', work: 0, pause: 1, wait: 7 },
@@ -17,14 +11,6 @@ const MANAGERS = [
   { name: 'Дилшат',   status: 'В РАБОТЕ', work: 0, pause: 1, wait: 7 },
   { name: 'Айнур',    status: 'СВОБОДЕН', work: 0, pause: 0, wait: 0 },
   { name: 'Азиз',     status: 'СВОБОДЕН', work: 0, pause: 0, wait: 0 },
-];
-
-const CLUBS_SUMMARY = [
-  { name: '4YOU',      color: '#4f8ef7', total: 23, closed: 12, active: 0 },
-  { name: 'COLIBRI',   color: '#9b5de5', total: 9,  closed: 0,  active: 5 },
-  { name: 'VILLA',     color: '#f59e0b', total: 3,  closed: 0,  active: 3 },
-  { name: 'NURLY ORCA',color: '#f97316', total: 0,  closed: 0,  active: 0 },
-  { name: 'MY TASK',   color: '#22c55e', total: 0,  closed: 0,  active: 0 },
 ];
 
 const StatusBadge = ({ status }) => {
@@ -46,8 +32,56 @@ const StatusBadge = ({ status }) => {
 };
 
 const Dashboard = () => {
-  const inWork = LIVE_TICKETS.filter(t => t.status === 'В РАБОТЕ').length;
-  const paused = LIVE_TICKETS.filter(t => t.status === 'ПАУЗА').length;
+  const { tickets } = useTickets();
+  
+  // Combine real tickets or fallback to demo
+  let allTickets = [];
+  if (tickets && tickets.length > 0) {
+    allTickets = tickets;
+  } else {
+    allTickets = [
+      ...DEMO_TICKETS.new.map(t => ({...t, status: 'new'})),
+      ...DEMO_TICKETS.in_progress.map(t => ({...t, status: 'in_progress'})),
+      ...DEMO_TICKETS.paused.map(t => ({...t, status: 'paused'})),
+      ...DEMO_TICKETS.waiting.map(t => ({...t, status: 'waiting'})),
+      ...DEMO_TICKETS.closed.map(t => ({...t, status: 'closed'})),
+    ];
+  }
+
+  const inWork = allTickets.filter(t => t.status === 'in_progress').length;
+  const pausedCount = allTickets.filter(t => t.status === 'paused').length;
+  const waitCount = allTickets.filter(t => t.status === 'waiting').length;
+  const closedCount = allTickets.filter(t => t.status === 'closed').length;
+
+  const getClubStats = (clubName, color) => {
+    const clubTickets = allTickets.filter(t => (t.club || '4YOU') === clubName);
+    return {
+      name: clubName,
+      color,
+      total: clubTickets.length,
+      closed: clubTickets.filter(t => t.status === 'closed').length,
+      active: clubTickets.filter(t => t.status === 'in_progress').length
+    };
+  };
+
+  const CLUBS_SUMMARY = [
+    getClubStats('4YOU', '#4f8ef7'),
+    getClubStats('COLIBRI', '#9b5de5'),
+    getClubStats('VILLA', '#f59e0b'),
+    getClubStats('NURLY ORDA', '#f97316'),
+  ];
+
+  const liveFeed = allTickets
+    .filter(t => t.status !== 'closed' && t.status !== 'new')
+    .slice(0, 6)
+    .map(t => ({
+      id: t.id,
+      club: t.club || '4YOU',
+      title: t.title,
+      status: t.status === 'in_progress' ? 'В РАБОТЕ' : 'ПАУЗА',
+      assignee: t.assignee || 'САНИЯР (4YOU) + ИНФРАСТРУКТУРА',
+      alert: t.subtitle || ''
+    }));
 
   return (
     <div className="animate-fade" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -65,10 +99,10 @@ const Dashboard = () => {
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {[
-          { label: 'В РАБОТЕ', value: 12, icon: <Activity size={18} color="#4f8ef7" />, color: '#4f8ef7' },
-          { label: 'ЗАВИСЛИ (SLA)', value: 0, icon: <AlertCircle size={18} color="#f59e0b" />, color: '#f59e0b' },
-          { label: 'ОЖИДАНИЕ', value: 2, icon: <Clock size={18} color="#f97316" />, color: '#f97316' },
-          { label: 'ЗАКРЫТО СЕГОДНЯ', value: 0, icon: <CheckCircle2 size={18} color="#22c55e" />, color: '#22c55e' },
+          { label: 'В РАБОТЕ', value: inWork, icon: <Activity size={18} color="#4f8ef7" />, color: '#4f8ef7' },
+          { label: 'ПАУЗА', value: pausedCount, icon: <AlertCircle size={18} color="#f59e0b" />, color: '#f59e0b' },
+          { label: 'ОЖИДАНИЕ', value: waitCount, icon: <Clock size={18} color="#f97316" />, color: '#f97316' },
+          { label: 'ЗАКРЫТО', value: closedCount, icon: <CheckCircle2 size={18} color="#22c55e" />, color: '#22c55e' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -91,11 +125,11 @@ const Dashboard = () => {
             <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '2px 8px', borderRadius: 4, letterSpacing: '0.05em' }}>LIVEBOARD</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {LIVE_TICKETS.map(t => (
+            {liveFeed.map(t => (
               <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(79,142,247,0.15)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.3)', padding: '1px 6px', borderRadius: 3 }}>4YOU</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(79,142,247,0.15)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.3)', padding: '1px 6px', borderRadius: 3 }}>{t.club}</span>
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: t.alert ? 4 : 0 }}>{t.title}</div>
                   {t.alert && (
