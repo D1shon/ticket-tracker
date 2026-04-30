@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Clock, Play, CheckCircle } from 'lucide-react';
+import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 
 const CLUBS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORCA', 'MY TASK'];
@@ -39,10 +39,52 @@ const formatTimeAgo = (date) => {
   return 'Сегодня';
 };
 
-const TicketCard = ({ ticket, columnId }) => {
+const TicketCard = ({ ticket, columnId, isList = false }) => {
   const navigate = useNavigate();
   const clubClass = clubColors[ticket.club] || 'badge-4you';
   const priority = priorityLabels[ticket.priority] || priorityLabels.medium;
+
+  if (isList) {
+    return (
+      <div
+        className="ticket-card"
+        onClick={() => navigate(`/tickets/${ticket.id}`)}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12, padding: '16px 20px' }}
+      >
+        <span className={`badge ${clubClass}`} style={{ minWidth: 80, textAlign: 'center' }}>{ticket.club || '4YOU'}</span>
+        <div style={{ flex: 1 }}>
+          <h3 className="font-semibold text-sm leading-snug" style={{ color: 'var(--text-primary)' }}>
+            {ticket.title}
+          </h3>
+          {ticket.subtitle && (
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{ticket.subtitle}</p>
+          )}
+        </div>
+        <span className={`badge ${priority.cls}`}>{priority.label}</span>
+        <div style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 80, textAlign: 'right' }}>
+          {ticket.createdAt}
+        </div>
+        <div className="flex items-center gap-2 ml-4">
+          {columnId === 'new' && (
+            <button
+              onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
+              className="p-1.5 rounded-lg"
+              style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)', transition: 'all 0.15s' }}
+            >
+              <Play size={14} fill="currentColor" />
+            </button>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
+            className="p-1.5 rounded-lg"
+            style={{ background: 'rgba(123,61,255,0.1)', color: '#7B3DFF', border: '1px solid rgba(123,61,255,0.2)', transition: 'all 0.15s' }}
+          >
+            <CheckCircle size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -124,6 +166,7 @@ const TicketsPage = () => {
   const [activeClub, setActiveClub] = useState('ВСЕ');
   const [activeFilter, setActiveFilter] = useState('ВСЕ');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState('kanban'); // 'kanban', 'list', 'grid'
   const { tickets } = useTickets();
   const navigate = useNavigate();
 
@@ -132,8 +175,17 @@ const TicketsPage = () => {
 
   const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
+  // Flatten tickets for list and grid views
+  const flattenedTickets = COLUMNS.flatMap(col => {
+    let colTickets = data[col.id] || [];
+    if (activeClub !== 'ВСЕ') colTickets = colTickets.filter(t => t.club === activeClub);
+    if (search) colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
+    if (activeFilter !== 'ВСЕ' && col.label !== activeFilter) return [];
+    return colTickets.map(t => ({ ...t, columnId: col.id, columnLabel: col.label, columnColor: col.color }));
+  });
+
   return (
-    <div className="animate-fade">
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Top Page Header (matches screenshot) */}
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -197,45 +249,76 @@ const TicketsPage = () => {
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-1 ml-4 border-l pl-4" style={{ borderColor: 'var(--border)' }}>
+          <button onClick={() => setViewMode('kanban')} title="Доска" className="p-1.5 rounded-lg transition-colors" style={{ background: viewMode === 'kanban' ? 'var(--accent-purple)' : 'transparent', color: viewMode === 'kanban' ? '#fff' : 'var(--text-muted)' }}>
+            <Columns size={16} />
+          </button>
+          <button onClick={() => setViewMode('list')} title="Список" className="p-1.5 rounded-lg transition-colors" style={{ background: viewMode === 'list' ? 'var(--accent-purple)' : 'transparent', color: viewMode === 'list' ? '#fff' : 'var(--text-muted)' }}>
+            <List size={16} />
+          </button>
+          <button onClick={() => setViewMode('grid')} title="Сетка" className="p-1.5 rounded-lg transition-colors" style={{ background: viewMode === 'grid' ? 'var(--accent-purple)' : 'transparent', color: viewMode === 'grid' ? '#fff' : 'var(--text-muted)' }}>
+            <LayoutGrid size={16} />
+          </button>
+        </div>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 220px)' }}>
-        {COLUMNS.map(col => {
-          let colTickets = data[col.id] || [];
-          
-          // Filter by Active Club
-          if (activeClub !== 'ВСЕ') {
-            colTickets = colTickets.filter(t => t.club === activeClub);
-          }
-          
-          // Filter by Search
-          if (search) {
-            colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
-          }
+      {/* Boards / Views */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {viewMode === 'kanban' && (
+          <div className="flex gap-4 pb-4" style={{ minWidth: '100%' }}>
+            {COLUMNS.map(col => {
+              let colTickets = data[col.id] || [];
+              if (activeClub !== 'ВСЕ') colTickets = colTickets.filter(t => t.club === activeClub);
+              if (search) colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
+              if (activeFilter !== 'ВСЕ' && col.label !== activeFilter) colTickets = []; // Hide tickets if filter doesn't match column
 
-          return (
-            <div key={col.id} className="kanban-col">
-              <div className="kanban-header">
-                <span style={{ color: col.color }}>{col.label}</span>
-                <span className="col-count">{colTickets.length}</span>
-              </div>
-              <div>
-                {colTickets.map(ticket => (
-                  <TicketCard key={ticket.id} ticket={ticket} columnId={col.id} />
-                ))}
-                {colTickets.length === 0 && (
-                  <div
-                    className="text-center py-8 text-xs font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    ПУСТО
+              return (
+                <div key={col.id} className="kanban-col">
+                  <div className="kanban-header">
+                    <span style={{ color: col.color }}>{col.label}</span>
+                    <span className="col-count">{colTickets.length}</span>
                   </div>
-                )}
+                  <div>
+                    {colTickets.map(ticket => (
+                      <TicketCard key={ticket.id} ticket={ticket} columnId={col.id} />
+                    ))}
+                    {colTickets.length === 0 && (
+                      <div className="text-center py-8 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                        ПУСТО
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {viewMode === 'grid' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', paddingBottom: '20px' }}>
+            {flattenedTickets.map(ticket => (
+              <TicketCard key={ticket.id} ticket={ticket} columnId={ticket.columnId} />
+            ))}
+            {flattenedTickets.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                Нет заявок, соответствующих фильтрам
               </div>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        )}
+
+        {viewMode === 'list' && (
+          <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: '20px' }}>
+            {flattenedTickets.map(ticket => (
+              <TicketCard key={ticket.id} ticket={ticket} columnId={ticket.columnId} isList={true} />
+            ))}
+            {flattenedTickets.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                Нет заявок, соответствующих фильтрам
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
