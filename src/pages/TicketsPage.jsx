@@ -130,7 +130,7 @@ const TicketsPage = () => {
   // Use demo data if no Firestore tickets
   const data = tickets && tickets.length > 0 ? {} : DEMO_TICKETS;
 
-  const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORCA'];
+  const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
   return (
     <div className="animate-fade">
