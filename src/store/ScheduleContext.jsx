@@ -43,9 +43,15 @@ export const ScheduleProvider = ({ children }) => {
   useEffect(() => {
     if (!user) return;
 
-    const q = query(collection(db, 'employees'), orderBy('createdAt', 'asc'));
+    const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Robust sorting: server timestamp first, local fallback second
+      data.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis?.() || a.localCreatedAt || 0;
+        const timeB = b.createdAt?.toMillis?.() || b.localCreatedAt || 0;
+        return timeA - timeB;
+      });
       setEmployees(data);
       setLoading(false);
     });
@@ -59,7 +65,8 @@ export const ScheduleProvider = ({ children }) => {
       await setDoc(doc(db, 'employees', id), {
         name,
         role: 'Сотрудник',
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        localCreatedAt: Date.now() // Local fallback
       });
       toast.success("Сотрудник добавлен");
     } catch (e) {
