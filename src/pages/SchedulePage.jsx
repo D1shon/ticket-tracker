@@ -195,7 +195,7 @@ const SchedulePage = () => {
           <table className="w-full text-left border-collapse min-w-[1900px]">
             <thead>
               <tr className="bg-[#151518] text-[9px] uppercase tracking-widest font-black text-white/30 border-b border-white/5">
-                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/5 min-w-[350px]">Сотрудник</th>
+                <th className="px-6 py-5 sticky left-0 z-50 bg-[#151518] border-r border-white/10 min-w-[350px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
                 {daysInMonth.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const isHoliday = HOLIDAYS_2026.includes(dateStr);
@@ -221,7 +221,7 @@ const SchedulePage = () => {
                 const isEditing = editingEmpId === emp.id;
                 return (
                   <tr key={emp.id} className="hover:bg-white/[0.04] transition-all group">
-                    <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/5 group-hover:bg-[#151518] transition-all">
+                    <td className="px-6 py-4 sticky left-0 z-40 bg-[#0f0f11] border-r border-white/10 group-hover:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
                       <div className="flex items-center gap-4">
                         <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:text-purple-400 transition-colors">
                           <Users size={14} />
@@ -241,9 +241,6 @@ const SchedulePage = () => {
                                 }
                               }}
                             />
-                            <button onClick={() => saveEditing(emp.id)} className="w-8 h-8 rounded-lg bg-green-500/20 text-green-500 flex items-center justify-center hover:bg-green-500/30 transition-all">
-                              <Check size={14}/>
-                            </button>
                           </div>
                         ) : (
                           <div className="flex items-center justify-between flex-1">
@@ -301,10 +298,9 @@ const SchedulePage = () => {
                 );
               })}
               
-              {/* Pending rows: each is an empty input slot, saves on Enter/blur */}
               {pendingRows.map((val, i) => (
                 <tr key={`pending-${i}`} className="group/pending hover:bg-white/[0.02] transition-all">
-                  <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/5 group-hover/pending:bg-[#151518] transition-all">
+                  <td className="px-6 py-4 sticky left-0 z-40 bg-[#0f0f11] border-r border-white/10 group-hover/pending:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-white/[0.03] border border-dashed border-white/10 flex items-center justify-center text-white/10 flex-shrink-0">
                         <Users size={14} />
@@ -330,14 +326,6 @@ const SchedulePage = () => {
                           autoComplete="off"
                           className={`pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all ${val ? 'pr-12' : ''}`}
                         />
-                        {val && (
-                          <button
-                            onMouseDown={(e) => { e.preventDefault(); savePendingRow(i); }}
-                            className="absolute right-0 top-1/2 -translate-y-1/2 px-4 py-1 rounded-lg bg-purple-500/20 text-purple-400 text-[10px] font-black uppercase tracking-wider hover:bg-purple-500/40 transition-all"
-                          >
-                            ОК
-                          </button>
-                        )}
                       </div>
                       {/* Action buttons */}
                       <div className="flex items-center gap-1 flex-shrink-0 ml-1">
