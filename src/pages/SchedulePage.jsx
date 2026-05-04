@@ -44,6 +44,10 @@ const SchedulePage = () => {
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  // Ghost rows: always show at least 4 employee slots
+  const MIN_ROWS = 4;
+  const [ghostInputs, setGhostInputs] = useState(['', '', '', '']);
+  const [ghostSaving, setGhostSaving] = useState([false, false, false, false]);
 
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({
@@ -105,13 +109,28 @@ const SchedulePage = () => {
       try {
         await addEmployee(newEmpName.trim());
         setNewEmpName('');
-        // Refocus input so user can immediately add the next employee
         setTimeout(() => {
           document.getElementById('new-emp-input')?.focus();
         }, 100);
       } finally {
         setIsSaving(false);
       }
+    }
+  };
+
+  const handleGhostChange = (index, value) => {
+    setGhostInputs(prev => prev.map((v, i) => i === index ? value : v));
+  };
+
+  const handleGhostSave = async (index) => {
+    const name = ghostInputs[index]?.trim();
+    if (!name || ghostSaving[index]) return;
+    setGhostSaving(prev => prev.map((v, i) => i === index ? true : v));
+    try {
+      await addEmployee(name);
+      setGhostInputs(prev => prev.map((v, i) => i === index ? '' : v));
+    } finally {
+      setGhostSaving(prev => prev.map((v, i) => i === index ? false : v));
     }
   };
 
@@ -124,6 +143,9 @@ const SchedulePage = () => {
     updateEmployee(id, editNameValue);
     setEditingEmpId(null);
   };
+
+  // How many ghost rows to show (fill up to MIN_ROWS total)
+  const ghostCount = Math.max(0, MIN_ROWS - employees.length);
 
   return (
     <div className="space-y-6 animate-fade">
@@ -259,17 +281,59 @@ const SchedulePage = () => {
                 );
               })}
               
-              {/* Add Employee Row */}
-              <tr className="group/add cursor-pointer">
+              {/* Ghost rows: fill up to MIN_ROWS */}
+              {Array.from({ length: ghostCount }, (_, i) => (
+                <tr key={`ghost-${i}`} className="group/ghost hover:bg-white/[0.02] transition-all">
+                  <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/5 group-hover/ghost:bg-[#151518] transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-lg bg-white/[0.03] border border-dashed border-white/10 flex items-center justify-center text-white/10">
+                        <Users size={14} />
+                      </div>
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          value={ghostInputs[i] || ''}
+                          disabled={ghostSaving[i]}
+                          onChange={(e) => handleGhostChange(i, e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleGhostSave(i)}
+                          onBlur={() => handleGhostSave(i)}
+                          placeholder={ghostSaving[i] ? 'Сохранение...' : 'Введите имя сотрудника...'}
+                          className={`bg-transparent border-none text-sm font-bold placeholder:text-white/10 outline-none w-full transition-all ${
+                            ghostSaving[i] ? 'text-white/20' : 'text-white/40 focus:text-white/90'
+                          }`}
+                        />
+                        {ghostInputs[i] && !ghostSaving[i] && (
+                          <button
+                            onClick={() => handleGhostSave(i)}
+                            className="absolute right-0 top-1/2 -translate-y-1/2 px-4 py-1 rounded-lg bg-white/10 text-white/60 text-[10px] font-black uppercase tracking-wider hover:bg-purple-500/30 hover:text-purple-400 transition-all"
+                          >
+                            ОК
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  {daysInMonth.map(day => (
+                    <td key={day.toString()} className="border-r border-white/5 border-b border-white/[0.03]"></td>
+                  ))}
+                  <td className="bg-purple-500/[0.02]"></td>
+                  <td className="bg-blue-500/[0.02]"></td>
+                  <td className="bg-orange-500/[0.02]"></td>
+                  <td className="sticky right-0 z-20 bg-[#0f0f11] border-l border-white/5"></td>
+                </tr>
+              ))}
+
+              {/* Add More Row — always at the very bottom */}
+              <tr className="group/add">
                 <td 
                   colSpan={daysInMonth.length + 5} 
-                  className="px-6 py-5 sticky left-0 z-20 bg-[#0f0f11] border-t border-white/5"
+                  className="px-6 py-4 sticky left-0 z-20 bg-[#111113] border-t border-white/5"
                 >
                   <div className="flex items-center gap-4">
                     <button
                       onClick={handleAdd}
-                      title="Добавить сотрудника"
-                      className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center hover:bg-purple-500/40 active:scale-95 transition-all shadow-lg shadow-purple-500/10"
+                      title="Добавить ещё одного сотрудника"
+                      className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center hover:bg-purple-500/40 active:scale-95 transition-all"
                     >
                       <Plus size={16} strokeWidth={3} />
                     </button>
@@ -281,15 +345,15 @@ const SchedulePage = () => {
                         disabled={isSaving}
                         onChange={(e) => setNewEmpName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                        placeholder={isSaving ? "Сохранение..." : "Введите ФИО нового сотрудника..."}
-                        className={`bg-transparent border-none text-sm font-bold placeholder:text-white/20 outline-none w-full transition-all ${
-                          isSaving ? 'text-white/20' : 'text-white/90 group-hover/add:text-white focus:text-white'
+                        placeholder={isSaving ? 'Сохранение...' : 'Добавить ещё сотрудника...'}
+                        className={`bg-transparent border-none text-sm font-bold placeholder:text-white/10 outline-none w-full transition-all ${
+                          isSaving ? 'text-white/20' : 'text-white/30 focus:text-white/90'
                         }`}
                       />
                       {newEmpName && !isSaving && (
                         <button 
                           onClick={handleAdd}
-                          className="absolute right-0 top-1/2 -translate-y-1/2 px-5 py-1.5 rounded-lg bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-purple-500/20 hover:bg-purple-600 active:scale-95 transition-all"
+                          className="absolute right-0 top-1/2 -translate-y-1/2 px-5 py-1.5 rounded-lg bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 active:scale-95 transition-all"
                         >
                           Добавить
                         </button>
