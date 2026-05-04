@@ -29,11 +29,11 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = React.useState('ВCE КЛУБЫ');
   
   // Combine real tickets or fallback to demo
-  let allTickets = [];
+  let rawTickets = [];
   if (tickets && tickets.length > 0) {
-    allTickets = tickets;
+    rawTickets = tickets;
   } else {
-    allTickets = [
+    rawTickets = [
       ...DEMO_TICKETS.new.map(t => ({...t, status: 'new'})),
       ...DEMO_TICKETS.in_progress.map(t => ({...t, status: 'in_progress'})),
       ...DEMO_TICKETS.paused.map(t => ({...t, status: 'paused'})),
@@ -42,13 +42,19 @@ const Dashboard = () => {
     ];
   }
 
+  // Filter tickets based on active tab
+  const allTickets = activeTab === 'ВCE КЛУБЫ' 
+    ? rawTickets 
+    : rawTickets.filter(t => (t.club || '').toUpperCase() === activeTab.toUpperCase());
+
   const inWork = allTickets.filter(t => t.status === 'in_progress').length;
   const slaIssues = allTickets.filter(t => t.priority === 'critical' && t.status !== 'closed').length;
   const waitCount = allTickets.filter(t => t.status === 'waiting').length;
   const closedToday = allTickets.filter(t => t.status === 'closed').length;
 
   const getClubStats = (clubName, color) => {
-    const clubTickets = allTickets.filter(t => (t.club || '4YOU') === clubName);
+    // Club summary should always show stats for all clubs regardless of filter
+    const clubTickets = rawTickets.filter(t => (t.club || '4YOU').toUpperCase() === clubName.toUpperCase());
     return {
       name: clubName,
       color,
