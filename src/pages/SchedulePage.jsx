@@ -230,6 +230,7 @@ const SchedulePage = () => {
                           <div className="flex items-center gap-2 flex-1">
                             <input 
                               autoFocus
+                              autoComplete="off"
                               className="bg-white/10 border border-purple-500/30 rounded-lg px-2 py-1.5 text-sm font-bold text-white outline-none w-full"
                               value={editNameValue}
                               onChange={(e) => setEditNameValue(e.target.value)}
@@ -326,6 +327,7 @@ const SchedulePage = () => {
                           }}
                           onBlur={() => savePendingRow(i)}
                           placeholder="Введите ФИО сотрудника..."
+                          autoComplete="off"
                           className={`pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all ${val ? 'pr-12' : ''}`}
                         />
                         {val && (
