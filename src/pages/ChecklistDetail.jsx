@@ -1,45 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ShieldCheck, ChevronLeft, AlertCircle, Send, CheckCircle2 } from 'lucide-react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { ShieldCheck, ChevronLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
+import { useChecklist } from '../store/ChecklistContext';
 import { CHECK_ITEMS, SHIFTS_DATA } from '../data/checklistData';
+import { format, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
 const ChecklistDetail = () => {
   const { shiftId, cardId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { addTicket } = useTickets();
+  const { checklistData, updateCheckState } = useChecklist();
+  
+  const dateKey = searchParams.get('date') || format(startOfToday(), 'yyyy-MM-dd');
+  const docId = `${dateKey}_${shiftId}_${cardId}`;
   
   const shift = SHIFTS_DATA.find(s => s.id === shiftId);
   const cardData = CHECK_ITEMS[cardId];
   
-  // State for each item: 'ok', 'issue', or null
-  const [itemStates, setItemStates] = useState(() => {
-    const saved = localStorage.getItem(`checklist-states-${shiftId}-${cardId}`);
-    return saved ? JSON.parse(saved) : {};
-  });
-  
-  // State for issue descriptions
-  const [itemIssues, setItemIssues] = useState(() => {
-    const saved = localStorage.getItem(`checklist-issues-${shiftId}-${cardId}`);
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [itemStates, setItemStates] = useState({});
+  const [itemIssues, setItemIssues] = useState({});
 
+  // Load from context on mount or docId change
   useEffect(() => {
-    localStorage.setItem(`checklist-states-${shiftId}-${cardId}`, JSON.stringify(itemStates));
-    localStorage.setItem(`checklist-issues-${shiftId}-${cardId}`, JSON.stringify(itemIssues));
-  }, [itemStates, itemIssues, shiftId, cardId]);
+    const data = checklistData[docId];
+    if (data) {
+      setItemStates(data.states || {});
+      setItemIssues(data.issues || {});
+    }
+  }, [docId, checklistData]);
 
-  if (!shift || !cardData) {
-    return <div className="p-10 text-white/40">Загрузка...</div>;
-  }
-
+  // Save to Firestore when states/issues change
   const handleStateChange = (index, state) => {
-    setItemStates(prev => ({ ...prev, [index]: state }));
+    const newStates = { ...itemStates, [index]: state };
+    setItemStates(newStates);
+    updateCheckState(dateKey, shiftId, cardId, newStates, itemIssues);
   };
 
   const handleIssueChange = (index, text) => {
-    setItemIssues(prev => ({ ...prev, [index]: text }));
+    const newIssues = { ...itemIssues, [index]: text };
+    setItemIssues(newIssues);
+    updateCheckState(dateKey, shiftId, cardId, itemStates, newIssues);
   };
 
   const handleComplete = async () => {

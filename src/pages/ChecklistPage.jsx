@@ -2,16 +2,24 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Clock, ChevronDown, Calendar, MoreHorizontal } from 'lucide-react';
 import { CLUBS, SHIFTS_DATA, CHECK_ITEMS } from '../data/checklistData';
+import { format, addDays, subDays, startOfToday } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { useChecklist } from '../store/ChecklistContext';
 
 const ChecklistPage = () => {
   const [activeClub, setActiveClub] = useState('4YOU');
-  const [activeDay, setActiveDay] = useState('СЕГОДНЯ');
+  const [activeDate, setActiveDate] = useState(startOfToday());
+  const { checklistData } = useChecklist();
   const navigate = useNavigate();
 
+  const dateKey = format(activeDate, 'yyyy-MM-dd');
+
   const getCheckProgress = (shiftId, cardId) => {
-    const saved = localStorage.getItem(`checklist-states-${shiftId}-${cardId}`);
-    if (!saved) return { answered: 0, total: CHECK_ITEMS[cardId].items.length };
-    const states = JSON.parse(saved);
+    const docId = `${dateKey}_${shiftId}_${cardId}`;
+    const data = checklistData[docId];
+    if (!data || !data.states) return { answered: 0, total: CHECK_ITEMS[cardId].items.length };
+    
+    const states = data.states;
     const items = CHECK_ITEMS[cardId].items;
     const answered = items.filter((_, i) => states[i] === 'ok' || states[i] === 'issue').length;
     return { answered, total: items.length };
@@ -63,23 +71,32 @@ const ChecklistPage = () => {
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Дата смен</span>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111113] border border-white/5">
-              {['ВЧЕРА', 'СЕГОДНЯ'].map(day => (
-                <button
-                  key={day}
-                  onClick={() => setActiveDay(day)}
-                  className={`px-5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                    activeDay === day 
-                      ? 'bg-[#7B3DFF] text-white' 
-                      : 'text-white/40 hover:text-white/60'
-                  }`}
-                >
-                  {day}
-                </button>
-              ))}
+              <button
+                onClick={() => setActiveDate(prev => subDays(prev, 1))}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white/40 hover:text-white transition-all hover:bg-white/5"
+              >
+                ←
+              </button>
+              <button
+                onClick={() => setActiveDate(startOfToday())}
+                className={`px-5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                  dateKey === format(startOfToday(), 'yyyy-MM-dd') 
+                    ? 'bg-[#7B3DFF] text-white' 
+                    : 'text-white/40 hover:text-white/60'
+                }`}
+              >
+                СЕГОДНЯ
+              </button>
+              <button
+                onClick={() => setActiveDate(prev => addDays(prev, 1))}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white/40 hover:text-white transition-all hover:bg-white/5"
+              >
+                →
+              </button>
             </div>
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#111113] border border-white/5 text-[11px] font-bold text-white/70">
               <Calendar size={14} className="text-purple-500" />
-              30.04.2026
+              {format(activeDate, 'dd.MM.yyyy')}
             </div>
           </div>
         </div>
@@ -144,7 +161,7 @@ const ChecklistPage = () => {
                 return (
                   <div 
                     key={cardId}
-                    onClick={() => navigate(`/checklists/${shift.id}/${cardId}`)}
+                    onClick={() => navigate(`/checklists/${shift.id}/${cardId}?date=${dateKey}`)}
                     className={`group bg-[#111113] border rounded-2xl p-6 flex flex-col items-center justify-center gap-4 hover:bg-[#151518] transition-all cursor-pointer shadow-sm ${
                       complete ? 'border-green-500/30' : 'border-white/5 hover:border-white/10'
                     }`}

@@ -30,6 +30,11 @@ const HOURLY_RATE = 1500;
 
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  
+  const prevMonth = () => setCurrentMonth(prev => addMonths(prev, -1));
+  const nextMonth = () => setCurrentMonth(prev => addMonths(prev, 1));
+  const resetToToday = () => setCurrentMonth(new Date());
+
   const { 
     scheduleData, 
     employees, 
@@ -42,8 +47,17 @@ const SchedulePage = () => {
   
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
+  
   // pendingRows: local array of empty input slots, '+' adds one more instantly
-  const [pendingRows, setPendingRows] = useState(['', '', '', '']);
+  // Persistent via localStorage so switching tabs doesn't delete them
+  const [pendingRows, setPendingRows] = useState(() => {
+    const saved = localStorage.getItem('schedule-pending-rows');
+    return saved ? JSON.parse(saved) : ['', '', '', ''];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('schedule-pending-rows', JSON.stringify(pendingRows));
+  }, [pendingRows]);
 
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({

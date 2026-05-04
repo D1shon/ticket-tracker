@@ -123,11 +123,15 @@ const AppContent = () => {
   );
 };
 
+import { ChecklistProvider } from './store/ChecklistContext';
+
 function App() {
   return (
     <TicketProvider>
       <ScheduleProvider>
-        <AppContent />
+        <ChecklistProvider>
+          <AppContent />
+        </ChecklistProvider>
       </ScheduleProvider>
     </TicketProvider>
   );
