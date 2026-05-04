@@ -211,10 +211,7 @@ const SchedulePage = () => {
       <div className="flex items-start justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-bold text-white uppercase tracking-tight">График и Расчеты</h1>
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-white/40 font-medium italic">Ставка: {HOURLY_RATE} ₸/час · Праздники выделены красным</p>
-            <span className="text-[9px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded border border-green-500/20 font-black uppercase">Обновлено: {new Date().toLocaleTimeString()}</span>
-          </div>
+          <p className="text-xs text-white/40 font-medium italic">Ставка: {HOURLY_RATE} ₸/час · Праздники выделены красным</p>
         </div>
         
         <div className="flex items-center gap-4">
@@ -243,7 +240,7 @@ const SchedulePage = () => {
           <table className="w-full text-left border-collapse min-w-[1900px]">
             <thead>
               <tr className="bg-[#151518] text-[9px] uppercase tracking-widest font-black text-white/30 border-b border-white/5">
-                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/10 min-w-[280px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
+                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/10 min-w-[350px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
                 {daysInMonth.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const isHoliday = HOLIDAYS_2026.includes(dateStr);
@@ -325,7 +322,7 @@ const SchedulePage = () => {
                             onChange={(e) => updateCell(monthKey, emp.id, dayNum, e.target.value)}
                             onKeyDown={(e) => handleCellKeyDown(e, emp.id, dayNum, value)}
                             placeholder="—"
-                            className={`w-full h-full bg-transparent border-none text-[10px] text-center focus:bg-white/10 py-4 px-1 outline-none transition-all ${value ? 'text-white font-bold' : 'text-white/5'}`}
+                            className={`w-full h-full bg-transparent border-none text-[10px] text-center focus:bg-white/10 hover:bg-white/5 py-4 px-1 outline-none transition-all ${value ? 'text-white font-bold' : 'text-white/20'}`}
                           />
                         </td>
                       );
