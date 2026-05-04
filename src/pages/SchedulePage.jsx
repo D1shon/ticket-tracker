@@ -44,7 +44,10 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, onKeyD
   };
 
   return (
-    <td className={`p-1 border-r border-white/5 ${isHoliday ? 'bg-red-500/5' : ''} relative`}>
+    <td 
+      className={`p-1 border-r border-white/5 ${isHoliday ? 'bg-red-500/5' : ''} relative cursor-text`}
+      onClick={() => inputRef.current?.focus()}
+    >
       <input
         ref={inputRef}
         id={`cell-${empId}-${dayNum}`}
@@ -56,7 +59,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, onKeyD
         placeholder="—"
         autoComplete="off"
         spellCheck={false}
-        className="w-full min-h-[38px] bg-white/[0.02] border border-transparent focus:border-purple-500/30 focus:bg-white/5 rounded-lg text-[10px] text-center outline-none transition-all text-white font-bold placeholder:text-white/10 cursor-text hover:bg-white/5"
+        className="w-full min-h-[38px] bg-white/[0.05] border border-white/10 focus:border-purple-500/50 focus:bg-white/10 rounded-lg text-[10px] text-center outline-none transition-all text-white font-bold placeholder:text-white/5 cursor-text hover:bg-white/10"
       />
     </td>
   );
