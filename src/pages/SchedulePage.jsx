@@ -277,12 +277,13 @@ const SchedulePage = () => {
               {pendingRows.map((val, i) => (
                 <tr key={`pending-${i}`} className="group/pending hover:bg-white/[0.02] transition-all">
                   <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/5 group-hover/pending:bg-[#151518] transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-lg bg-white/[0.03] border border-dashed border-white/10 flex items-center justify-center text-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-white/[0.03] border border-dashed border-white/10 flex items-center justify-center text-white/10 flex-shrink-0">
                         <Users size={14} />
                       </div>
                       <div className="flex-1 relative">
                         <input
+                          id={`pending-input-${i}`}
                           type="text"
                           value={val}
                           onChange={(e) => changePendingRow(i, e.target.value)}
@@ -302,6 +303,26 @@ const SchedulePage = () => {
                             ОК
                           </button>
                         )}
+                      </div>
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                        <button
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            document.getElementById(`pending-input-${i}`)?.focus();
+                          }}
+                          title="Редактировать имя"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/10 hover:text-blue-400 hover:bg-white/5 transition-all"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                        <button
+                          onClick={() => removePendingRow(i)}
+                          title="Удалить строку"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/10 hover:text-red-500 hover:bg-white/5 transition-all"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </div>
                   </td>
