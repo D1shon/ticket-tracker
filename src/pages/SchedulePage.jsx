@@ -173,7 +173,7 @@ const SchedulePage = () => {
           <table className="w-full text-left border-collapse min-w-[1900px]">
             <thead>
               <tr className="bg-[#151518] text-[9px] uppercase tracking-widest font-black text-white/30 border-b border-white/5">
-                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/5 min-w-[280px]">Сотрудник</th>
+                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/5 min-w-[350px]">Сотрудник</th>
                 {daysInMonth.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const isHoliday = HOLIDAYS_2026.includes(dateStr);
@@ -293,7 +293,7 @@ const SchedulePage = () => {
                           }}
                           onBlur={() => savePendingRow(i)}
                           placeholder="Введите ФИО сотрудника..."
-                          className="pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all"
+                          className={`pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all ${val ? 'pr-12' : ''}`}
                         />
                         {val && (
                           <button
