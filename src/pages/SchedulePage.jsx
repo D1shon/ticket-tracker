@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   format, 
   startOfMonth, 
@@ -19,6 +19,7 @@ import {
   Plus
 } from 'lucide-react';
 import { useSchedule } from '../store/ScheduleContext';
+import { toast } from 'sonner';
 
 const HOLIDAYS_2026 = [
   '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08',
@@ -30,7 +31,7 @@ const HOURLY_RATE = 1500;
 
 // Sub-component for individual schedule cells to handle local state (for responsiveness)
 const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, onKeyDown, updateCell }) => {
-  const inputRef = React.useRef(null);
+  const inputRef = useRef(null);
 
   const handleBlur = () => {
     const newValue = inputRef.current?.value;
