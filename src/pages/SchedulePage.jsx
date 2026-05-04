@@ -105,6 +105,10 @@ const SchedulePage = () => {
       try {
         await addEmployee(newEmpName.trim());
         setNewEmpName('');
+        // Refocus input so user can immediately add the next employee
+        setTimeout(() => {
+          document.getElementById('new-emp-input')?.focus();
+        }, 100);
       } finally {
         setIsSaving(false);
       }
@@ -262,27 +266,32 @@ const SchedulePage = () => {
                   className="px-6 py-5 sticky left-0 z-20 bg-[#0f0f11] border-t border-white/5"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center group-hover/add:bg-purple-500/20 transition-all shadow-lg shadow-purple-500/5">
+                    <button
+                      onClick={handleAdd}
+                      title="Добавить сотрудника"
+                      className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center hover:bg-purple-500/40 active:scale-95 transition-all shadow-lg shadow-purple-500/10"
+                    >
                       <Plus size={16} strokeWidth={3} />
-                    </div>
+                    </button>
                     <div className="flex-1 relative">
                       <input 
+                        id="new-emp-input"
                         type="text"
                         value={newEmpName}
                         disabled={isSaving}
                         onChange={(e) => setNewEmpName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                        placeholder={isSaving ? "Сохранение..." : "Добавить нового сотрудника..."}
+                        placeholder={isSaving ? "Сохранение..." : "Введите ФИО нового сотрудника..."}
                         className={`bg-transparent border-none text-sm font-bold placeholder:text-white/20 outline-none w-full transition-all ${
-                          isSaving ? 'text-white/20' : 'text-purple-400/80 group-hover/add:text-purple-400 focus:text-purple-400'
+                          isSaving ? 'text-white/20' : 'text-white/90 group-hover/add:text-white focus:text-white'
                         }`}
                       />
                       {newEmpName && !isSaving && (
                         <button 
                           onClick={handleAdd}
-                          className="absolute right-0 top-1/2 -translate-y-1/2 px-4 py-1.5 rounded-lg bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-purple-500/20 hover:bg-purple-600 transition-all animate-in fade-in slide-in-from-right-2"
+                          className="absolute right-0 top-1/2 -translate-y-1/2 px-5 py-1.5 rounded-lg bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-purple-500/20 hover:bg-purple-600 active:scale-95 transition-all"
                         >
-                          ОК
+                          Добавить
                         </button>
                       )}
                     </div>
