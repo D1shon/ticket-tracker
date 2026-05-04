@@ -195,7 +195,7 @@ const SchedulePage = () => {
           <table className="w-full text-left border-collapse min-w-[1900px]">
             <thead>
               <tr className="bg-[#151518] text-[9px] uppercase tracking-widest font-black text-white/30 border-b border-white/5">
-                <th className="px-6 py-5 sticky left-0 z-50 bg-[#151518] border-r border-white/10 min-w-[350px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
+                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/10 min-w-[350px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
                 {daysInMonth.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const isHoliday = HOLIDAYS_2026.includes(dateStr);
@@ -221,7 +221,7 @@ const SchedulePage = () => {
                 const isEditing = editingEmpId === emp.id;
                 return (
                   <tr key={emp.id} className="hover:bg-white/[0.04] transition-all group">
-                    <td className="px-6 py-4 sticky left-0 z-40 bg-[#0f0f11] border-r border-white/10 group-hover:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
+                    <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/10 group-hover:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
                       <div className="flex items-center gap-4">
                         <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:text-purple-400 transition-colors">
                           <Users size={14} />
@@ -300,7 +300,7 @@ const SchedulePage = () => {
               
               {pendingRows.map((val, i) => (
                 <tr key={`pending-${i}`} className="group/pending hover:bg-white/[0.02] transition-all">
-                  <td className="px-6 py-4 sticky left-0 z-40 bg-[#0f0f11] border-r border-white/10 group-hover/pending:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
+                  <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/10 group-hover/pending:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-white/[0.03] border border-dashed border-white/10 flex items-center justify-center text-white/10 flex-shrink-0">
                         <Users size={14} />
