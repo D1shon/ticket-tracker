@@ -195,7 +195,7 @@ const SchedulePage = () => {
           <table className="w-full text-left border-collapse min-w-[1900px]">
             <thead>
               <tr className="bg-[#151518] text-[9px] uppercase tracking-widest font-black text-white/30 border-b border-white/5">
-                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/10 min-w-[350px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
+                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/10 min-w-[450px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
                 {daysInMonth.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const isHoliday = HOLIDAYS_2026.includes(dateStr);
@@ -244,7 +244,7 @@ const SchedulePage = () => {
                           </div>
                         ) : (
                           <div className="flex items-center justify-between flex-1">
-                            <span className="text-sm font-bold text-white/90 group-hover:text-white transition-colors">{emp.name}</span>
+                            <span className="text-sm font-bold text-white/90 group-hover:text-white transition-colors whitespace-nowrap">{emp.name}</span>
                             <div className="flex items-center gap-1">
                               <button 
                                 onClick={() => startEditing(emp)} 
@@ -324,7 +324,7 @@ const SchedulePage = () => {
                           onBlur={() => savePendingRow(i)}
                           placeholder="Введите ФИО сотрудника..."
                           autoComplete="off"
-                          className={`pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all ${val ? 'pr-12' : ''}`}
+                          className="pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all"
                         />
                       </div>
                       {/* Action buttons */}
