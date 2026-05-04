@@ -28,6 +28,41 @@ const HOLIDAYS_2026 = [
 
 const HOURLY_RATE = 1500;
 
+// Sub-component for individual schedule cells to handle local state (for responsiveness)
+const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, onKeyDown, updateCell }) => {
+  const [localValue, setLocalValue] = useState(initialValue);
+
+  // Sync with external changes (e.g. from other devices)
+  useEffect(() => {
+    setLocalValue(initialValue);
+  }, [initialValue]);
+
+  const handleChange = (e) => {
+    setLocalValue(e.target.value);
+  };
+
+  const handleBlur = () => {
+    if (localValue !== initialValue) {
+      updateCell(monthKey, empId, dayNum, localValue);
+    }
+  };
+
+  return (
+    <td className={`p-0 border-r border-white/5 ${isHoliday ? 'bg-red-500/5' : ''}`}>
+      <input
+        id={`cell-${empId}-${dayNum}`}
+        type="text"
+        value={localValue || ''}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={(e) => onKeyDown(e, empId, dayNum, localValue)}
+        placeholder="—"
+        className={`w-full h-full bg-transparent border-none text-[10px] text-center focus:bg-white/10 hover:bg-white/5 py-4 px-1 outline-none transition-all ${localValue ? 'text-white font-bold' : 'text-white/20'}`}
+      />
+    </td>
+  );
+};
+
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
@@ -314,17 +349,16 @@ const SchedulePage = () => {
                       const value = getCellData(emp.id, dayNum);
                       const isHoliday = HOLIDAYS_2026.includes(dateStr);
                       return (
-                        <td key={dateStr} className={`p-0 border-r border-white/5 ${isHoliday ? 'bg-red-500/5' : ''}`}>
-                          <input
-                            id={`cell-${emp.id}-${dayNum}`}
-                            type="text"
-                            value={value}
-                            onChange={(e) => updateCell(monthKey, emp.id, dayNum, e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, emp.id, dayNum, value)}
-                            placeholder="—"
-                            className={`w-full h-full bg-transparent border-none text-[10px] text-center focus:bg-white/10 hover:bg-white/5 py-4 px-1 outline-none transition-all ${value ? 'text-white font-bold' : 'text-white/20'}`}
-                          />
-                        </td>
+                        <ScheduleCell 
+                          key={dateStr}
+                          monthKey={monthKey}
+                          empId={emp.id}
+                          dayNum={dayNum}
+                          initialValue={value}
+                          isHoliday={isHoliday}
+                          onKeyDown={handleCellKeyDown}
+                          updateCell={updateCell}
+                        />
                       );
                     })}
                     <td className="px-4 py-4 text-center font-bold text-xs text-purple-400/80 bg-purple-500/5">{stats.totalHours} ч</td>
