@@ -30,34 +30,33 @@ const HOURLY_RATE = 1500;
 
 // Sub-component for individual schedule cells to handle local state (for responsiveness)
 const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, onKeyDown, updateCell }) => {
-  const [localValue, setLocalValue] = useState(initialValue);
-
-  // Sync with external changes (e.g. from other devices)
-  useEffect(() => {
-    setLocalValue(initialValue);
-  }, [initialValue]);
-
-  const handleChange = (e) => {
-    setLocalValue(e.target.value);
-  };
+  const inputRef = React.useRef(null);
 
   const handleBlur = () => {
-    if (localValue !== initialValue) {
-      updateCell(monthKey, empId, dayNum, localValue);
+    const newValue = inputRef.current?.value;
+    if (newValue !== initialValue) {
+      updateCell(monthKey, empId, dayNum, newValue);
     }
+  };
+
+  const handleLocalKeyDown = (e) => {
+    onKeyDown(e, empId, dayNum, inputRef.current?.value);
   };
 
   return (
     <td className={`p-0 border-r border-white/5 ${isHoliday ? 'bg-red-500/5' : ''}`}>
       <input
+        ref={inputRef}
         id={`cell-${empId}-${dayNum}`}
+        key={`${empId}-${dayNum}-${initialValue}`}
         type="text"
-        value={localValue || ''}
-        onChange={handleChange}
+        defaultValue={initialValue || ''}
         onBlur={handleBlur}
-        onKeyDown={(e) => onKeyDown(e, empId, dayNum, localValue)}
+        onKeyDown={handleLocalKeyDown}
         placeholder="—"
-        className={`w-full h-full bg-transparent border-none text-[10px] text-center focus:bg-white/10 hover:bg-white/5 py-4 px-1 outline-none transition-all ${localValue ? 'text-white font-bold' : 'text-white/20'}`}
+        autoComplete="off"
+        spellCheck={false}
+        className="w-full h-full bg-transparent border-none text-[10px] text-center focus:bg-white/10 hover:bg-white/5 py-4 px-1 outline-none transition-all text-white font-bold placeholder:text-white/20"
       />
     </td>
   );
