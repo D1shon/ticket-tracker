@@ -113,16 +113,24 @@ const SchedulePage = () => {
     setPendingRows(prev => prev.map((v, i) => i === index ? value : v));
   };
 
-  const savePendingRow = async (index) => {
+  const savePendingRow = async (index, shouldFocusNext = false) => {
     const name = pendingRows[index]?.trim();
-    if (!name) return; // empty — just leave the row
+    if (!name) return;
     try {
       await addEmployee(name);
-      // Remove this pending row after save (it will appear as a real employee)
       setPendingRows(prev => prev.filter((_, i) => i !== index));
-    } catch (e) {
-      // keep the row on error
-    }
+      
+      if (shouldFocusNext) {
+        setTimeout(() => {
+          const inputs = document.querySelectorAll('.pending-row-input');
+          if (inputs.length > 0) {
+            // Focus the next one (it might be at the same index now because one was removed)
+            const nextInput = inputs[index] || inputs[inputs.length - 1];
+            nextInput?.focus();
+          }
+        }, 100);
+      }
+    } catch (e) {}
   };
 
   const removePendingRow = (index) => {
@@ -211,7 +219,12 @@ const SchedulePage = () => {
                               className="bg-white/10 border border-purple-500/30 rounded-lg px-2 py-1.5 text-sm font-bold text-white outline-none w-full"
                               value={editNameValue}
                               onChange={(e) => setEditNameValue(e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && saveEditing(emp.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  saveEditing(emp.id);
+                                }
+                              }}
                             />
                             <button onClick={() => saveEditing(emp.id)} className="w-8 h-8 rounded-lg bg-green-500/20 text-green-500 flex items-center justify-center hover:bg-green-500/30 transition-all">
                               <Check size={14}/>
@@ -288,8 +301,14 @@ const SchedulePage = () => {
                           value={val}
                           onChange={(e) => changePendingRow(i, e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') savePendingRow(i);
-                            if (e.key === 'Escape') removePendingRow(i);
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              savePendingRow(i, true);
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              removePendingRow(i);
+                            }
                           }}
                           onBlur={() => savePendingRow(i)}
                           placeholder="Введите ФИО сотрудника..."
