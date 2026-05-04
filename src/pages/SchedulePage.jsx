@@ -47,9 +47,9 @@ const SchedulePage = () => {
   
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
+  const [copiedValue, setCopiedValue] = useState(null);
   
   // pendingRows: local array of empty input slots, '+' adds one more instantly
-  // Persistent via localStorage so switching tabs doesn't delete them
   const [pendingRows, setPendingRows] = useState(() => {
     const saved = localStorage.getItem('schedule-pending-rows');
     return saved ? JSON.parse(saved) : ['', '', '', ''];
@@ -69,14 +69,23 @@ const SchedulePage = () => {
   const monthKey = format(currentMonth, 'yyyy-MM');
 
   const calculateHours = (timeRange) => {
-    if (!timeRange || typeof timeRange !== 'string' || !timeRange.includes('-')) return 0;
+    if (!timeRange || typeof timeRange !== 'string') return 0;
+    const cleanRange = timeRange.trim();
+    if (!cleanRange.includes('-')) return 0;
+    
     try {
-      const parts = timeRange.split('-');
+      const parts = cleanRange.split('-');
       if (parts.length !== 2) return 0;
       
       const parseTime = (timeStr) => {
-        const clean = timeStr.trim().replace('.', ':');
+        let clean = timeStr.trim().replace('.', ':');
+        if (!clean.includes(':')) {
+          // Handle "8" as "8:00"
+          const h = parseInt(clean);
+          return isNaN(h) ? 0 : h * 60;
+        }
         let [h, m] = clean.split(':').map(Number);
+        if (isNaN(h)) h = 0;
         if (isNaN(m)) m = 0;
         return h * 60 + m;
       };
@@ -85,7 +94,7 @@ const SchedulePage = () => {
       const endMin = parseTime(parts[1]);
       
       let diffMinutes = endMin - startMin;
-      if (diffMinutes < 0) diffMinutes += 24 * 60; 
+      if (diffMinutes < 0) diffMinutes += 24 * 60; // Over midnight
       
       return parseFloat((diffMinutes / 60).toFixed(2));
     } catch (e) {
@@ -159,6 +168,42 @@ const SchedulePage = () => {
   const saveEditing = (id) => {
     updateEmployee(id, editNameValue);
     setEditingEmpId(null);
+  };
+
+  const handleCellKeyDown = (e, empId, dayNum, value) => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+    // Excel Navigation
+    if (e.key === 'ArrowRight' || e.key === 'Tab') {
+      const next = document.getElementById(`cell-${empId}-${parseInt(dayNum) + 1}`);
+      if (next) { e.preventDefault(); next.focus(); }
+    }
+    if (e.key === 'ArrowLeft') {
+      const prev = document.getElementById(`cell-${empId}-${parseInt(dayNum) - 1}`);
+      if (prev) { e.preventDefault(); prev.focus(); }
+    }
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      const inputs = Array.from(document.querySelectorAll(`[id^="cell-"][id$="-${dayNum}"]`));
+      const idx = inputs.findIndex(i => i.id === `cell-${empId}-${dayNum}`);
+      if (inputs[idx + 1]) { e.preventDefault(); inputs[idx + 1].focus(); }
+    }
+    if (e.key === 'ArrowUp') {
+      const inputs = Array.from(document.querySelectorAll(`[id^="cell-"][id$="-${dayNum}"]`));
+      const idx = inputs.findIndex(i => i.id === `cell-${empId}-${dayNum}`);
+      if (inputs[idx - 1]) { e.preventDefault(); inputs[idx - 1].focus(); }
+    }
+
+    // Copy/Paste
+    if (ctrlKey && e.key === 'c') {
+      setCopiedValue(value);
+      toast.info('Скопировано');
+    }
+    if (ctrlKey && e.key === 'v') {
+      if (copiedValue !== null) {
+        updateCell(monthKey, empId, dayNum, copiedValue);
+      }
+    }
   };
 
   return (
@@ -271,9 +316,11 @@ const SchedulePage = () => {
                       return (
                         <td key={dateStr} className={`p-0 border-r border-white/5 ${isHoliday ? 'bg-red-500/5' : ''}`}>
                           <input
+                            id={`cell-${emp.id}-${dayNum}`}
                             type="text"
                             value={value}
                             onChange={(e) => updateCell(monthKey, emp.id, dayNum, e.target.value)}
+                            onKeyDown={(e) => handleCellKeyDown(e, emp.id, dayNum, value)}
                             placeholder="—"
                             className={`w-full h-full bg-transparent border-none text-[10px] text-center focus:bg-white/10 py-4 px-1 outline-none transition-all ${value ? 'text-white font-bold' : 'text-white/5'}`}
                           />
