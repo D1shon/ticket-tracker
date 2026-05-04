@@ -457,6 +457,39 @@ const SchedulePage = () => {
                 </td>
               </tr>
             </tbody>
+            {/* Summary Footer */}
+            <tfoot className="bg-[#0c0c0e] border-t border-white/10">
+              <tr className="divide-x divide-white/5">
+                <td className="px-6 py-4 sticky left-0 z-20 bg-[#0c0c0e] font-black text-[10px] text-white/40 uppercase tracking-widest shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
+                  Итого за день:
+                </td>
+                {daysInMonth.map(day => {
+                  const dayNum = format(day, 'd');
+                  const dayTotal = employees.reduce((sum, emp) => {
+                    const val = getCellData(emp.id, dayNum);
+                    return sum + calculateHours(val);
+                  }, 0);
+                  
+                  return (
+                    <td key={day.toString()} className="px-1 py-4 text-center font-black text-[10px] text-white/60">
+                      {dayTotal > 0 ? `${dayTotal}ч` : '—'}
+                    </td>
+                  );
+                })}
+                <td className="px-4 py-4 text-center font-black text-xs text-purple-400 bg-purple-500/10">
+                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч
+                </td>
+                <td className="px-4 py-4 text-center font-black text-xs text-blue-400 bg-blue-500/10">
+                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}
+                </td>
+                <td className="px-4 py-4 text-center font-black text-xs text-orange-400 bg-orange-500/10">
+                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}
+                </td>
+                <td className="px-4 py-4 text-center font-black text-sm text-green-400 sticky right-0 z-20 bg-[#0c0c0e] border-l border-white/10 shadow-[-10px_0_20px_rgba(0,0,0,0.2)]">
+                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
