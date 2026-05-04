@@ -40,14 +40,10 @@ const SchedulePage = () => {
     updateAdvance 
   } = useSchedule();
   
-  const [newEmpName, setNewEmpName] = useState('');
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  // Ghost rows: always show at least 4 employee slots
-  const MIN_ROWS = 4;
-  const [ghostInputs, setGhostInputs] = useState(['', '', '', '']);
-  const [ghostSaving, setGhostSaving] = useState([false, false, false, false]);
+  // pendingRows: local array of empty input slots, '+' adds one more instantly
+  const [pendingRows, setPendingRows] = useState(['', '', '', '']);
 
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({
@@ -103,35 +99,34 @@ const SchedulePage = () => {
     return { totalHours, salary, advance, toPay };
   };
 
-  const handleAdd = async () => {
-    if (newEmpName.trim() && !isSaving) {
-      setIsSaving(true);
-      try {
-        await addEmployee(newEmpName.trim());
-        setNewEmpName('');
-        setTimeout(() => {
-          document.getElementById('new-emp-input')?.focus();
-        }, 100);
-      } finally {
-        setIsSaving(false);
-      }
-    }
+  // Add a new empty pending row instantly (no Firebase yet)
+  const addPendingRow = () => {
+    setPendingRows(prev => [...prev, '']);
+    // Autofocus the last row after render
+    setTimeout(() => {
+      const inputs = document.querySelectorAll('.pending-row-input');
+      if (inputs.length > 0) inputs[inputs.length - 1].focus();
+    }, 50);
   };
 
-  const handleGhostChange = (index, value) => {
-    setGhostInputs(prev => prev.map((v, i) => i === index ? value : v));
+  const changePendingRow = (index, value) => {
+    setPendingRows(prev => prev.map((v, i) => i === index ? value : v));
   };
 
-  const handleGhostSave = async (index) => {
-    const name = ghostInputs[index]?.trim();
-    if (!name || ghostSaving[index]) return;
-    setGhostSaving(prev => prev.map((v, i) => i === index ? true : v));
+  const savePendingRow = async (index) => {
+    const name = pendingRows[index]?.trim();
+    if (!name) return; // empty — just leave the row
     try {
       await addEmployee(name);
-      setGhostInputs(prev => prev.map((v, i) => i === index ? '' : v));
-    } finally {
-      setGhostSaving(prev => prev.map((v, i) => i === index ? false : v));
+      // Remove this pending row after save (it will appear as a real employee)
+      setPendingRows(prev => prev.filter((_, i) => i !== index));
+    } catch (e) {
+      // keep the row on error
     }
+  };
+
+  const removePendingRow = (index) => {
+    setPendingRows(prev => prev.filter((_, i) => i !== index));
   };
 
   const startEditing = (emp) => {
@@ -143,9 +138,6 @@ const SchedulePage = () => {
     updateEmployee(id, editNameValue);
     setEditingEmpId(null);
   };
-
-  // How many ghost rows to show (fill up to MIN_ROWS total)
-  const ghostCount = Math.max(0, MIN_ROWS - employees.length);
 
   return (
     <div className="space-y-6 animate-fade">
@@ -281,10 +273,10 @@ const SchedulePage = () => {
                 );
               })}
               
-              {/* Ghost rows: fill up to MIN_ROWS */}
-              {Array.from({ length: ghostCount }, (_, i) => (
-                <tr key={`ghost-${i}`} className="group/ghost hover:bg-white/[0.02] transition-all">
-                  <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/5 group-hover/ghost:bg-[#151518] transition-all">
+              {/* Pending rows: each is an empty input slot, saves on Enter/blur */}
+              {pendingRows.map((val, i) => (
+                <tr key={`pending-${i}`} className="group/pending hover:bg-white/[0.02] transition-all">
+                  <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/5 group-hover/pending:bg-[#151518] transition-all">
                     <div className="flex items-center gap-4">
                       <div className="w-8 h-8 rounded-lg bg-white/[0.03] border border-dashed border-white/10 flex items-center justify-center text-white/10">
                         <Users size={14} />
@@ -292,20 +284,20 @@ const SchedulePage = () => {
                       <div className="flex-1 relative">
                         <input
                           type="text"
-                          value={ghostInputs[i] || ''}
-                          disabled={ghostSaving[i]}
-                          onChange={(e) => handleGhostChange(i, e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleGhostSave(i)}
-                          onBlur={() => handleGhostSave(i)}
-                          placeholder={ghostSaving[i] ? 'Сохранение...' : 'Введите имя сотрудника...'}
-                          className={`bg-transparent border-none text-sm font-bold placeholder:text-white/10 outline-none w-full transition-all ${
-                            ghostSaving[i] ? 'text-white/20' : 'text-white/40 focus:text-white/90'
-                          }`}
+                          value={val}
+                          onChange={(e) => changePendingRow(i, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') savePendingRow(i);
+                            if (e.key === 'Escape') removePendingRow(i);
+                          }}
+                          onBlur={() => savePendingRow(i)}
+                          placeholder="Введите ФИО сотрудника..."
+                          className="pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all"
                         />
-                        {ghostInputs[i] && !ghostSaving[i] && (
+                        {val && (
                           <button
-                            onClick={() => handleGhostSave(i)}
-                            className="absolute right-0 top-1/2 -translate-y-1/2 px-4 py-1 rounded-lg bg-white/10 text-white/60 text-[10px] font-black uppercase tracking-wider hover:bg-purple-500/30 hover:text-purple-400 transition-all"
+                            onMouseDown={(e) => { e.preventDefault(); savePendingRow(i); }}
+                            className="absolute right-0 top-1/2 -translate-y-1/2 px-4 py-1 rounded-lg bg-purple-500/20 text-purple-400 text-[10px] font-black uppercase tracking-wider hover:bg-purple-500/40 transition-all"
                           >
                             ОК
                           </button>
@@ -314,52 +306,30 @@ const SchedulePage = () => {
                     </div>
                   </td>
                   {daysInMonth.map(day => (
-                    <td key={day.toString()} className="border-r border-white/5 border-b border-white/[0.03]"></td>
+                    <td key={day.toString()} className="border-r border-white/[0.05]"></td>
                   ))}
                   <td className="bg-purple-500/[0.02]"></td>
                   <td className="bg-blue-500/[0.02]"></td>
                   <td className="bg-orange-500/[0.02]"></td>
-                  <td className="sticky right-0 z-20 bg-[#0f0f11] border-l border-white/5"></td>
+                  <td className="sticky right-0 z-20 bg-[#0f0f11] group-hover/pending:bg-[#151518] border-l border-white/5 transition-all"></td>
                 </tr>
               ))}
 
-              {/* Add More Row — always at the very bottom */}
-              <tr className="group/add">
-                <td 
-                  colSpan={daysInMonth.length + 5} 
-                  className="px-6 py-4 sticky left-0 z-20 bg-[#111113] border-t border-white/5"
+              {/* Bottom row: + instantly adds a new pending row */}
+              <tr>
+                <td
+                  colSpan={daysInMonth.length + 5}
+                  className="px-6 py-4 bg-[#111113] border-t border-white/5"
                 >
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={handleAdd}
-                      title="Добавить ещё одного сотрудника"
-                      className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center hover:bg-purple-500/40 active:scale-95 transition-all"
-                    >
+                  <button
+                    onClick={addPendingRow}
+                    className="flex items-center gap-3 text-white/20 hover:text-purple-400 transition-all group/btn"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 group-hover/btn:bg-purple-500/25 text-purple-400 flex items-center justify-center transition-all active:scale-95">
                       <Plus size={16} strokeWidth={3} />
-                    </button>
-                    <div className="flex-1 relative">
-                      <input 
-                        id="new-emp-input"
-                        type="text"
-                        value={newEmpName}
-                        disabled={isSaving}
-                        onChange={(e) => setNewEmpName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                        placeholder={isSaving ? 'Сохранение...' : 'Добавить ещё сотрудника...'}
-                        className={`bg-transparent border-none text-sm font-bold placeholder:text-white/10 outline-none w-full transition-all ${
-                          isSaving ? 'text-white/20' : 'text-white/30 focus:text-white/90'
-                        }`}
-                      />
-                      {newEmpName && !isSaving && (
-                        <button 
-                          onClick={handleAdd}
-                          className="absolute right-0 top-1/2 -translate-y-1/2 px-5 py-1.5 rounded-lg bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 active:scale-95 transition-all"
-                        >
-                          Добавить
-                        </button>
-                      )}
                     </div>
-                  </div>
+                    <span className="text-sm font-bold">Добавить сотрудника</span>
+                  </button>
                 </td>
               </tr>
             </tbody>
