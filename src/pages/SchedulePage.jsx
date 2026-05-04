@@ -211,7 +211,10 @@ const SchedulePage = () => {
       <div className="flex items-start justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-bold text-white uppercase tracking-tight">График и Расчеты</h1>
-          <p className="text-xs text-white/40 font-medium italic">Ставка: {HOURLY_RATE} ₸/час · Праздники выделены красным</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-white/40 font-medium italic">Ставка: {HOURLY_RATE} ₸/час · Праздники выделены красным</p>
+            <span className="text-[9px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded border border-green-500/20 font-black uppercase">Обновлено: {new Date().toLocaleTimeString()}</span>
+          </div>
         </div>
         
         <div className="flex items-center gap-4">
