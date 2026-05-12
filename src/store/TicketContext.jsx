@@ -291,7 +291,8 @@ export const TicketProvider = ({ children }) => {
       // Setup specific profiles for Managers (COLIBRI)
       const colibriManagers = [
         '19.anastasiya.tkachenko.88@gmail.com',
-        'dilshat2504@gmail.com'
+        'dilshat2504@gmail.com',
+        'anastassiya.b@hj.fit'
       ];
       
       const isColibriManager = colibriManagers.includes(email.toLowerCase());
