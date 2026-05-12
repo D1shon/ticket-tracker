@@ -288,20 +288,27 @@ export const TicketProvider = ({ children }) => {
     } catch (e) {
       console.warn('[Login] Firebase auth error, falling back to local state:', e.code);
       
-      // Setup specific profile for Anastasiya
-      const isAnastasiya = email.toLowerCase() === '19.anastasiya.tkachenko.88@gmail.com';
+      // Setup specific profiles for Managers (COLIBRI)
+      const colibriManagers = [
+        '19.anastasiya.tkachenko.88@gmail.com',
+        'dilshat2504@gmail.com'
+      ];
+      
+      const isColibriManager = colibriManagers.includes(email.toLowerCase());
       
       const mockUser = {
         email: email,
-        displayName: isAnastasiya ? 'Анастасия' : email.split('@')[0],
+        displayName: isColibriManager 
+          ? (email.toLowerCase().includes('anastasiya') ? 'Анастасия' : 'Дильшат') 
+          : email.split('@')[0],
         uid: 'local_' + Date.now(),
-        role: isAnastasiya ? 'manager' : 'admin',
-        club: isAnastasiya ? 'COLIBRI' : null, // null means see all clubs
+        role: isColibriManager ? 'manager' : 'admin',
+        club: isColibriManager ? 'COLIBRI' : null,
       };
       
       setUser(mockUser);
       localStorage.setItem('app_mock_user', JSON.stringify(mockUser));
-      toast.info(`Вход выполнен: ${isAnastasiya ? 'Менеджер (Колибри)' : 'Администратор'}`);
+      toast.info(`Вход выполнен: ${isColibriManager ? 'Менеджер (Колибри)' : 'Администратор'}`);
     }
   };
 
