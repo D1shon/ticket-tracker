@@ -97,17 +97,42 @@ export const TicketProvider = ({ children }) => {
     }
   }, [tickets]);
 
+  // ─── Profile Helper ──────────────────────────────────────────────────────
+  const enrichUserWithRole = useCallback((u) => {
+    if (!u) return null;
+    const email = u.email?.toLowerCase() || '';
+    
+    // Managers list
+    const colibriManagers = [
+      '19.anastasiya.tkachenko.88@gmail.com',
+      'dilshat2504@gmail.com',
+      'anastassiya.b@hj.fit'
+    ];
+    
+    const isColibriManager = colibriManagers.includes(email);
+    const isChef = email.includes('chef') || email === 'dilshat.r@hj.fit' || email.includes('sales5');
+
+    return {
+      ...u,
+      displayName: u.displayName || (isColibriManager ? 'Анастасия' : email.split('@')[0]),
+      role: isColibriManager ? 'manager' : (isChef ? 'admin' : 'user'),
+      club: isColibriManager ? 'COLIBRI' : null,
+    };
+  }, []);
+
   // ─── Auth ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // ─── Restore session from Firebase or LocalStorage (for mock users) ────
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u) {
-        setUser(u);
-        localStorage.removeItem('app_mock_user'); // Firebase wins
+        setUser(enrichUserWithRole(u));
+        localStorage.removeItem('app_mock_user');
       } else {
         const savedMock = localStorage.getItem('app_mock_user');
         if (savedMock) {
-          try { setUser(JSON.parse(savedMock)); } catch { setUser(null); }
+          try { 
+            const mock = JSON.parse(savedMock);
+            setUser(enrichUserWithRole(mock));
+          } catch { setUser(null); }
         } else {
           setUser(null);
         }
@@ -115,15 +140,39 @@ export const TicketProvider = ({ children }) => {
       setLoading(false);
     });
     return unsub;
-  }, []);
+  }, [enrichUserWithRole]);
+
+  const login = async (email, password) => {
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      setUser(enrichUserWithRole(cred.user));
+      localStorage.removeItem('app_mock_user');
+      toast.success('Вход выполнен');
+    } catch (e) {
+      console.warn('[Login] Firebase auth error, falling back to local state:', e.code);
+      const mockUser = enrichUserWithRole({
+        email: email,
+        uid: 'local_' + Date.now(),
+      });
+      setUser(mockUser);
+      localStorage.setItem('app_mock_user', JSON.stringify(mockUser));
+      toast.info(`Вход в демо-режиме: ${mockUser.role === 'manager' ? 'Менеджер (Колибри)' : 'Администратор'}`);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('app_mock_user');
+    signOut(auth).then(() => {
+      setUser(null);
+      toast.success('Вы вышли из системы');
+    });
+    setUser(null);
+  };
 
   // ─── Firestore live listener ──────────────────────────────────────────────
   useEffect(() => {
-    // No orderBy — avoids crash when createdAt types are mixed (Timestamp vs string)
     const q = query(collection(db, 'tickets'));
-
     const unsub = onSnapshot(q, (snapshot) => {
-      // Notify on status changes
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'modified') {
           const newData = change.doc.data();
@@ -136,76 +185,40 @@ export const TicketProvider = ({ children }) => {
           }
         }
       });
-
-      // Fresh list from Firestore
       const fresh = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
       setTickets(prev => {
-        // If Firestore is empty but we have cache — keep cache (auth/network glitch)
-        if (fresh.length === 0 && prev.length > 0) {
-          console.warn('[TicketContext] Firebase empty, keeping', prev.length, 'cached tickets');
-          return prev;
-        }
-
-        // Build map from fresh Firestore data (source of truth)
+        if (fresh.length === 0 && prev.length > 0) return prev;
         const map = {};
         fresh.forEach(t => { map[t.id] = t; });
-
-        // Also keep any local-only tickets (optimistic adds and demo tickets)
         prev.forEach(t => {
           if (!map[t.id]) {
-            // NEVER keep temp tickets once Firestore has responded —
-            // the real document is already in `fresh` under its real ID
             if (String(t.id).startsWith('temp_')) return;
-
-            if (!isFirebaseId(String(t.id))) {
-              // It's a demo ticket — keep it permanently in local context
-              map[t.id] = t;
-            } else {
-              // It's a real Firebase ticket — keep only if it was added very recently (optimistic)
+            if (!isFirebaseId(String(t.id))) map[t.id] = t;
+            else {
               const age = Date.now() - new Date(t.createdAt || 0).getTime();
               if (age < 30_000) map[t.id] = t;
             }
           }
         });
-
         return sortByRecentActivity(Object.values(map));
       });
     }, (error) => {
       console.error('[TicketContext] listener error:', error.code, error.message);
-      // Keep existing cache — don't clear
     });
-
     return unsub;
   }, []);
 
-  // ─── updateTicket ─────────────────────────────────────────────────────────
-  // Optimistic update first, then Firestore (only for real Firebase IDs)
   const updateTicket = useCallback(async (ticketId, updates) => {
     if (!ticketId) return;
-
-    // Always update local state immediately (optimistic)
-    setTickets(prev =>
-      prev.map(t => String(t.id) === String(ticketId) ? { ...t, ...updates } : t)
-    );
-
-    // Only write to Firestore for real Firebase document IDs
-    if (!isFirebaseId(String(ticketId))) {
-      // Demo or local-only ticket — skip Firestore
-      return;
-    }
-
+    setTickets(prev => prev.map(t => String(t.id) === String(ticketId) ? { ...t, ...updates } : t));
+    if (!isFirebaseId(String(ticketId))) return;
     try {
       await updateDoc(doc(db, 'tickets', String(ticketId)), updates);
     } catch (error) {
-      console.error('[updateTicket] Firestore error:', error.code, error.message);
-      toast.error('Не удалось сохранить в облаке: ' + (error.message || error.code));
+      toast.error('Ошибка сохранения в облаке');
     }
   }, []);
 
-  // ─── addTicket ────────────────────────────────────────────────────────────
-  // No optimistic update — we let onSnapshot add the ticket to avoid duplicates.
-  // The modal shows a spinner while waiting; onSnapshot fires within ~1s on good connection.
   const addTicket = useCallback(async (ticketData) => {
     try {
       await addDoc(collection(db, 'tickets'), {
@@ -217,13 +230,11 @@ export const TicketProvider = ({ children }) => {
       });
       toast.success('Задача создана');
     } catch (error) {
-      console.error('[addTicket]', error);
       toast.error('Ошибка создания задачи');
       throw error;
     }
   }, [user]);
 
-  // ─── addComment ───────────────────────────────────────────────────────────
   const addComment = useCallback(async (ticketId, commentText, attachment = null) => {
     const ticket = allTicketsRef.current.find(t => String(t.id) === String(ticketId));
     const newComment = {
@@ -234,40 +245,24 @@ export const TicketProvider = ({ children }) => {
       attachment,
     };
     const updatedComments = [...(ticket?.comments || []), newComment];
-
-    // Optimistic
-    setTickets(prev =>
-      prev.map(t => String(t.id) === String(ticketId) ? { ...t, comments: updatedComments } : t)
-    );
-
-    if (!isFirebaseId(String(ticketId))) return; // demo ticket — local only
-
+    setTickets(prev => prev.map(t => String(t.id) === String(ticketId) ? { ...t, comments: updatedComments } : t));
+    if (!isFirebaseId(String(ticketId))) return;
     try {
       await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: updatedComments });
       toast.success('Комментарий добавлен');
     } catch (error) {
-      console.error('[addComment]', error);
       toast.error('Ошибка добавления комментария');
     }
   }, [user]);
 
-  // ─── uploadFile ───────────────────────────────────────────────────────────
   const uploadFile = useCallback(async (file, onProgress) => {
     if (!file) return null;
     if (!auth.currentUser) {
-      console.warn('[uploadFile] No Firebase auth, using local blob fallback');
-      // For demo/unconfigured mode, we return a local URL so the UI works
-      return { 
-        name: file.name, 
-        url: URL.createObjectURL(file), 
-        type: file.type,
-        isLocal: true 
-      };
+      return { name: file.name, url: URL.createObjectURL(file), type: file.type, isLocal: true };
     }
     const fileId = Math.random().toString(36).slice(2, 11);
     const storageRef = ref(storage, `attachments/${fileId}_${file.name}`);
     const task = uploadBytesResumable(storageRef, file);
-
     return new Promise((resolve, reject) => {
       task.on('state_changed',
         (snap) => { if (onProgress) onProgress((snap.bytesTransferred / snap.totalBytes) * 100); },
@@ -279,39 +274,6 @@ export const TicketProvider = ({ children }) => {
       );
     });
   }, []);
-
-  const login = async (email, password) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      localStorage.removeItem('app_mock_user');
-      toast.success('Вход выполнен');
-    } catch (e) {
-      console.warn('[Login] Firebase auth error, falling back to local state:', e.code);
-      
-      // Setup specific profiles for Managers (COLIBRI)
-      const colibriManagers = [
-        '19.anastasiya.tkachenko.88@gmail.com',
-        'dilshat2504@gmail.com',
-        'anastassiya.b@hj.fit'
-      ];
-      
-      const isColibriManager = colibriManagers.includes(email.toLowerCase());
-      
-      const mockUser = {
-        email: email,
-        displayName: isColibriManager 
-          ? (email.toLowerCase().includes('anastas') ? 'Анастасия' : 'Дильшат') 
-          : email.split('@')[0],
-        uid: 'local_' + Date.now(),
-        role: isColibriManager ? 'manager' : 'admin',
-        club: isColibriManager ? 'COLIBRI' : null,
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('app_mock_user', JSON.stringify(mockUser));
-      toast.info(`Вход выполнен: ${isColibriManager ? 'Менеджер (Колибри)' : 'Администратор'}`);
-    }
-  };
 
   const logout = () => {
     localStorage.removeItem('app_mock_user');
