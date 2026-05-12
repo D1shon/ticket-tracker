@@ -314,7 +314,12 @@ export const TicketProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('app_mock_user');
-    signOut(auth);
+    signOut(auth).then(() => {
+      setUser(null);
+      toast.success('Вы вышли из системы');
+    });
+    // In case signOut doesn't trigger onAuthStateChanged immediately for mock users
+    setUser(null);
   };
 
   return (

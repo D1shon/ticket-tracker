@@ -8,11 +8,11 @@ const SettingsPage = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [emailReports, setEmailReports] = useState(false);
 
-  // User details from context or screenshot defaults
-  const userName = user ? "Дильшат (CHEF)" : "Дильшат (CHEF)";
-  const userEmail = user?.email || "dilshat.r@hj.fit";
-  const userRole = user ? "CHEF" : "ГОСТЬ";
-  const userClub = "Все Клубы";
+  // User details from context
+  const userName = user?.displayName || "Пользователь";
+  const userEmail = user?.email || "—";
+  const userRole = user?.role?.toUpperCase() || "ADMIN";
+  const userClub = user?.club || "Все Клубы";
 
   const CLUBS = [
     { name: '4YOU', color: '#4f8ef7' },
