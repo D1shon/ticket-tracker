@@ -105,7 +105,7 @@ const Sidebar = () => {
             <div style={{ position: 'relative' }}>
               <Bell size={17} strokeWidth={1.8} />
               {unreadCount > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: white, fontSize: 9, width: 14, height: 14, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', fontSize: 9, width: 14, height: 14, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {unreadCount}
                 </span>
               )}
