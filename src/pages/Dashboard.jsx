@@ -67,28 +67,36 @@ const Dashboard = () => {
   
   const allManagerNames = [...new Set([...MANAGER_NAMES, ...ticketAssignees])];
 
-  // Calculate manager load dynamically from all tickets
-  const dynamicManagers = allManagerNames.map(name => {
-    // Include 'new' tickets in the count so the dashboard updates immediately
-    const assigned = rawTickets.filter(t => t.assignee && t.assignee.includes(name) && t.status !== 'closed');
-    const work  = assigned.filter(t => t.status === 'in_progress').length;
-    const pause = assigned.filter(t => t.status === 'paused').length;
-    const wait  = assigned.filter(t => t.status === 'waiting').length;
-    const newCount = assigned.filter(t => t.status === 'new').length;
-    const total = work + pause + wait + newCount;
-    const isFree = total === 0;
+  // Filter manager load dynamically based on club access
+  const dynamicManagers = allManagerNames
+    .map(name => {
+      // stats are already based on rawTickets (which is club-filtered)
+      const assigned = rawTickets.filter(t => t.assignee && t.assignee.includes(name) && t.status !== 'closed');
+      const work  = assigned.filter(t => t.status === 'in_progress').length;
+      const pause = assigned.filter(t => t.status === 'paused').length;
+      const wait  = assigned.filter(t => t.status === 'waiting').length;
+      const newCount = assigned.filter(t => t.status === 'new').length;
+      const total = work + pause + wait + newCount;
+      const isFree = total === 0;
 
-    return {
-      name,
-      status: isFree ? 'СВОБОДЕН' : 'В РАБОТЕ',
-      work,
-      pause,
-      wait,
-      newCount,
-      total,
-      color: isFree ? '#55556a' : '#9b5de5'
-    };
-  }).sort((a, b) => b.total - a.total); 
+      return {
+        name,
+        status: isFree ? 'СВОБОДЕН' : 'В РАБОТЕ',
+        work,
+        pause,
+        wait,
+        newCount,
+        total,
+        color: isFree ? '#55556a' : '#9b5de5'
+      };
+    })
+    .filter(m => {
+      // If manager mode: only show managers who actually have work in THIS club or it's the user themselves
+      if (!userClub) return true;
+      const isMe = m.name.toUpperCase().includes(user?.displayName?.toUpperCase() || '___');
+      return m.total > 0 || isMe;
+    })
+    .sort((a, b) => b.total - a.total); 
 
   const liveFeed = allTickets
     .filter(t => t.status !== 'closed' && t.status !== 'new')

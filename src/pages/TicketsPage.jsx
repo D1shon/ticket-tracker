@@ -193,12 +193,11 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
       setTitle('');
       setDescription('');
       setPriority('medium');
-      setIsSubmitting(false); // сбрасываем состояние загрузки при каждом открытии
-      // Default club for non-chef is 4YOU, but prefer activeClub if valid
-      const initialClub = (activeClub && activeClub !== 'ВСЕ') ? activeClub : (isChef ? '' : '4YOU');
+      setIsSubmitting(false);
+      // Priority: 1. User's fixed club, 2. Active filter club, 3. Default (Chef gets empty, others 4YOU)
+      const initialClub = user?.club || ((activeClub && activeClub !== 'ВСЕ') ? activeClub : (isChef ? '' : '4YOU'));
       setClub(initialClub);
-      // Default assignee is the current user or a fallback
-      setAssignee(user?.displayName || 'Сания (4YOU)');
+      setAssignee(user?.displayName || 'Анастасия');
     }
   }, [isOpen, isChef, user, activeClub]);
 
@@ -245,26 +244,31 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Клуб
             </label>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {CLUBS.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setClub(c)}
-                  style={{
-                    padding: '8px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700,
-                    background: club === c ? 'var(--accent-purple)' : 'var(--bg-secondary)',
-                    color: club === c ? '#fff' : 'var(--text-secondary)',
-                    border: club === c ? '1px solid var(--accent-purple)' : '1px solid var(--border)',
-                    cursor: 'pointer',
-                    opacity: 1,
-                    transition: 'all 0.15s'
-                  }}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+            {user?.club ? (
+              <div style={{ padding: '10px 16px', borderRadius: 12, background: 'var(--bg-hover)', border: '1px solid var(--border)', fontSize: 13, fontWeight: 800, color: 'var(--accent-purple)' }}>
+                {user.club.toUpperCase()}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {CLUBS.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setClub(c)}
+                    style={{
+                      padding: '8px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                      background: club === c ? 'var(--accent-purple)' : 'var(--bg-secondary)',
+                      color: club === c ? '#fff' : 'var(--text-secondary)',
+                      border: club === c ? '1px solid var(--accent-purple)' : '1px solid var(--border)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>

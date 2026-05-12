@@ -278,17 +278,19 @@ const SchedulePage = () => {
     <div className="space-y-6 animate-fade">
       <div className="flex items-center justify-between bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-xl">
         <div className="flex items-center gap-5">
-          <button 
-            onClick={() => setView('selection')}
-            style={{ 
-              background: 'var(--bg-hover)', border: '1px solid var(--border)', 
-              borderRadius: 12, padding: '8px 12px', color: 'var(--text-secondary)', 
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 11, fontWeight: 800, textTransform: 'uppercase'
-            }}
-          >
-            <ChevronLeft size={16} /> Назад
-          </button>
+          {isChef && (
+            <button 
+              onClick={() => setView('selection')}
+              style={{ 
+                background: 'var(--bg-hover)', border: '1px solid var(--border)', 
+                borderRadius: 12, padding: '8px 12px', color: 'var(--text-secondary)', 
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 11, fontWeight: 800, textTransform: 'uppercase'
+              }}
+            >
+              <ChevronLeft size={16} /> Назад
+            </button>
+          )}
           <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-[var(--accent-purple)] border border-purple-500/10">
             <Users size={24} />
           </div>
