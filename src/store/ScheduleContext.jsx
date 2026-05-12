@@ -32,7 +32,15 @@ export const ScheduleProvider = ({ children }) => {
   const [employees, setEmployees] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
-      return saved ? JSON.parse(saved) : [];
+      const list = saved ? JSON.parse(saved) : [];
+      if (list.length === 0) {
+        return [
+          { id: 'c1', name: 'Сотрудник 1 (Колибри)', club: 'COLIBRI', order: 0 },
+          { id: 'c2', name: 'Сотрудник 2 (Колибри)', club: 'COLIBRI', order: 1 },
+          { id: 'c3', name: 'Сотрудник 3 (Колибри)', club: 'COLIBRI', order: 2 }
+        ];
+      }
+      return list;
     } catch { return []; }
   });
   const [settings, setSettings] = useState(() => {

@@ -300,7 +300,7 @@ export const TicketProvider = ({ children }) => {
       const mockUser = {
         email: email,
         displayName: isColibriManager 
-          ? (email.toLowerCase().includes('anastasiya') ? 'Анастасия' : 'Дильшат') 
+          ? (email.toLowerCase().includes('anastas') ? 'Анастасия' : 'Дильшат') 
           : email.split('@')[0],
         uid: 'local_' + Date.now(),
         role: isColibriManager ? 'manager' : 'admin',
