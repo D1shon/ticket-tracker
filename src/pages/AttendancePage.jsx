@@ -314,7 +314,7 @@ const AttendancePage = () => {
                {!isVerifying ? (
                  <>
                    <img 
-                     src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(window.location.origin + '/scan?admin=' + (activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name))}&color=000000&margin=10&qzone=2`}
+                     src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.origin + '/scan?admin=' + (activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name))}&color=000000`}
                      alt="QR Scan"
                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                    />
@@ -328,6 +328,15 @@ const AttendancePage = () => {
                     <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>GPS Checking...</div>
                  </div>
                )}
+            </div>
+
+            <div style={{ padding: '12px', background: 'var(--bg-hover)', borderRadius: 16, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => {
+              const url = window.location.origin + '/scan?admin=' + (activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name);
+              navigator.clipboard.writeText(url);
+              alert('Ссылка скопирована! Отправьте её администратору в мессенджер.');
+            }}>
+               <RefreshCcw size={14} color="var(--text-muted)" />
+               <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>Проблемы со сканированием? Скопировать ссылку</span>
             </div>
 
             {!isVerifying && (
