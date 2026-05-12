@@ -7,10 +7,20 @@ import { ru } from 'date-fns/locale';
 import { useChecklist } from '../store/ChecklistContext';
 
 const ChecklistPage = () => {
-  const [activeClub, setActiveClub] = useState('4YOU');
+  const { user } = useTickets();
+  const userClub = user?.club?.toUpperCase();
+
+  const [activeClub, setActiveClub] = useState(userClub || '4YOU');
   const [activeDate, setActiveDate] = useState(startOfToday());
   const { checklistData } = useChecklist();
   const navigate = useNavigate();
+
+  // If user has a fixed club, ensure they stay on it
+  React.useEffect(() => {
+    if (userClub) {
+      setActiveClub(userClub);
+    }
+  }, [userClub]);
 
   const dateKey = format(activeDate, 'yyyy-MM-dd');
 
@@ -48,24 +58,26 @@ const ChecklistPage = () => {
 
       {/* Filters Row */}
       <div className="flex items-center justify-between mb-8">
-        <div className="flex flex-col gap-3">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Клуб</span>
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
-            {CLUBS.map(club => (
-              <button
-                key={club}
-                onClick={() => setActiveClub(club)}
-                className={`px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                  activeClub === club 
-                    ? 'bg-[var(--bg-hover)] text-[var(--accent-blue)] border border-[var(--accent-blue)]/20' 
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                {club}
-              </button>
-            ))}
+        {!userClub && (
+          <div className="flex flex-col gap-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Клуб</span>
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
+              {CLUBS.map(club => (
+                <button
+                  key={club}
+                  onClick={() => setActiveClub(club)}
+                  className={`px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                    activeClub === club 
+                      ? 'bg-[var(--bg-hover)] text-[var(--accent-blue)] border border-[var(--accent-blue)]/20' 
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {club}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-col gap-3 items-end">
           <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Дата смен</span>
