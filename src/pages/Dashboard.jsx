@@ -16,13 +16,23 @@ const StatusBadge = ({ status }) => {
 };
 
 const Dashboard = () => {
-  const { tickets } = useTickets();
+  const { tickets, user } = useTickets();
   const [activeTab, setActiveTab] = React.useState('ВCE КЛУБЫ');
   
-  // Use tickets from context directly (it now includes demo tickets if empty)
-  const rawTickets = tickets || [];
+  // Restricted access for Managers
+  const userClub = user?.club?.toUpperCase();
 
-  // Filter tickets based on active tab
+  // Primary data filter
+  const rawTickets = (tickets || []).filter(t => {
+    if (!userClub) return true;
+    return (t.club || '').toUpperCase() === userClub;
+  });
+
+  // Auto-switch tab if restricted
+  React.useEffect(() => {
+    if (userClub) setActiveTab(userClub);
+  }, [userClub]);
+
   const allTickets = activeTab === 'ВCE КЛУБЫ' 
     ? rawTickets 
     : rawTickets.filter(t => (t.club || '').toUpperCase() === activeTab.toUpperCase());
@@ -33,7 +43,7 @@ const Dashboard = () => {
   const closedToday = allTickets.filter(t => t.status === 'closed').length;
 
   const getClubStats = (clubName, color) => {
-    // Club summary should always show stats for all clubs regardless of filter
+    if (userClub && clubName.toUpperCase() !== userClub) return null;
     const clubTickets = rawTickets.filter(t => (t.club || '4YOU').toUpperCase() === clubName.toUpperCase());
     return {
       name: clubName,
@@ -49,9 +59,8 @@ const Dashboard = () => {
     getClubStats('COLIBRI', '#9b5de5'),
     getClubStats('VILLA', '#f59e0b'),
     getClubStats('NURLY ORDA', '#f97316'),
-  ];
+  ].filter(Boolean);
 
-  // Extract all unique assignees from tickets, clean up "(CLUB)", and merge with default managers
   const ticketAssignees = rawTickets
     .map(t => t.assignee ? t.assignee.split('(')[0].trim() : '')
     .filter(Boolean);
@@ -112,21 +121,23 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-[var(--bg-card)] p-1.5 rounded-2xl border border-[var(--border)] shadow-2xl backdrop-blur-md">
-          {['ВCE КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
-                activeTab === tab 
-                  ? 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]' 
-                  : 'text-white/30 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        {!userClub && (
+          <div className="flex items-center gap-2 bg-[var(--bg-card)] p-1.5 rounded-2xl border border-[var(--border)] shadow-2xl backdrop-blur-md">
+            {['ВCE КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
+                  activeTab === tab 
+                    ? 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]' 
+                    : 'text-white/30 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Primary Stat Grid */}

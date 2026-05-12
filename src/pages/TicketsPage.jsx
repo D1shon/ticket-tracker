@@ -392,15 +392,24 @@ const KanbanColumn = ({ col, tickets, prevTicketIds }) => {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 const TicketsPage = () => {
-  const [activeClub,   setActiveClub]   = useState('ВСЕ');
+  const { tickets, user, addTicket } = useTickets();
+  const userClub = user?.club?.toUpperCase();
+
+  const [activeClub,   setActiveClub]   = useState(userClub || 'ВСЕ');
   const [activeFilter, setActiveFilter] = useState('ВСЕ');
   const [search,       setSearch]       = useState('');
   const [viewMode,     setViewMode]     = useState('kanban');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [prevColIds,    setPrevColIds]    = useState(null);
 
-  const { tickets, user, addTicket } = useTickets();
   const navigate = useNavigate();
+
+  // If user has a fixed club, ensure they stay on it
+  useEffect(() => {
+    if (userClub) {
+      setActiveClub(userClub);
+    }
+  }, [userClub]);
 
   // Group tickets by status
   const groupedTickets = React.useMemo(() => {
@@ -408,11 +417,14 @@ const TicketsPage = () => {
     if (!tickets) return result;
     
     tickets.forEach(t => {
+      // Filter by club first for security
+      if (userClub && (t.club || '').toUpperCase() !== userClub) return;
+      
       const s = t.status || 'new';
       if (result[s]) result[s].push(t);
     });
     return result;
-  }, [tickets]);
+  }, [tickets, userClub]);
 
   // Update prevColIds whenever groupedTickets changes (so we can detect new arrivals)
   useEffect(() => {
@@ -422,11 +434,7 @@ const TicketsPage = () => {
     });
 
     setPrevColIds(prev => {
-      // On first render there's nothing to diff
       if (prev === null) return nextIds;
-
-      // Compute which IDs moved *into* each column
-      // (we don't need to store this — just return next so next diff is ready)
       return nextIds;
     });
   }, [groupedTickets]);
@@ -435,8 +443,10 @@ const TicketsPage = () => {
   const filterTickets = useCallback((colId, colTickets) => {
     let filtered = colTickets || [];
 
-    // Club filter
-    if (activeClub !== 'ВСЕ') filtered = filtered.filter(t => t.club === activeClub);
+    // Club filter (only for admins, managers are filtered at groupedTickets level)
+    if (!userClub && activeClub !== 'ВСЕ') {
+      filtered = filtered.filter(t => t.club === activeClub);
+    }
 
     // Search
     if (search.trim()) {
@@ -460,7 +470,7 @@ const TicketsPage = () => {
     }
 
     return filtered;
-  }, [activeClub, search, activeFilter]);
+  }, [activeClub, search, activeFilter, userClub]);
 
   const flattenedTickets = React.useMemo(() =>
     COLUMNS.flatMap(col =>
@@ -474,25 +484,27 @@ const TicketsPage = () => {
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, paddingRight: 56 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, fontStyle: 'italic', color: 'var(--text-primary)', marginBottom: 4 }}>
-            Все клубы: {activeClub === 'ВСЕ' ? 'ALL' : activeClub}
+          <h1 style={{ fontSize: 20, fontWeight: 800, fontStyle: 'italic', color: 'var(--text-primary)', marginBottom: 4, textTransform: 'uppercase' }}>
+            {userClub ? `Клуб ${userClub}` : `Все клубы: ${activeClub === 'ВСЕ' ? 'ALL' : activeClub}`}
           </h1>
           <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            📍 ГЛОБАЛЬНЫЙ МОНИТОРИНГ
+            {userClub ? `📍 ЛОКАЛЬНЫЙ МОНИТОРИНГ: ${userClub}` : '📍 ГЛОБАЛЬНЫЙ МОНИТОРИНГ'}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {/* Club tabs */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 4, borderRadius: 999, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-            {CLUBS_TABS.map(c => (
-              <button key={c} onClick={() => setActiveClub(c)} style={{
-                padding: '6px 16px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-                background: activeClub === c ? 'var(--accent-purple)' : 'transparent',
-                color: activeClub === c ? '#fff' : 'var(--text-secondary)',
-                border: 'none', cursor: 'pointer', transition: 'all 0.15s', letterSpacing: '0.02em',
-              }}>{c}</button>
-            ))}
-          </div>
+          {/* Club tabs (Only for Admins) */}
+          {!userClub && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 4, borderRadius: 999, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              {CLUBS_TABS.map(c => (
+                <button key={c} onClick={() => setActiveClub(c)} style={{
+                  padding: '6px 16px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                  background: activeClub === c ? 'var(--accent-purple)' : 'transparent',
+                  color: activeClub === c ? '#fff' : 'var(--text-secondary)',
+                  border: 'none', cursor: 'pointer', transition: 'all 0.15s', letterSpacing: '0.02em',
+                }}>{c}</button>
+              ))}
+            </div>
+          )}
           <button
             onClick={() => setIsCreateOpen(true)}
             style={{

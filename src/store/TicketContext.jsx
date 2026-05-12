@@ -287,14 +287,21 @@ export const TicketProvider = ({ children }) => {
       toast.success('Вход выполнен');
     } catch (e) {
       console.warn('[Login] Firebase auth error, falling back to local state:', e.code);
+      
+      // Setup specific profile for Anastasiya
+      const isAnastasiya = email.toLowerCase() === '19.anastasiya.tkachenko.88@gmail.com';
+      
       const mockUser = {
         email: email,
-        displayName: email.split('@')[0],
+        displayName: isAnastasiya ? 'Анастасия' : email.split('@')[0],
         uid: 'local_' + Date.now(),
+        role: isAnastasiya ? 'manager' : 'admin',
+        club: isAnastasiya ? 'COLIBRI' : null, // null means see all clubs
       };
+      
       setUser(mockUser);
       localStorage.setItem('app_mock_user', JSON.stringify(mockUser));
-      toast.info('Вход выполнен (локальный режим)');
+      toast.info(`Вход выполнен: ${isAnastasiya ? 'Менеджер (Колибри)' : 'Администратор'}`);
     }
   };
 

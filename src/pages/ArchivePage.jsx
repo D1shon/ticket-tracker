@@ -19,19 +19,16 @@ const priorityLabels = {
 };
 
 // Mock user's club (in a real app, this would come from the auth context)
-const USER_CLUB = '4YOU';
-
 const ArchivePage = () => {
   const [search, setSearch] = useState('');
-  const { tickets } = useTickets();
+  const { tickets, user } = useTickets();
   const navigate = useNavigate();
+
+  const userClub = user?.club?.toUpperCase();
 
   // Use tickets from context directly
   const allTickets = tickets || [];
 
-  // Define what "archived" means: closed tickets that were not closed today.
-  // For demo purposes, we will treat ALL closed tickets that have a `closedAt` date older than 24h as archived.
-  // If `closedAt` is missing, we'll just show them in the archive for the demo if they are closed.
   const todayStart = new Date().setHours(0,0,0,0);
   
   let archivedTickets = allTickets.filter(t => {
@@ -47,8 +44,10 @@ const ArchivePage = () => {
     return true; 
   });
 
-  // Filter by User's Club
-  archivedTickets = archivedTickets.filter(t => t.club === USER_CLUB);
+  // Filter by User's Club if restricted
+  if (userClub) {
+    archivedTickets = archivedTickets.filter(t => (t.club || '').toUpperCase() === userClub);
+  }
 
   if (search) {
     archivedTickets = archivedTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
@@ -66,7 +65,7 @@ const ArchivePage = () => {
             АРХИВ
           </h1>
           <p className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            <span style={{ color: 'var(--accent-purple)' }}>📍</span> ДОСТУП: КЛУБ {USER_CLUB}
+            <span style={{ color: 'var(--accent-purple)' }}>📍</span> ДОСТУП: {userClub ? `КЛУБ ${userClub}` : 'ВСЕ КЛУБЫ'}
           </p>
         </div>
       </div>

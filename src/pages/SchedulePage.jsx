@@ -101,26 +101,26 @@ const SchedulePage = () => {
            email.includes('sales5'); // Added sales5 as a trusted admin for this workspace
   }, [user]);
 
+  // Restricted access for Managers
+  const userClub = user?.club?.toUpperCase();
+
   const [selectedClub, setSelectedClub] = useState(null);
   const [view, setView] = useState('selection'); // 'selection' or 'grid'
 
-  // Filter clubs based on role and mapping
+  // Filter clubs based on role
   const allowedClubs = useMemo(() => {
     if (isChef) return CLUBS;
-    const email = user?.email?.toLowerCase() || '';
-    for (const [key, club] of Object.entries(MANAGER_CLUB_MAP)) {
-      if (email.includes(key)) return [club];
-    }
-    return []; // No clubs if not mapped
-  }, [isChef, user]);
+    if (userClub) return [userClub];
+    return []; 
+  }, [isChef, userClub]);
 
   // Auto-select if only one club is allowed
   useEffect(() => {
-    if (!isChef && allowedClubs.length === 1 && view === 'selection') {
-      setSelectedClub(allowedClubs[0]);
+    if (!isChef && userClub && view === 'selection') {
+      setSelectedClub(userClub);
       setView('grid');
     }
-  }, [allowedClubs, isChef, view]);
+  }, [userClub, isChef, view]);
 
   const [pendingRows, setPendingRows] = useState([]);
   const [savingIds, setSavingIds] = useState(new Set());
