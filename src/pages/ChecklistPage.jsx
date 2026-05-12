@@ -9,18 +9,22 @@ import { useChecklist } from '../store/ChecklistContext';
 const ChecklistPage = () => {
   const { user } = useTickets();
   const userClub = user?.club?.toUpperCase();
+  const isManager = user?.role === 'manager';
+
+  // Strictly filter clubs for managers
+  const availableClubs = (isManager && userClub) ? [userClub] : CLUBS;
 
   const [activeClub, setActiveClub] = useState(userClub || '4YOU');
   const [activeDate, setActiveDate] = useState(startOfToday());
   const { checklistData } = useChecklist();
   const navigate = useNavigate();
 
-  // If user has a fixed club, ensure they stay on it
+  // Force active club and prevent seeing others
   React.useEffect(() => {
-    if (userClub) {
+    if (userClub && isManager) {
       setActiveClub(userClub);
     }
-  }, [userClub]);
+  }, [userClub, isManager]);
 
   const dateKey = format(activeDate, 'yyyy-MM-dd');
 
@@ -58,11 +62,11 @@ const ChecklistPage = () => {
 
       {/* Filters Row */}
       <div className="flex items-center justify-between mb-8">
-        {!userClub && (
+        {!isManager && (
           <div className="flex flex-col gap-3">
             <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Клуб</span>
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
-              {CLUBS.map(club => (
+              {availableClubs.map(club => (
                 <button
                   key={club}
                   onClick={() => setActiveClub(club)}
