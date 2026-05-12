@@ -8,9 +8,19 @@ import { useChecklist } from '../store/ChecklistContext';
 import { useTickets } from '../store/TicketContext';
 
 const ChecklistPage = () => {
-  const { user } = useTickets();
+  const context = useTickets();
+  const user = context?.user;
   const userClub = user?.club?.toUpperCase();
   const isManager = user?.role === 'manager';
+
+  // Defensive check to prevent white screen if context is glitchy
+  if (!context || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
 
   // Strictly filter clubs for managers
   const availableClubs = (isManager && userClub) ? [userClub] : CLUBS;
