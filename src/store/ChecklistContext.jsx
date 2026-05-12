@@ -35,15 +35,17 @@ export const ChecklistProvider = ({ children }) => {
     return () => unsubscribe();
   }, [user]);
 
-  const updateCheckState = async (dateKey, shiftId, cardId, itemStates, itemIssues) => {
+  const updateCheckState = async (dateKey, shiftId, cardId, club, itemStates, itemIssues, itemTimestamps) => {
     try {
-      const docId = `${dateKey}_${shiftId}_${cardId}`;
+      const docId = `${dateKey}_${club}_${shiftId}_${cardId}`;
       await setDoc(doc(db, 'checklists', docId), {
         dateKey,
         shiftId,
         cardId,
+        club,
         states: itemStates,
         issues: itemIssues,
+        timestamps: itemTimestamps || {},
         updatedAt: serverTimestamp(),
         updatedBy: user.email
       });

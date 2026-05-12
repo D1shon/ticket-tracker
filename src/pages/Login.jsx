@@ -4,7 +4,6 @@ import { Mail, Lock, LogIn } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useTickets();
 
@@ -12,7 +11,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email, 'common-password'); // Using a simplified internal password for quick access
     } catch (error) {
       console.error(error);
     } finally {
@@ -30,7 +29,7 @@ const Login = () => {
       <div className="w-full max-w-md glass p-8 rounded-2xl relative z-10">
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center font-bold text-3xl text-white mb-4 shadow-xl shadow-primary/20">
-            H
+            HJ
           </div>
           <h1 className="text-2xl font-bold text-foreground">С возвращением!</h1>
           <p className="text-muted-foreground mt-1 text-center">Войдите в систему управления заявками Herotrack</p>
@@ -52,20 +51,7 @@ const Login = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5 ml-1">Пароль</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-muted/50 border border-border rounded-xl py-2.5 pl-10 pr-4 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
-                required
-              />
-            </div>
-          </div>
+
 
           <div className="flex items-center justify-between text-sm py-1">
             <label className="flex items-center gap-2 text-muted-foreground cursor-pointer">

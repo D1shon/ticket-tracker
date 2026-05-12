@@ -2,10 +2,13 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { TicketProvider, useTickets } from './store/TicketContext';
 import { ScheduleProvider } from './store/ScheduleContext';
+import { NotificationProvider } from './store/NotificationContext';
+import { CallProvider } from './store/CallContext';
 import { Toaster } from 'sonner';
 
 // Components & Pages
 import Sidebar from './components/layout/Sidebar';
+import NotificationBell from './components/layout/NotificationBell';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TicketsPage from './pages/TicketsPage';
@@ -14,6 +17,24 @@ import SchedulePage from './pages/SchedulePage';
 import ChecklistPage from './pages/ChecklistPage';
 import ChecklistDetail from './pages/ChecklistDetail';
 import ArchivePage from './pages/ArchivePage';
+import SettingsPage from './pages/SettingsPage';
+import CallsPage from './pages/CallsPage';
+import AttendancePage from './pages/AttendancePage';
+import CallOverlay from './components/layout/CallOverlay';
+import DemoDayBanner from './components/layout/DemoDayBanner';
+import MobileScanner from './pages/MobileScanner';
+
+// Notification bell is fixed top-right on every authenticated page
+const NotificationCorner = () => (
+  <div style={{
+    position: 'fixed',
+    top: 12,
+    right: 16,
+    zIndex: 1000,
+  }}>
+    <NotificationBell />
+  </div>
+);
 
 const ProtectedLayout = ({ children }) => {
   const { user, loading } = useTickets();
@@ -26,14 +47,14 @@ const ProtectedLayout = ({ children }) => {
     );
   }
 
-  // Временно отключено для демонстрации
-  // if (!user) {
-  //   return <Navigate to="/login" replace />;
-  // }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex' }}>
       <Sidebar />
+      <NotificationCorner />
       <div style={{ flex: 1, marginLeft: '220px', display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <main style={{ flex: 1, padding: '24px 28px', overflow: 'auto' }}>
           {children}
@@ -66,6 +87,12 @@ const AppContent = () => {
       `}</style>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/tickets" replace /> : <Login />} />
+        
+        <Route path="/scan" element={
+          <ProtectedLayout>
+            <MobileScanner />
+          </ProtectedLayout>
+        } />
         
         <Route path="/dashboard" element={
           <ProtectedLayout>
@@ -112,13 +139,28 @@ const AppContent = () => {
             <ArchivePage />
           </ProtectedLayout>
         } />
-        <Route path="/calls" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Созвоны — в разработке</div></ProtectedLayout>} />
+        <Route path="/calls" element={
+          <ProtectedLayout>
+            <CallsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/attendance" element={
+          <ProtectedLayout>
+            <AttendancePage />
+          </ProtectedLayout>
+        } />
         <Route path="/chat" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Чат — в разработке</div></ProtectedLayout>} />
-        <Route path="/settings" element={<ProtectedLayout><div style={{ color: 'var(--text-muted)', padding: 40 }}>Настройки — в разработке</div></ProtectedLayout>} />
+        <Route path="/settings" element={
+          <ProtectedLayout>
+            <SettingsPage />
+          </ProtectedLayout>
+        } />
 
         <Route path="/" element={<Navigate to="/tickets" replace />} />
         <Route path="*" element={<Navigate to="/tickets" replace />} />
       </Routes>
+      <CallOverlay />
+      <DemoDayBanner />
     </Router>
   );
 };
@@ -128,11 +170,15 @@ import { ChecklistProvider } from './store/ChecklistContext';
 function App() {
   return (
     <TicketProvider>
-      <ScheduleProvider>
-        <ChecklistProvider>
-          <AppContent />
-        </ChecklistProvider>
-      </ScheduleProvider>
+      <NotificationProvider>
+        <ScheduleProvider>
+          <ChecklistProvider>
+            <CallProvider>
+              <AppContent />
+            </CallProvider>
+          </ChecklistProvider>
+        </ScheduleProvider>
+      </NotificationProvider>
     </TicketProvider>
   );
 }

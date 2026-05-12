@@ -1,21 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Star, Home, Edit2, Play, Pause, Clock, CheckCircle, 
   Smile, Paperclip, Send, MessageSquare, User, Calendar, BookOpen,
-  Package, X
+  Package, X, RefreshCw
 } from 'lucide-react';
-
-const DEMO_TICKETS = {
-  1: {
-    id: 1, club: '4YOU', title: 'Переход на летний режим вентиляции',
-    description: 'Переход на летний режим вентиляции – Валерий. Сания.',
-    status: 'Новая', priority: 'Средний',
-    assignee: 'Сания (4YOU)', createdAt: '30 мар. 2026, 13:00',
-    journal: [{ date: '22 мар.', text: 'Ежегодное ТО выполнено.' }],
-    messages: [],
-  },
-};
+import { useTickets } from '../../store/TicketContext';
+import { formatAuthor } from '../../utils/formatters';
 
 // Preset reasons per action
 const PRESETS = {
@@ -42,18 +33,52 @@ const REASON_CONFIG = {
   finish: { title: 'ИТОГ ВЫПОЛНЕНИЯ ЗАДАЧИ',      color: '#22c55e', btnLabel: 'ПОДТВЕРДИТЬ ЗАВЕРШЕНИЕ', bg: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.2)'  },
 };
 
-// ─── Timer box ───
-const TimerBox = ({ label, seconds, color, active }) => (
-  <div style={{
-    flex: 1, padding: '18px 16px', borderRadius: 12, textAlign: 'center',
-    background: active ? `${color}12` : 'var(--bg-primary)',
-    border: `1px solid ${active ? color + '60' : color + '25'}`,
-    transition: 'all 0.2s',
-  }}>
-    <div style={{ fontSize: 28, fontWeight: 800, color, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>{seconds}с</div>
-    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.03em' }}>{label}</div>
-  </div>
-);
+// ─── Live counter (counts seconds from a given ISO timestamp) ────────────────
+function useLiveSeconds(sinceISO, active) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (!active || !sinceISO) { setSecs(0); return; }
+    const tick = () => setSecs(Math.max(0, Math.floor((Date.now() - new Date(sinceISO).getTime()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [sinceISO, active]);
+  return secs;
+}
+
+function fmtSecs(s) {
+  if (s < 60)   return `${s}с`;
+  if (s < 3600) return `${Math.floor(s / 60)}мин ${s % 60}с`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  return `${h}ч ${m}мин ${rem}с`;
+}
+
+// ─── Timer box ───────────────────────────────────────────────────────────────
+const TimerBox = ({ label, sinceISO, accumulatedSeconds = 0, color, active }) => {
+  const liveSecs = useLiveSeconds(sinceISO, active);
+  const totalSecs = accumulatedSeconds + liveSecs;
+  
+  return (
+    <div style={{
+      flex: 1, padding: '18px 16px', borderRadius: 12, textAlign: 'center',
+      background: active ? `${color}12` : 'var(--bg-primary)',
+      border: `1px solid ${active ? color + '60' : color + '25'}`,
+      transition: 'all 0.3s',
+    }}>
+      <div style={{ fontSize: 22, fontWeight: 800, color, marginBottom: 6, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>
+        {(totalSecs > 0 || active) ? fmtSecs(totalSecs) : '—'}
+      </div>
+      {active && sinceISO && (
+        <div style={{ fontSize: 10, color: `${color}99`, marginBottom: 4 }}>
+          с {new Date(sinceISO).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.03em' }}>{label}</div>
+    </div>
+  );
+};
 
 // ─── Action button ───
 const ActionBtn = ({ icon: Icon, label, color, bg, onClick, active }) => (
@@ -153,84 +178,200 @@ const ReasonPanel = ({ action, onConfirm, onCancel }) => {
 const TicketDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const ticket = DEMO_TICKETS[id] || DEMO_TICKETS[1];
+  const { tickets, updateTicket, addComment, uploadFile } = useTickets();
 
-  const [timerState, setTimerState] = useState('idle');
-  const [pendingAction, setPendingAction] = useState(null);
-  const [statusReport, setStatusReport] = useState(null); // { action, reason, time }
-  const [times, setTimes] = useState({ work: 0, pause: 0, wait: 0 });
-  const [messages, setMessages] = useState(ticket.messages || []);
-  const [msgInput, setMsgInput] = useState('');
-  const [starred, setStarred] = useState(false);
-  const intervalRef = useRef(null);
-  const chatRef = useRef(null);
+  // Find real ticket from context (id from URL is always a string)
+  // Since DEMO_TICKETS are now part of `tickets`, they will be found here.
+  const ticket = tickets?.find(t => String(t.id) === String(id)) || tickets?.[0] || {};
 
+  // ─── Local status override ───────────────────────────────────────────────
+  // ticket comes from DEMO_TICKETS (static) when not found in Firebase.
+  // updateTicket updates the context tickets array, but if this ticket isn't
+  // there yet, the derived `ticket` object never updates → timer never starts.
+  // Solution: keep a local copy of status + statusChangedAt that ALWAYS updates
+  // immediately on button click, regardless of Firebase.
+  const [localStatus,          setLocalStatus]          = useState(ticket.status || 'new');
+  const [localStatusChangedAt, setLocalStatusChangedAt] = useState(ticket.statusChangedAt || null);
+  const [accumulatedTime,      setAccumulatedTime]      = useState({
+    work: ticket.accWork || 0,
+    pause: ticket.accPause || 0,
+    wait: ticket.accWait || 0,
+  });
+
+  // Sync from Firebase when the real ticket loads into context
   useEffect(() => {
-    clearInterval(intervalRef.current);
-    if (timerState === 'work')  intervalRef.current = setInterval(() => setTimes(t => ({ ...t, work:  t.work + 1 })),  1000);
-    if (timerState === 'pause') intervalRef.current = setInterval(() => setTimes(t => ({ ...t, pause: t.pause + 1 })), 1000);
-    if (timerState === 'wait')  intervalRef.current = setInterval(() => setTimes(t => ({ ...t, wait:  t.wait + 1 })),  1000);
-    return () => clearInterval(intervalRef.current);
-  }, [timerState]);
+    const firebaseTicket = tickets?.find(t => String(t.id) === String(id));
+    if (firebaseTicket) {
+      setLocalStatus(firebaseTicket.status || 'new');
+      setLocalStatusChangedAt(firebaseTicket.statusChangedAt || null);
+      setAccumulatedTime({
+        work: firebaseTicket.accWork || 0,
+        pause: firebaseTicket.accPause || 0,
+        wait: firebaseTicket.accWait || 0,
+      });
+    }
+  }, [tickets, id]);
+
+  // Derived timer state from LOCAL status (not from static ticket object)
+  const statusToTimer = { in_progress: 'work', paused: 'pause', waiting: 'wait' };
+  const timerState = statusToTimer[localStatus] || 'idle';
+
+  const workSince  = localStatus === 'in_progress' ? localStatusChangedAt : null;
+  const pauseSince = localStatus === 'paused'      ? localStatusChangedAt : null;
+  const waitSince  = localStatus === 'waiting'     ? localStatusChangedAt : null;
+
+  // ── change status ─────────────────────────────────────────────────────────
+  const changeStatus = useCallback(async (newStatus, reason = null) => {
+    const now = new Date().toISOString();
+
+    // Calculate elapsed time in previous status
+    let elapsed = 0;
+    const parseDate = (d) => {
+      if (!d) return null;
+      if (typeof d.toDate === 'function') return d.toDate();
+      const p = new Date(d);
+      return isNaN(p.getTime()) ? null : p;
+    };
+
+    if (localStatusChangedAt) {
+      const startDate = parseDate(localStatusChangedAt);
+      if (startDate) {
+        elapsed = Math.floor((new Date(now).getTime() - startDate.getTime()) / 1000);
+        if (elapsed < 0) elapsed = 0;
+      }
+    }
+
+    // Accumulate time locally
+    const newAcc = { ...accumulatedTime };
+    if (localStatus === 'in_progress') newAcc.work += elapsed;
+    if (localStatus === 'paused')      newAcc.pause += elapsed;
+    if (localStatus === 'waiting')     newAcc.wait += elapsed;
+
+    // Update LOCAL state FIRST — UI responds instantly
+    setLocalStatus(newStatus);
+    setLocalStatusChangedAt(now);
+    setAccumulatedTime(newAcc);
+
+    // Then push to Firebase/context
+    const update = { 
+      status: newStatus, 
+      statusChangedAt: now,
+      accWork: newAcc.work,
+      accPause: newAcc.pause,
+      accWait: newAcc.wait,
+    };
+    if (reason) update.statusReason = reason;
+    if (newStatus === 'closed') update.closedAt = now;
+    if (updateTicket) await updateTicket(ticket.id, update);
+  }, [ticket.id, updateTicket, localStatus, localStatusChangedAt, accumulatedTime]);
+
+
+  const [pendingAction, setPendingAction] = useState(null);
+  const [statusReport, setStatusReport]   = useState(null);
+  const [messages,     setMessages]       = useState(ticket.comments || []);
+  const [msgInput,     setMsgInput]       = useState('');
+  const [starred,      setStarred]        = useState(false);
+  const chatRef    = useRef(null);
+  const fileInputRef = useRef(null);
+  const [attachment,   setAttachment]     = useState(null);
+  const [previewImage, setPreviewImage]   = useState(null);
+  const [uploading,    setUploading]      = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef(null);
+  const emojiButtonRef = useRef(null);
+
+  // Sync messages when Firebase ticket updates
+  useEffect(() => {
+    if (ticket?.comments) setMessages(ticket.comments);
+  }, [ticket?.comments]);
 
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [messages]);
 
-  const fileInputRef = useRef(null);
-  const [attachment, setAttachment] = useState(null);
-  const [previewImage, setPreviewImage] = useState(null);
+  const handleWorkClick = useCallback(() => {
+    setStatusReport(null);
+    setPendingAction(null);
+    const next = localStatus === 'in_progress' ? 'new' : 'in_progress';
+    changeStatus(next);
+  }, [localStatus, changeStatus]);
 
-  const sendMessage = () => {
-    const t = (msgInput).trim();
-    if (!t && !attachment) return;
-    
-    const newMsg = { 
-      id: Date.now(), 
-      text: t, 
-      author: 'Вы', 
-      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-      attachment: attachment
-    };
-    
-    setMessages(prev => [...prev, newMsg]);
-    setMsgInput('');
-    setAttachment(null);
-  };
+  const handleReasonConfirm = useCallback((reason) => {
+    const statusMap  = { pause: 'paused',  wait: 'waiting', finish: 'closed' };
+    const labelMap   = { pause: '⏸ Пауза', wait: '⏳ Ожидание', finish: '✅ Завершено' };
+    const colorMap   = { pause: '#f59e0b', wait: '#9b5de5', finish: '#22c55e' };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setAttachment({
-        name: file.name,
-        url: URL.createObjectURL(file), // temporary local URL for preview
-        type: file.type
-      });
-    }
-  };
-
-  const handleReasonConfirm = (reason) => {
-    const stateMap = { pause: 'pause', wait: 'wait', finish: 'idle' };
-    const labelMap = { pause: '⏸ Пауза', wait: '⏳ Ожидание', finish: '✅ Завершено' };
-    const colorMap = { pause: '#f59e0b', wait: '#9b5de5', finish: '#22c55e' };
-
-    setTimerState(stateMap[pendingAction]);
+    const newStatus = statusMap[pendingAction];
+    changeStatus(newStatus, reason);
     setStatusReport({
       action: pendingAction,
-      label: labelMap[pendingAction],
-      color: colorMap[pendingAction],
+      label:  labelMap[pendingAction],
+      color:  colorMap[pendingAction],
       reason,
       time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
     });
     setPendingAction(null);
+  }, [pendingAction, changeStatus]);
+
+  // ── send message ───────────────────────────────────────────────────────────
+  const sendMessage = useCallback(async () => {
+    const text = msgInput.trim();
+    if (!text && !attachment) return;
+
+    if (addComment) {
+      await addComment(ticket.id, text, attachment || null);
+    } else {
+      // local fallback
+      setMessages(prev => [...prev, {
+        id: Date.now(), text, author: 'Вы',
+        time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        attachment,
+      }]);
+    }
+    setMsgInput('');
+    setAttachment(null);
+  }, [msgInput, attachment, ticket.id, addComment]);
+
+  // ── file upload ────────────────────────────────────────────────────────────
+  const handleFileChange = useCallback(async (e) => {
+    const target = e.target;
+    const file = target.files[0];
+    if (!file) return;
+
+    if (uploadFile) {
+      setUploading(true);
+      try {
+        const result = await uploadFile(file);
+        setAttachment(result);
+      } finally {
+        setUploading(false);
+        target.value = ''; // Use captured target
+      }
+    } else {
+      setAttachment({ name: file.name, url: URL.createObjectURL(file), type: file.type });
+      target.value = '';
+    }
+  }, [uploadFile]);
+
+  // ── emoji picker logic ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target) &&
+          emojiButtonRef.current && !emojiButtonRef.current.contains(e.target)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const addEmoji = (emoji) => {
+    setMsgInput(prev => prev + emoji);
+    // Keep focus on input if possible, but for simple implementation just append
   };
 
-  // Clear report when going back to work
-  const handleWorkClick = () => {
-    setStatusReport(null);
-    setPendingAction(null);
-    setTimerState(s => s === 'work' ? 'idle' : 'work');
-  };
+  const COMMON_EMOJIS = ['😀', '😊', '😂', '👍', '🙏', '🔥', '✅', '❌', '⚠️', '🆘', '⏳', '⏸️', '💬', '📎', '🚀', '🏢'];
 
-  const sColor = { 'Новая': '#22c55e', 'В РАБОТЕ': '#9b5de5', 'ПАУЗА': '#f59e0b', 'ОЖИДАНИЕ': '#f97316', 'ЗАКРЫТО': '#55556a' }[ticket.status] || '#22c55e';
+  const sColor = { new: '#22c55e', in_progress: '#9b5de5', paused: '#f59e0b', waiting: '#f97316', closed: '#55556a' }[localStatus] || '#22c55e';
+  const sLabel = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто' }[localStatus] || localStatus;
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -243,7 +384,7 @@ const TicketDetail = () => {
         <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>{ticket.title}</span>
         <Edit2 size={13} color="var(--text-muted)" style={{ cursor: 'pointer' }} />
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: sColor, background: `${sColor}18`, border: `1px solid ${sColor}40`, padding: '3px 10px', borderRadius: 6 }}>● {ticket.status}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: sColor, background: `${sColor}18`, border: `1px solid ${sColor}40`, padding: '3px 10px', borderRadius: 6 }}>● {sLabel}</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', padding: '3px 10px', borderRadius: 6 }}>{ticket.priority}</span>
         </div>
       </div>
@@ -270,9 +411,9 @@ const TicketDetail = () => {
 
             {/* Timer boxes */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-              <TimerBox label="Активная работа" seconds={times.work}  color="#f59e0b" active={timerState === 'work'} />
-              <TimerBox label="Пауза"            seconds={times.pause} color="#f59e0b" active={timerState === 'pause'} />
-              <TimerBox label="Ожидание"         seconds={times.wait}  color="#9b5de5" active={timerState === 'wait'} />
+              <TimerBox label="Активная работа" sinceISO={workSince}  accumulatedSeconds={accumulatedTime.work}  color="#22c55e" active={timerState === 'work'} />
+              <TimerBox label="Пауза"            sinceISO={pauseSince} accumulatedSeconds={accumulatedTime.pause} color="#f59e0b" active={timerState === 'pause'} />
+              <TimerBox label="Ожидание"         sinceISO={waitSince}  accumulatedSeconds={accumulatedTime.wait}  color="#9b5de5" active={timerState === 'wait'} />
             </div>
 
             {/* ── STATUS REPORT (shown after confirming reason) ── */}
@@ -349,7 +490,7 @@ const TicketDetail = () => {
                       </div>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.author} · {m.time}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatAuthor(m.author)} · {m.time}</div>
                 </div>
               ))}
             </div>
@@ -367,11 +508,51 @@ const TicketDetail = () => {
               </div>
             )}
             
-            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
               <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
-              <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}><Smile size={18} /></button>
-              <button onClick={() => fileInputRef.current?.click()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}>
-                <Paperclip size={18} color={attachment ? '#4f8ef7' : 'currentColor'} />
+              
+              {/* Emoji Picker Panel */}
+              {showEmojiPicker && (
+                <div 
+                  ref={emojiPickerRef}
+                  style={{
+                    position: 'absolute', bottom: '100%', left: 16, marginBottom: 8,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: 16, padding: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
+                    zIndex: 1000, animation: 'slideUp 0.2s ease'
+                  }}
+                >
+                  {COMMON_EMOJIS.map(emoji => (
+                    <button 
+                      key={emoji}
+                      onClick={() => addEmoji(emoji)}
+                      style={{ 
+                        fontSize: 18, padding: 8, background: 'none', border: 'none', 
+                        cursor: 'pointer', borderRadius: 8, transition: 'background 0.2s' 
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <button 
+                ref={emojiButtonRef}
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                style={{ background: 'none', border: 'none', color: showEmojiPicker ? 'var(--accent-purple)' : 'var(--text-muted)', cursor: 'pointer', padding: 6, transition: 'color 0.2s' }}
+              >
+                <Smile size={18} />
+              </button>
+              <button onClick={() => !uploading && fileInputRef.current?.click()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: uploading ? 'default' : 'pointer', padding: 6 }}>
+                {uploading ? (
+                  <RefreshCw size={18} color="#4f8ef7" className="animate-spin" />
+                ) : (
+                  <Paperclip size={18} color={attachment ? '#4f8ef7' : 'currentColor'} />
+                )}
               </button>
               <input value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Ваше сообщение..."
                 style={{ flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
@@ -402,11 +583,17 @@ const TicketDetail = () => {
                   <BookOpen size={13} color="var(--text-muted)" />
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Журнал объекта</span>
                 </div>
-                {ticket.journal.map((j, i) => (
-                  <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
-                    <span style={{ color: '#4f8ef7', fontWeight: 600 }}>{j.date}</span> — {j.text}
+                {ticket.journal && ticket.journal.length > 0 ? (
+                  ticket.journal.map((j, i) => (
+                    <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                      <span style={{ color: '#4f8ef7', fontWeight: 600 }}>{j.date}</span> — {j.text}
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Записей в журнале нет
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>

@@ -14,12 +14,32 @@ import {
   ChevronRight, 
   Users,
   Trash2,
-  Edit2,
   Check,
-  Plus
+  Plus,
+  Settings,
+  ArrowUp,
+  ArrowDown,
+  X,
+  CloudLightning,
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import { useSchedule } from '../store/ScheduleContext';
+import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
+
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+
+// Mapping managers to their respective clubs
+const MANAGER_CLUB_MAP = {
+  'sania': '4YOU',
+  'anastasia': 'COLIBRI',
+  'dias': 'VILLA',
+  'saltanat': 'NURLY ORDA',
+  'ainur': '4YOU',
+  'aziz': 'COLIBRI'
+};
+
 
 const HOLIDAYS_2026 = [
   '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08',
@@ -27,503 +47,422 @@ const HOLIDAYS_2026 = [
   '2026-07-06', '2026-08-30', '2026-10-25', '2026-12-16', '2026-12-17'
 ];
 
-const HOURLY_RATE = 1500;
-
-// Sub-component for individual schedule cells to handle local state (for responsiveness)
-const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, onKeyDown, updateCell }) => {
+const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToday, onKeyDown, updateCell, rowIdx, colIdx }) => {
   const inputRef = useRef(null);
+  const [localValue, setLocalValue] = useState(initialValue || '');
+  const timeoutRef = useRef(null);
 
-  const handleBlur = () => {
-    const newValue = inputRef.current?.value;
-    if (newValue !== initialValue) {
-      updateCell(monthKey, empId, dayNum, newValue);
-    }
+  useEffect(() => {
+    setLocalValue(initialValue || '');
+  }, [initialValue]);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setLocalValue(val);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      if (val !== initialValue) updateCell(monthKey, empId, dayNum, val);
+    }, 800);
   };
 
-  const handleLocalKeyDown = (e) => {
-    onKeyDown(e, empId, dayNum, inputRef.current?.value);
+  const handleBlur = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (localValue !== initialValue) updateCell(monthKey, empId, dayNum, localValue);
+  };
+
+  const getShiftColor = (val) => {
+    if (!val) return 'bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]';
+    const norm = val.trim().replace('.', ':');
+    if (norm === '6:30-14:30' || norm === '6:30') return 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+    if (norm === '14:30-22:30' || norm === '14:30') return 'bg-orange-500/10 text-orange-400 border-orange-500/30';
+    if (norm === '8:30-14:30' || norm === '8:30' || norm === '14:30-21:30') return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+    return 'bg-rose-500/10 text-rose-400 border-rose-500/40';
   };
 
   return (
-    <td 
-      className={`p-1 border-r border-white/5 ${isHoliday ? 'bg-red-500/5' : ''} relative cursor-text`}
-      onClick={() => inputRef.current?.focus()}
-    >
-      <input
-        ref={inputRef}
-        id={`cell-${empId}-${dayNum}`}
-        key={`${empId}-${dayNum}-${initialValue}`}
-        type="text"
-        defaultValue={initialValue || ''}
-        onBlur={handleBlur}
-        onKeyDown={handleLocalKeyDown}
-        placeholder="—"
-        autoComplete="off"
-        spellCheck={false}
-        className="w-full min-h-[38px] bg-white/[0.05] border border-white/10 focus:border-purple-500/50 focus:bg-white/10 rounded-lg text-[10px] text-center outline-none transition-all text-white font-bold placeholder:text-white/5 cursor-text hover:bg-white/10"
-      />
+    <td className={`p-1 border-r border-[var(--border)] ${isHoliday ? 'bg-red-500/5' : ''} ${isToday ? 'bg-purple-500/10' : ''} min-w-[80px]`} onClick={() => inputRef.current?.focus()}>
+      <input ref={inputRef} data-row={rowIdx} data-col={colIdx} id={`cell-${rowIdx}-${colIdx}`} type="text" value={localValue} onChange={handleChange} onBlur={handleBlur} onKeyDown={(e) => onKeyDown(e, rowIdx, colIdx, localValue)} placeholder="—" className={`w-full h-full min-h-[38px] rounded-lg text-[11px] text-center outline-none transition-all font-bold placeholder:text-[var(--text-muted)]/20 border ${getShiftColor(localValue)} focus:ring-2 focus:ring-[var(--accent-purple)]/50 focus:bg-[var(--bg-hover)]`} />
     </td>
   );
 };
 
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  
-  const prevMonth = () => setCurrentMonth(prev => addMonths(prev, -1));
-  const nextMonth = () => setCurrentMonth(prev => addMonths(prev, 1));
-  const resetToToday = () => setCurrentMonth(new Date());
+  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, settings, updateSettings } = useSchedule();
+  const { user } = useTickets();
 
-  const { 
-    scheduleData, 
-    employees, 
-    updateCell, 
-    addEmployee, 
-    removeEmployee, 
-    updateEmployee,
-    updateAdvance 
-  } = useSchedule();
+  // Identify CHEF role (robust check)
+  const isChef = useMemo(() => {
+    const email = user?.email?.toLowerCase() || '';
+    const name = user?.displayName?.toUpperCase() || '';
+    return email.includes('chef') || 
+           name.includes('CHEF') || 
+           email === 'dilshat.r@hj.fit' ||
+           email.includes('sales5'); // Added sales5 as a trusted admin for this workspace
+  }, [user]);
+
+  const [selectedClub, setSelectedClub] = useState(null);
+  const [view, setView] = useState('selection'); // 'selection' or 'grid'
+
+  // Filter clubs based on role and mapping
+  const allowedClubs = useMemo(() => {
+    if (isChef) return CLUBS;
+    const email = user?.email?.toLowerCase() || '';
+    for (const [key, club] of Object.entries(MANAGER_CLUB_MAP)) {
+      if (email.includes(key)) return [club];
+    }
+    return []; // No clubs if not mapped
+  }, [isChef, user]);
+
+  // Auto-select if only one club is allowed
+  useEffect(() => {
+    if (!isChef && allowedClubs.length === 1 && view === 'selection') {
+      setSelectedClub(allowedClubs[0]);
+      setView('grid');
+    }
+  }, [allowedClubs, isChef, view]);
+
+  const [pendingRows, setPendingRows] = useState([]);
+  const [savingIds, setSavingIds] = useState(new Set());
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
-  const [copiedValue, setCopiedValue] = useState(null);
-  
-  // pendingRows: local array of empty input slots, '+' adds one more instantly
-  const [pendingRows, setPendingRows] = useState(() => {
-    const saved = localStorage.getItem('schedule-pending-rows');
-    return saved ? JSON.parse(saved) : ['', '', '', ''];
-  });
 
-  useEffect(() => {
-    localStorage.setItem('schedule-pending-rows', JSON.stringify(pendingRows));
-  }, [pendingRows]);
-
-  const daysInMonth = useMemo(() => {
-    return eachDayOfInterval({
-      start: startOfMonth(currentMonth),
-      end: endOfMonth(currentMonth)
-    });
-  }, [currentMonth]);
-
+  const daysInMonth = useMemo(() => eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }), [currentMonth]);
   const monthKey = format(currentMonth, 'yyyy-MM');
 
+  const visibleCols = settings?.visibleCols || { totalHours: true, salary: true, advance: true, correction: true, toPay: true };
+
   const calculateHours = (timeRange) => {
-    if (!timeRange || typeof timeRange !== 'string') return 0;
-    const cleanRange = timeRange.trim();
-    if (!cleanRange.includes('-')) return 0;
-    
-    try {
-      const parts = cleanRange.split('-');
-      if (parts.length !== 2) return 0;
-      
-      const parseTime = (timeStr) => {
-        let clean = timeStr.trim().replace('.', ':');
-        if (!clean.includes(':')) {
-          // Handle "8" as "8:00"
-          const h = parseInt(clean);
-          return isNaN(h) ? 0 : h * 60;
-        }
-        let [h, m] = clean.split(':').map(Number);
-        if (isNaN(h)) h = 0;
-        if (isNaN(m)) m = 0;
-        return h * 60 + m;
-      };
-
-      const startMin = parseTime(parts[0]);
-      const endMin = parseTime(parts[1]);
-      
-      let diffMinutes = endMin - startMin;
-      if (diffMinutes < 0) diffMinutes += 24 * 60; // Over midnight
-      
-      return parseFloat((diffMinutes / 60).toFixed(2));
-    } catch (e) {
-      return 0;
+    if (!timeRange) return 0;
+    const cleanRange = String(timeRange).trim().replace('.', ':');
+    if (!cleanRange.includes('-') && !cleanRange.includes(':')) {
+      const num = parseFloat(cleanRange.replace(',', '.'));
+      return isNaN(num) ? 0 : num;
     }
-  };
-
-  const getCellData = (empId, day) => {
-    const docId = `${monthKey}_${empId}`;
-    return scheduleData[docId]?.days?.[day] || '';
-  };
-
-  const getAdvance = (empId) => {
-    const docId = `${monthKey}_${empId}`;
-    return scheduleData[docId]?.advance || 0;
+    try {
+      if (cleanRange.includes('-')) {
+        const parts = cleanRange.split('-');
+        const parseTime = (s) => {
+          let c = s.trim();
+          if (!c.includes(':')) return (parseInt(c) || 0) * 60;
+          let [h, m] = c.split(':').map(Number);
+          return (h || 0) * 60 + (m || 0);
+        };
+        let diff = parseTime(parts[1]) - parseTime(parts[0]);
+        if (diff < 0) diff += 1440;
+        return parseFloat((diff / 60).toFixed(2));
+      }
+    } catch { return 0; }
+    return 0;
   };
 
   const getEmployeeStats = (empId) => {
     const docId = `${monthKey}_${empId}`;
-    const days = scheduleData[docId]?.days || {};
-    const totalHours = Object.values(days).reduce((total, val) => total + calculateHours(val), 0);
-    const salary = totalHours * HOURLY_RATE;
-    const advance = getAdvance(empId);
-    const toPay = salary - advance;
-    return { totalHours, salary, advance, toPay };
+    const data = scheduleData[docId] || {};
+    const rate = settings?.hourlyRate || 1500;
+    const totalHours = Object.values(data.days || {}).reduce((s, v) => s + calculateHours(v), 0);
+    const salary = totalHours * rate;
+    const toPay = salary - (data.advance || 0) + (data.correction || 0);
+    return { totalHours, salary, advance: data.advance || 0, correction: data.correction || 0, toPay };
   };
 
-  // Add a new empty pending row instantly (no Firebase yet)
-  const addPendingRow = () => {
-    setPendingRows(prev => [...prev, '']);
-    // Autofocus the last row after render
-    setTimeout(() => {
-      const inputs = document.querySelectorAll('.pending-row-input');
-      if (inputs.length > 0) inputs[inputs.length - 1].focus();
-    }, 50);
+  const getClubTotal = (clubName) => {
+    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
+    return clubEmps.reduce((sum, emp) => sum + getEmployeeStats(emp.id).toPay, 0);
   };
 
-  const changePendingRow = (index, value) => {
-    setPendingRows(prev => prev.map((v, i) => i === index ? value : v));
+  const formatCurrency = (val) => {
+    return new Intl.NumberFormat('ru-RU').format(Math.round(val)) + ' ₸';
   };
 
-  const savePendingRow = async (index, shouldFocusNext = false) => {
-    const name = pendingRows[index]?.trim();
-    if (!name) return;
-    try {
-      await addEmployee(name);
-      setPendingRows(prev => prev.filter((_, i) => i !== index));
-      
-      if (shouldFocusNext) {
-        setTimeout(() => {
-          const inputs = document.querySelectorAll('.pending-row-input');
-          if (inputs.length > 0) {
-            // Focus the next one (it might be at the same index now because one was removed)
-            const nextInput = inputs[index] || inputs[inputs.length - 1];
-            nextInput?.focus();
-          }
-        }, 100);
-      }
-    } catch (e) {}
+  const savePendingRow = async (id) => {
+    const row = pendingRows.find(r => r.id === id);
+    if (!row?.name?.trim() || savingIds.has(id)) return;
+    setSavingIds(prev => new Set(prev).add(id));
+    setPendingRows(prev => prev.filter(r => r.id !== id));
+    try { await addEmployee(row.name.trim(), selectedClub); } catch { setPendingRows(prev => [...prev, row]); }
+    finally { setSavingIds(prev => { const n = new Set(prev); n.delete(id); return n; }); }
   };
 
-  const removePendingRow = (index) => {
-    setPendingRows(prev => prev.filter((_, i) => i !== index));
+  // Filter employees by club
+  const clubEmployees = useMemo(() => {
+    return employees.filter(e => (e.club || '4YOU') === selectedClub);
+  }, [employees, selectedClub]);
+
+  const handleKeyDown = (e, row, col) => {
+    let tr = row, tc = col;
+    if (e.key === 'ArrowRight' || e.key === 'Tab') { e.preventDefault(); tc++; }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); tc--; }
+    else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); tr++; }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); tr--; }
+    else return;
+    const next = document.getElementById(`cell-${tr}-${tc}`);
+    if (next) next.focus();
   };
 
-  const startEditing = (emp) => {
-    setEditingEmpId(emp.id);
-    setEditNameValue(emp.name);
-  };
+  if (view === 'selection') {
+    return (
+      <div className="animate-fade" style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 0' }}>
+        <div style={{ marginBottom: 40, textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12 }}>
+            <Database size={32} color="var(--accent-purple)" />
+            <h1 style={{ fontSize: 32, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+              Графики работы
+            </h1>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            Выберите объект для просмотра и редактирования табеля
+          </p>
+        </div>
 
-  const saveEditing = (id) => {
-    updateEmployee(id, editNameValue);
-    setEditingEmpId(null);
-  };
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24 }}>
+          {allowedClubs.map(club => (
+            <button
+              key={club}
+              onClick={() => {
+                setSelectedClub(club);
+                setView('grid');
+              }}
+              style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 40,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, cursor: 'pointer',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', overflow: 'hidden',
+                boxShadow: 'var(--shadow-card)'
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-8px)';
+                e.currentTarget.style.borderColor = 'var(--accent-purple)';
+                e.currentTarget.style.boxShadow = '0 20px 40px rgba(0,0,0,0.1)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.borderColor = 'var(--border)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-card)';
+              }}
+            >
+              <div style={{ width: 64, height: 64, borderRadius: 20, background: 'rgba(139,92,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Users size={32} color="var(--accent-purple)" />
+              </div>
+              <h3 style={{ fontSize: 20, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', marginBottom: 4 }}>{club}</h3>
+              
+              {isChef && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>К выплате итого:</div>
+                  <div style={{ fontSize: 28, fontWeight: 950, color: 'var(--accent-purple)', letterSpacing: '-0.03em' }}>
+                    {formatCurrency(getClubTotal(club))}
+                  </div>
+                </div>
+              )}
 
-  const handleCellKeyDown = (e, empId, dayNum, value) => {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
-
-    // Excel Navigation
-    if (e.key === 'ArrowRight' || e.key === 'Tab') {
-      const next = document.getElementById(`cell-${empId}-${parseInt(dayNum) + 1}`);
-      if (next) { e.preventDefault(); next.focus(); }
-    }
-    if (e.key === 'ArrowLeft') {
-      const prev = document.getElementById(`cell-${empId}-${parseInt(dayNum) - 1}`);
-      if (prev) { e.preventDefault(); prev.focus(); }
-    }
-    if (e.key === 'ArrowDown' || e.key === 'Enter') {
-      const inputs = Array.from(document.querySelectorAll(`[id^="cell-"][id$="-${dayNum}"]`));
-      const idx = inputs.findIndex(i => i.id === `cell-${empId}-${dayNum}`);
-      if (inputs[idx + 1]) { e.preventDefault(); inputs[idx + 1].focus(); }
-    }
-    if (e.key === 'ArrowUp') {
-      const inputs = Array.from(document.querySelectorAll(`[id^="cell-"][id$="-${dayNum}"]`));
-      const idx = inputs.findIndex(i => i.id === `cell-${empId}-${dayNum}`);
-      if (inputs[idx - 1]) { e.preventDefault(); inputs[idx - 1].focus(); }
-    }
-
-    // Copy/Paste
-    if (ctrlKey && e.key === 'c') {
-      setCopiedValue(value);
-      toast.info('Скопировано');
-    }
-    if (ctrlKey && e.key === 'v') {
-      if (copiedValue !== null) {
-        updateCell(monthKey, empId, dayNum, copiedValue);
-      }
-    }
-  };
+              <div style={{ 
+                marginTop: 16, fontSize: 10, fontWeight: 900, 
+                color: 'var(--text-secondary)', background: 'var(--bg-hover)', 
+                padding: '8px 18px', borderRadius: 12, border: '1px solid var(--border)',
+                textTransform: 'uppercase', letterSpacing: '0.05em'
+              }}>
+                ОТКРЫТЬ ТАБЕЛЬ
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade">
-      <div className="flex items-start justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold text-white uppercase tracking-tight">График и Расчеты</h1>
-          <p className="text-xs text-white/40 font-medium italic">Ставка: {HOURLY_RATE} ₸/час · Праздники выделены красным</p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-[#111113] p-1 rounded-xl border border-white/5">
-            <button 
-              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-              className="p-1.5 hover:bg-white/5 rounded-lg text-white/40 hover:text-white transition-all"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <div className="px-3 font-bold text-[11px] text-white uppercase tracking-wider min-w-[120px] text-center">
-              {format(currentMonth, 'LLLL yyyy', { locale: ru })}
-            </div>
-            <button 
-              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-              className="p-1.5 hover:bg-white/5 rounded-lg text-white/40 hover:text-white transition-all"
-            >
-              <ChevronRight size={16} />
-            </button>
+      <div className="flex items-center justify-between bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-xl">
+        <div className="flex items-center gap-5">
+          <button 
+            onClick={() => setView('selection')}
+            style={{ 
+              background: 'var(--bg-hover)', border: '1px solid var(--border)', 
+              borderRadius: 12, padding: '8px 12px', color: 'var(--text-secondary)', 
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 11, fontWeight: 800, textTransform: 'uppercase'
+            }}
+          >
+            <ChevronLeft size={16} /> Назад
+          </button>
+          <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-[var(--accent-purple)] border border-purple-500/10">
+            <Users size={24} />
           </div>
+          <div>
+            <h1 className="text-xl font-black text-[var(--text-primary)] italic uppercase tracking-tight flex items-center gap-3">
+              График: <span style={{ color: 'var(--accent-purple)' }}>{selectedClub}</span>
+            </h1>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Табель активен</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          {/* Indicators */}
+          <div className="flex items-center gap-3">
+            {isSaving && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20 text-[10px] font-black animate-pulse">
+                <CloudLightning size={10} /> СИНХРОНИЗАЦИЯ
+              </div>
+            )}
+            {loading && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-500/10 text-purple-400 rounded-full border border-purple-500/20 text-[10px] font-black">
+                <RefreshCw size={10} /> ЗАГРУЗКА
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronLeft size={20} /></button>
+            <div className="text-center min-w-[140px]">
+              <h2 className="text-lg font-bold text-[var(--text-primary)] capitalize">{format(currentMonth, 'LLLL yyyy', { locale: ru })}</h2>
+            </div>
+            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronRight size={20} /></button>
+          </div>
+
+          <button onClick={() => setShowSettingsModal(true)} className="p-2.5 bg-[var(--bg-hover)] hover:bg-[var(--bg-hover)]/80 border border-[var(--border)] rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center gap-2"><Settings size={16} /><span className="text-xs font-bold uppercase tracking-tight">Настройки</span></button>
         </div>
       </div>
 
-      <div className="bg-[#0f0f11] rounded-3xl border border-white/5 overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1900px]">
+      <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-2xl relative">
+        <div className="overflow-auto rounded-3xl table-scroll-container" style={{ maxHeight: '60vh' }}>
+          <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px]">
             <thead>
-              <tr className="bg-[#151518] text-[9px] uppercase tracking-widest font-black text-white/30 border-b border-white/5">
-                <th className="px-6 py-5 sticky left-0 z-30 bg-[#151518] border-r border-white/10 min-w-[350px] shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">Сотрудник</th>
-                {daysInMonth.map(day => {
-                  const dateStr = format(day, 'yyyy-MM-dd');
-                  const isHoliday = HOLIDAYS_2026.includes(dateStr);
-                  const isSunSat = isWeekend(day);
-                  return (
-                    <th key={dateStr} className={`px-1 py-4 text-center border-r border-white/5 min-w-[48px] ${isHoliday ? 'bg-red-500/20 text-red-500' : isSunSat ? 'bg-white/5' : ''}`}>
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="opacity-50">{format(day, 'eeeee', { locale: ru })}</span>
-                        <span className={`text-xs ${isHoliday ? 'font-black' : ''}`}>{format(day, 'd')}</span>
-                      </div>
-                    </th>
-                  );
-                })}
-                <th className="px-4 py-5 text-center bg-purple-500/5 text-purple-400 border-x border-white/5 min-w-[90px]">Всего ч.</th>
-                <th className="px-4 py-5 text-center bg-blue-500/5 text-blue-400 border-r border-white/5 min-w-[110px]">Зарплата</th>
-                <th className="px-4 py-5 text-center bg-orange-500/5 text-orange-400 border-r border-white/5 min-w-[110px]">Аванс</th>
-                <th className="px-4 py-5 text-center bg-green-500/10 text-green-400 sticky right-0 z-30 bg-[#151518] border-l border-white/5 min-w-[130px]">К выдаче</th>
+              <tr className="text-[9px] uppercase tracking-widest font-black text-[var(--text-muted)]">
+                <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">Сотрудник</th>
+                
+                {daysInMonth.map(day => (
+                  <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className={`px-1 py-4 text-center min-w-[80px] ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
+                    <div className="flex flex-col items-center gap-0.5"><span className="opacity-50">{format(day, 'eeeee', { locale: ru })}</span><span className="text-xs">{format(day, 'd')}</span></div>
+                  </th>
+                ))}
+                
+                {visibleCols.totalHours && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[95px]">Всего ч.</th>}
+                {isChef && visibleCols.salary && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Зарплата</th>}
+                {isChef && visibleCols.advance && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Аванс</th>}
+                {isChef && visibleCols.correction && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Коррект.</th>}
+                
+                {isChef && visibleCols.toPay && <th style={{ position: 'sticky', top: 0, right: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[130px]">К выдаче</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
-              {employees.map(emp => {
+            <tbody className="divide-y divide-[var(--border)]">
+              {clubEmployees.map((emp, rowIdx) => {
                 const stats = getEmployeeStats(emp.id);
-                const isEditing = editingEmpId === emp.id;
                 return (
-                  <tr key={emp.id} className="hover:bg-white/[0.04] transition-all group">
-                    <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/10 group-hover:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
+                  <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
+                    <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-card)', borderRight: '1px solid var(--border)' }} className="px-6 py-4">
                       <div className="flex items-center gap-4">
-                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:text-purple-400 transition-colors">
-                          <Users size={14} />
+                        <Users size={14} className="text-[var(--text-muted)]" />
+                        <div className="flex-1 flex items-center justify-between">
+                          {editingEmpId === emp.id ? (
+                            <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
+                          ) : (
+                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} className="text-sm font-bold text-[var(--text-primary)] cursor-pointer">{emp.name}</span>
+                          )}
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
+                            <button onClick={() => moveEmployee(emp.id, 'up')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={12}/></button>
+                            <button onClick={() => moveEmployee(emp.id, 'down')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={12}/></button>
+                            <button onClick={() => removeEmployee(emp.id)} className="p-1 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={12}/></button>
+                          </div>
                         </div>
-                        {isEditing ? (
-                          <div className="flex items-center gap-2 flex-1">
-                            <input 
-                              autoFocus
-                              autoComplete="off"
-                              className="bg-white/10 border border-purple-500/30 rounded-lg px-2 py-1.5 text-sm font-bold text-white outline-none w-full"
-                              value={editNameValue}
-                              onChange={(e) => setEditNameValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  saveEditing(emp.id);
-                                }
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between flex-1">
-                            <span className="text-sm font-bold text-white/90 group-hover:text-white transition-colors whitespace-nowrap">{emp.name}</span>
-                            <div className="flex items-center gap-1">
-                              <button 
-                                onClick={() => startEditing(emp)} 
-                                className="p-2 rounded-lg hover:bg-white/5 text-white/10 hover:text-blue-400 transition-all"
-                              >
-                                <Edit2 size={13}/>
-                              </button>
-                              <button 
-                                onClick={() => removeEmployee(emp.id)} 
-                                className="p-2 rounded-lg hover:bg-white/5 text-white/10 hover:text-red-500 transition-all"
-                              >
-                                <Trash2 size={13}/>
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </td>
-                    {daysInMonth.map(day => {
-                      const dayNum = format(day, 'd');
-                      const dateStr = format(day, 'yyyy-MM-dd');
-                      const value = getCellData(emp.id, dayNum);
-                      const isHoliday = HOLIDAYS_2026.includes(dateStr);
-                      return (
-                        <ScheduleCell 
-                          key={dateStr}
-                          monthKey={monthKey}
-                          empId={emp.id}
-                          dayNum={dayNum}
-                          initialValue={value}
-                          isHoliday={isHoliday}
-                          onKeyDown={handleCellKeyDown}
-                          updateCell={updateCell}
-                        />
-                      );
-                    })}
-                    <td className="px-4 py-4 text-center font-bold text-xs text-purple-400/80 bg-purple-500/5">{stats.totalHours} ч</td>
-                    <td className="px-4 py-4 text-center font-bold text-xs text-blue-400 bg-blue-500/5">{stats.salary.toLocaleString()}</td>
-                    <td className="px-2 py-0 border-r border-white/5 bg-orange-500/5">
-                      <input 
-                        type="number"
-                        value={stats.advance || ''}
-                        onChange={(e) => updateAdvance(monthKey, emp.id, e.target.value)}
-                        placeholder="0"
-                        className="w-full h-full bg-transparent border-none text-center text-xs font-bold text-orange-400 outline-none"
-                      />
-                    </td>
-                    <td className="px-4 py-4 text-center font-black text-sm text-green-400 sticky right-0 z-20 bg-[#0f0f11] group-hover:bg-[#151518] border-l border-white/5 shadow-[-10px_0_20px_rgba(0,0,0,0.2)]">
-                      {stats.toPay.toLocaleString()}
-                    </td>
+                    {daysInMonth.map((day, dIdx) => (
+                      <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[`${monthKey}_${emp.id}`]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} />
+                    ))}
+                    {visibleCols.totalHours && <td className="px-4 py-4 text-center text-xs text-[var(--accent-purple)] bg-purple-500/5 font-bold border-r border-[var(--border)]">{stats.totalHours.toFixed(1)} ч</td>}
+                    {isChef && visibleCols.salary && <td className="px-4 py-4 text-center text-xs text-blue-400 bg-blue-500/5 font-bold border-r border-[var(--border)]">{stats.salary.toLocaleString()}</td>}
+                    {isChef && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="number" disabled={!isChef} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance || ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
+                    {isChef && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="number" disabled={!isChef} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction || ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
+                    {isChef && visibleCols.toPay && <td style={{ position: 'sticky', right: 0, zIndex: 20, backgroundColor: 'var(--bg-card)', borderLeft: '1px solid var(--border)' }} className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
               })}
-              
-              {pendingRows.map((val, i) => (
-                <tr key={`pending-${i}`} className="group/pending hover:bg-white/[0.02] transition-all">
-                  <td className="px-6 py-4 sticky left-0 z-20 bg-[#0f0f11] border-r border-white/10 group-hover/pending:bg-[#151518] transition-all shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-white/[0.03] border border-dashed border-white/10 flex items-center justify-center text-white/10 flex-shrink-0">
-                        <Users size={14} />
-                      </div>
-                      <div className="flex-1 relative">
-                        <input
-                          id={`pending-input-${i}`}
-                          type="text"
-                          value={val}
-                          onChange={(e) => changePendingRow(i, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              savePendingRow(i, true);
-                            }
-                            if (e.key === 'Escape') {
-                              e.preventDefault();
-                              removePendingRow(i);
-                            }
-                          }}
-                          onBlur={() => savePendingRow(i)}
-                          placeholder="Введите ФИО сотрудника..."
-                          autoComplete="off"
-                          className="pending-row-input bg-transparent border-none text-sm font-bold text-white/60 placeholder:text-white/10 outline-none w-full focus:text-white transition-all"
-                        />
-                      </div>
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-                        <button
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            document.getElementById(`pending-input-${i}`)?.focus();
-                          }}
-                          title="Редактировать имя"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/10 hover:text-blue-400 hover:bg-white/5 transition-all"
-                        >
-                          <Edit2 size={12} />
-                        </button>
-                        <button
-                          onClick={() => removePendingRow(i)}
-                          title="Удалить строку"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/10 hover:text-red-500 hover:bg-white/5 transition-all"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
+              {pendingRows.map((row) => (
+                <tr key={row.id}>
+                  <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }} className="px-6 py-4 shadow-[5px_0_10px_rgba(0,0,0,0.05)]">
+                    <div className="flex items-center gap-4"><Users size={14} className="text-[var(--text-muted)]" /><input value={row.name} autoFocus onChange={e => setPendingRows(prev => prev.map(r => r.id === row.id ? { ...r, name: e.target.value } : r))} onKeyDown={e => e.key === 'Enter' && savePendingRow(row.id)} placeholder="ФИО..." className="bg-transparent text-sm text-[var(--text-primary)] outline-none w-full" /><button onClick={() => savePendingRow(row.id)} className="text-green-500"><Check size={16}/></button></div>
                   </td>
-                  {daysInMonth.map(day => (
-                    <td key={day.toString()} className="border-r border-white/[0.05]"></td>
-                  ))}
-                  <td className="bg-purple-500/[0.02]"></td>
-                  <td className="bg-blue-500/[0.02]"></td>
-                  <td className="bg-orange-500/[0.02]"></td>
-                  <td className="sticky right-0 z-20 bg-[#0f0f11] group-hover/pending:bg-[#151518] border-l border-white/5 transition-all"></td>
+                  {daysInMonth.map(d => <td key={d.toString()} style={{ borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="text-[10px] text-[var(--text-muted)] text-center italic">—</td>)}
+                  {Object.values(visibleCols).filter(v => v).map((_, i) => <td key={i} style={{ borderTop: '1px solid var(--border)' }}></td>)}
                 </tr>
               ))}
-
-              {/* Bottom row: + instantly adds a new pending row */}
               <tr>
-                <td
-                  colSpan={daysInMonth.length + 5}
-                  className="px-6 py-4 bg-[#111113] border-t border-white/5"
-                >
-                  <button
-                    onClick={addPendingRow}
-                    className="flex items-center gap-3 text-white/20 hover:text-purple-400 transition-all group/btn"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 group-hover/btn:bg-purple-500/25 text-purple-400 flex items-center justify-center transition-all active:scale-95">
-                      <Plus size={16} strokeWidth={3} />
-                    </div>
-                    <span className="text-sm font-bold">Добавить сотрудника</span>
-                  </button>
+                <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }} className="px-6 py-4 shadow-[5px_0_10px_rgba(0,0,0,0.05)]">
+                  <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
                 </td>
+                <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
               </tr>
             </tbody>
-            {/* Summary Footer */}
-            <tfoot className="bg-[#0c0c0e] border-t border-white/10">
-              <tr className="divide-x divide-white/5">
-                <td className="px-6 py-4 sticky left-0 z-20 bg-[#0c0c0e] font-black text-[10px] text-white/40 uppercase tracking-widest shadow-[10px_0_15px_-10px_rgba(0,0,0,0.5)]">
-                  Итого за день:
-                </td>
+            <tfoot>
+              <tr>
+                {/* z-50 for bottom-left corner so it stays above everything when scrolling */}
+                <td style={{ position: 'sticky', bottom: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
+                
+                {/* z-40 for the rest of the footer row so it stays on top when scrolling vertically */}
                 {daysInMonth.map(day => {
                   const dayNum = format(day, 'd');
-                  const dayTotal = employees.reduce((sum, emp) => {
-                    const val = getCellData(emp.id, dayNum);
+                  const dayTotal = clubEmployees.reduce((sum, emp) => {
+                    const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
                     return sum + calculateHours(val);
                   }, 0);
-                  
-                  return (
-                    <td key={day.toString()} className="px-1 py-4 text-center font-black text-[10px] text-white/60">
-                      {dayTotal > 0 ? `${dayTotal}ч` : '—'}
-                    </td>
-                  );
+                  return <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-1 py-4 text-center font-black text-[10px] text-[var(--text-secondary)]">{dayTotal > 0 ? `${dayTotal.toFixed(1)}ч` : '—'}</td>;
                 })}
-                <td className="px-4 py-4 text-center font-black text-xs text-purple-400 bg-purple-500/10">
-                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч
-                </td>
-                <td className="px-4 py-4 text-center font-black text-xs text-blue-400 bg-blue-500/10">
-                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}
-                </td>
-                <td className="px-4 py-4 text-center font-black text-xs text-orange-400 bg-orange-500/10">
-                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}
-                </td>
-                <td className="px-4 py-4 text-center font-black text-sm text-green-400 sticky right-0 z-20 bg-[#0c0c0e] border-l border-white/10 shadow-[-10px_0_20px_rgba(0,0,0,0.2)]">
-                  {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}
-                </td>
+                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
+                {isChef && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
+                {isChef && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
+                {isChef && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
+                {isChef && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)] shadow-[-5px_0_10px_rgba(0,0,0,0.05)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#111113] p-6 rounded-3xl border border-white/5 flex flex-col gap-1 shadow-xl">
-          <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Всего отработано</p>
-          <p className="text-2xl font-black text-white">
-            {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)} <span className="text-xs text-white/30">часов</span>
-          </p>
+      {isChef && (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {[ 
+            { l: 'Всего ч', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
+            { l: 'Зарплата', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary, 0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
+            { l: 'Аванс', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance, 0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
+            { l: 'Коррект.', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
+            { l: 'К выдаче', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
+          ].map((s, i) => (
+            <div key={i} className="bg-[var(--bg-card)] p-6 rounded-3xl border border-[var(--border)] shadow-xl"><p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">{s.l}</p><p className={`text-2xl font-black ${s.c}`}>{s.v}</p></div>
+          ))}
         </div>
-        <div className="bg-[#111113] p-6 rounded-3xl border border-white/5 flex flex-col gap-1 shadow-xl">
-          <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Начислено всего</p>
-          <p className="text-2xl font-black text-blue-400">
-            {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()} <span className="text-xs opacity-50">₸</span>
-          </p>
+      )}
+
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl">
+            <div className="px-8 py-6 border-b border-[var(--border)] flex items-center justify-between"><h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2"><Settings size={18} className="text-[var(--accent-purple)]" /> Настройки</h2><button onClick={() => setShowSettingsModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={20} /></button></div>
+            <div className="p-8 grid grid-cols-2 gap-8">
+              <div className="space-y-4"><h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Смены</h3>
+                <div className="space-y-2">
+                  <input type="text" value={settings?.shift1} onChange={e => updateSettings({ ...settings, shift1: e.target.value })} className="w-full bg-[var(--bg-hover)] border border-[var(--border)] rounded-xl p-3 text-[var(--text-primary)] text-sm" />
+                  <input type="text" value={settings?.shift2} onChange={e => updateSettings({ ...settings, shift2: e.target.value })} className="w-full bg-[var(--bg-hover)] border border-[var(--border)] rounded-xl p-3 text-[var(--text-primary)] text-sm" />
+                  {isChef && (
+                    <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] font-medium italic">
+                      <span>Ставка:</span>
+                      <input type="number" value={settings?.hourlyRate || 1500} onChange={(e) => updateSettings({ ...settings, hourlyRate: parseInt(e.target.value) || 0 })} className="bg-[var(--bg-hover)] border border-[var(--border)] rounded px-1.5 py-0.5 w-16 text-blue-400 font-bold outline-none" />
+                      <span>₸/час</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-4"><h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Колонки</h3><div className="grid grid-cols-1 gap-1">
+                {Object.keys(visibleCols).map(k => (
+                  <button key={k} onClick={() => updateSettings({ ...settings, visibleCols: { ...visibleCols, [k]: !visibleCols[k] } })} className={`w-full p-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${visibleCols[k] ? 'bg-purple-500/10 border-purple-500/30 text-[var(--text-primary)]' : 'bg-[var(--bg-hover)] border-transparent text-[var(--text-muted)]'}`}>{k}</button>
+                ))}
+              </div></div>
+            </div>
+            <div className="p-6 bg-[var(--bg-hover)] text-right"><button onClick={() => setShowSettingsModal(false)} className="px-8 py-3 bg-[var(--accent-purple)] text-white font-bold rounded-xl text-xs uppercase tracking-widest">Закрыть</button></div>
+          </div>
         </div>
-        <div className="bg-[#111113] p-6 rounded-3xl border border-white/5 flex flex-col gap-1 shadow-xl">
-          <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Общий аванс</p>
-          <p className="text-2xl font-black text-orange-400">
-            {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()} <span className="text-xs opacity-50">₸</span>
-          </p>
-        </div>
-        <div className="bg-[#111113] p-6 rounded-3xl border border-white/5 flex flex-col gap-1 shadow-xl">
-          <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Остаток к выдаче</p>
-          <p className="text-2xl font-black text-green-400">
-            {employees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()} <span className="text-xs opacity-50">₸</span>
-          </p>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Ticket, CheckSquare, Calendar, 
-  Archive, Phone, MessageCircle, Settings, LogOut, Sun, Moon, Bell
+  Archive, Phone, MessageCircle, Settings, LogOut, Sun, Moon, Bell, MapPin
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -23,6 +23,7 @@ const Sidebar = () => {
     { icon: Archive,         label: 'Архив',       path: '/archive' },
     { icon: CheckSquare,     label: 'Чек-листы',   path: '/checklists' },
     { icon: Calendar,        label: 'График',      path: '/schedule' },
+    { icon: MapPin,          label: 'Чекин',       path: '/attendance' },
     { icon: Phone,           label: 'Созвоны',     path: '/calls' },
   ];
 
@@ -42,7 +43,7 @@ const Sidebar = () => {
     <aside className="sidebar">
       {/* Logo */}
       <div className="sidebar-logo">
-        <div className="logo-text">HEROTRACK</div>
+        <div className="logo-text">HJTRACK</div>
       </div>
 
       {/* Main nav */}

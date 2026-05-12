@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "agora-react-uikit": "^1.2.0",
+    "agora-rtc-sdk-ng": "^4.24.3",
     "browser-image-compression": "^2.0.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

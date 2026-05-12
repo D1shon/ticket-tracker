@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Archive as ArchiveIcon } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
-import { DEMO_TICKETS } from './TicketsPage';
 
 const clubColors = {
   '4YOU': 'badge-4you',
@@ -27,38 +26,24 @@ const ArchivePage = () => {
   const { tickets } = useTickets();
   const navigate = useNavigate();
 
-  // Combine real tickets or fallback to demo
-  let allTickets = [];
-  if (tickets && tickets.length > 0) {
-    allTickets = tickets;
-  } else {
-    // Flatten DEMO_TICKETS
-    allTickets = [
-      ...DEMO_TICKETS.new.map(t => ({...t, status: 'new'})),
-      ...DEMO_TICKETS.in_progress.map(t => ({...t, status: 'in_progress'})),
-      ...DEMO_TICKETS.paused.map(t => ({...t, status: 'paused'})),
-      ...DEMO_TICKETS.waiting.map(t => ({...t, status: 'waiting'})),
-      ...DEMO_TICKETS.closed.map(t => ({...t, status: 'closed'})),
-    ];
-  }
+  // Use tickets from context directly
+  const allTickets = tickets || [];
 
   // Define what "archived" means: closed tickets that were not closed today.
   // For demo purposes, we will treat ALL closed tickets that have a `closedAt` date older than 24h as archived.
   // If `closedAt` is missing, we'll just show them in the archive for the demo if they are closed.
-  const now = new Date();
+  const todayStart = new Date().setHours(0,0,0,0);
   
   let archivedTickets = allTickets.filter(t => {
     if (t.status !== 'closed') return false;
     
-    // Simulate archive logic: if it was closed today, it stays on the main board.
-    // If it was closed before today, it's archived.
+    // Archive logic: if it was closed before today, it's archived.
     if (t.closedAt) {
-      const closedDate = new Date(t.closedAt);
-      const diffHours = (now - closedDate) / (1000 * 60 * 60);
-      return diffHours > 24;
+      const closedDate = new Date(t.closedAt).setHours(0,0,0,0);
+      return closedDate < todayStart;
     }
     
-    // If no closedAt, assume it's archived for demo
+    // Fallback: if no date, show it in archive if closed
     return true; 
   });
 
@@ -108,7 +93,7 @@ const ArchivePage = () => {
             <p>В архиве вашего клуба пока нет заявок.</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px', paddingBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', paddingBottom: '40px' }}>
             {archivedTickets.map(ticket => {
               const clubClass = clubColors[ticket.club] || 'badge-4you';
               const priority = priorityLabels[ticket.priority] || priorityLabels.medium;
@@ -118,18 +103,28 @@ const ArchivePage = () => {
                   key={ticket.id}
                   className="ticket-card"
                   onClick={() => navigate(`/tickets/${ticket.id}`)}
-                  style={{ cursor: 'pointer', opacity: 0.8 }}
+                  style={{ 
+                    cursor: 'pointer', padding: '24px', borderRadius: '24px', 
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    transition: 'all 0.3s ease',
+                    opacity: 0.85
+                  }}
                 >
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className={`badge ${clubClass}`}>{ticket.club || '4YOU'}</span>
-                    <span className={`badge ${priority.cls} ml-auto`}>{priority.label}</span>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className={`badge ${clubClass}`} style={{ padding: '4px 12px', borderRadius: 8, fontSize: 9 }}>{ticket.club || '4YOU'}</span>
+                    <div style={{ width: 4, height: 4, borderRadius: '50%', background: priority.color || '#555' }} />
                   </div>
-                  <h3 className="font-semibold text-sm leading-snug mb-4" style={{ color: 'var(--text-primary)' }}>
+                  <h3 className="font-bold text-[15px] leading-snug mb-4 tracking-tight" style={{ color: 'var(--text-primary)' }}>
                     {ticket.title}
                   </h3>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Закрыто: {ticket.closedAt ? new Date(ticket.closedAt).toLocaleDateString() : 'Давно'}</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: 4 }}>АРХИВ</span>
+                  <div className="flex items-center justify-between pt-4 border-t border-[var(--border)]">
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                      Закрыто: {ticket.closedAt ? new Date(ticket.closedAt).toLocaleDateString() : 'Давно'}
+                    </span>
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[var(--bg-hover)] border border-[var(--border)]">
+                       <div className="w-1 h-1 rounded-full bg-[var(--text-muted)]" />
+                       <span style={{ fontSize: 9, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>АРХИВ</span>
+                    </div>
                   </div>
                 </div>
               );

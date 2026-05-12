@@ -1,86 +1,134 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns } from 'lucide-react';
+import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 
-const CLUBS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORCA', 'MY TASK'];
-const FILTERS = ['ВСЕ', 'НОВЫЕ', 'В РАБОТЕ', 'ПАУЗА', 'ОЖИДАНИЕ', 'ЗАКРЫТО'];
+const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const FILTERS    = ['ВСЕ', 'НОВЫЕ', 'В РАБОТЕ', 'ПАУЗА', 'ОЖИДАНИЕ', 'ЗАКРЫТО'];
 
-const COLUMNS = [
-  { id: 'new', label: 'НОВЫЕ', color: '#4f8ef7' },
-  { id: 'in_progress', label: 'В РАБОТЕ', color: '#22c55e' },
-  { id: 'paused', label: 'НА ПАУЗЕ', color: '#f59e0b' },
-  { id: 'waiting', label: 'ОЖИДАНИЕ', color: '#9b5de5' },
-  { id: 'closed', label: 'ЗАКРЫТО', color: '#55556a' },
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const PRIORITIES = [
+  { id: 'critical', label: 'Критический', color: '#ff4444' },
+  { id: 'high',     label: 'Высокий',     color: '#ff8800' },
+  { id: 'medium',   label: 'Средний',     color: '#ffcc00' },
+  { id: 'low',      label: 'Низкий',      color: '#00cc88' },
 ];
 
-const clubColors = {
-  '4YOU': 'badge-4you',
-  'COLIBRI': 'badge-colibri',
-  'VILLA': 'badge-villa',
-  'NURLY ORCA': 'badge-nurly',
-  'PRIME': 'badge-prime',
+const MANAGERS = ['Сания', 'Анастасия', 'Диас', 'Салтанат', 'Дилшат', 'Айнур', 'Азиз'];
+
+const COLUMNS = [
+  { id: 'new',         label: 'НОВЫЕ',    color: '#4f8ef7' },
+  { id: 'in_progress', label: 'В РАБОТЕ', color: '#22c55e' },
+  { id: 'paused',      label: 'НА ПАУЗЕ', color: '#f59e0b' },
+  { id: 'waiting',     label: 'ОЖИДАНИЕ', color: '#9b5de5' },
+  { id: 'closed',      label: 'ЗАКРЫТО',  color: '#55556a' },
+];
+
+const FILTER_TO_COL = {
+  'НОВЫЕ': 'new', 'В РАБОТЕ': 'in_progress',
+  'ПАУЗА': 'paused', 'ОЖИДАНИЕ': 'waiting', 'ЗАКРЫТО': 'closed',
 };
 
+const clubColors = {
+  '4YOU': 'badge-4you', 'COLIBRI': 'badge-colibri',
+  'VILLA': 'badge-villa', 'NURLY ORDA': 'badge-nurly'
+};
 const priorityLabels = {
   critical: { label: 'Критический', cls: 'priority-critical' },
-  high: { label: 'Высокий', cls: 'priority-high' },
-  medium: { label: 'Средний', cls: 'priority-medium' },
-  low: { label: 'Низкий', cls: 'priority-low' },
+  high:     { label: 'Высокий',     cls: 'priority-high'     },
+  medium:   { label: 'Средний',     cls: 'priority-medium'   },
+  low:      { label: 'Низкий',      cls: 'priority-low'      },
 };
 
-const formatTimeAgo = (date) => {
-  if (!date) return '';
-  const diff = Date.now() - new Date(date).getTime();
-  const days = Math.floor(diff / 86400000);
-  const months = Math.floor(days / 30);
-  if (months > 0) return `${months} месяц${months > 1 && months < 5 ? 'а' : ''}${months >= 5 ? 'ев' : ''}`;
-  if (days > 0) return `${days} день назад`;
-  return 'Сегодня';
+// ─── Live elapsed-time hook ───────────────────────────────────────────────────
+function useLiveTimer(sinceISO) {
+  const [elapsed, setElapsed] = useState('');
+
+  useEffect(() => {
+    if (!sinceISO) { setElapsed(''); return; }
+
+    const tick = () => {
+      const diff = Math.floor((Date.now() - new Date(sinceISO).getTime()) / 1000);
+      if (diff < 60)   return setElapsed(`${diff}с`);
+      if (diff < 3600) return setElapsed(`${Math.floor(diff / 60)}мин`);
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      setElapsed(m > 0 ? `${h}ч ${m}мин` : `${h}ч`);
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [sinceISO]);
+
+  return elapsed;
+}
+
+// ─── Status timer badge (on card) ─────────────────────────────────────────────
+const StatusTimer = ({ ticket }) => {
+  const since = ticket.statusChangedAt;
+  const status = ticket.status;
+  const elapsed = useLiveTimer(since);
+
+  if (!since || !elapsed) return null;
+
+  const config = {
+    new:         { color: 'var(--accent-blue)',   label: 'Новая',    icon: CircleDot },
+    in_progress: { color: 'var(--accent-green)',  label: 'В работе', icon: Play      },
+    paused:      { color: 'var(--accent-orange)', label: 'Пауза',    icon: Pause     },
+    waiting:     { color: 'var(--accent-purple)', label: 'Ожидание', icon: Timer     },
+  }[status] || { color: 'var(--text-muted)', label: 'Закрыто', icon: CheckCircle };
+
+  const Icon = config.icon;
+
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      background: `${config.color}10`,
+      border: `1px solid ${config.color}25`,
+      borderRadius: 10, padding: '4px 10px',
+      fontSize: 10, fontWeight: 800, color: config.color,
+      textTransform: 'uppercase', letterSpacing: '0.02em'
+    }}>
+      <Icon size={12} fill={status === 'in_progress' ? 'currentColor' : 'none'} />
+      <span>{elapsed}</span>
+    </div>
+  );
 };
 
-const TicketCard = ({ ticket, columnId, isList = false }) => {
-  const navigate = useNavigate();
+// ─── Ticket card ──────────────────────────────────────────────────────────────
+const TicketCard = ({ ticket, columnId, isList = false, isNew = false }) => {
+  const navigate  = useNavigate();
   const clubClass = clubColors[ticket.club] || 'badge-4you';
-  const priority = priorityLabels[ticket.priority] || priorityLabels.medium;
+  const priority  = priorityLabels[ticket.priority] || priorityLabels.medium;
+
+  const cardStyle = {
+    animation: isNew ? 'card-drop-in 0.4s cubic-bezier(0.34,1.56,0.64,1)' : undefined,
+    position: 'relative',
+    overflow: 'hidden'
+  };
 
   if (isList) {
     return (
       <div
         className="ticket-card"
         onClick={() => navigate(`/tickets/${ticket.id}`)}
-        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12, padding: '16px 20px' }}
+        style={{ 
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, 
+          marginBottom: 12, padding: '18px 24px', borderRadius: 20,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          ...cardStyle 
+        }}
       >
-        <span className={`badge ${clubClass}`} style={{ minWidth: 80, textAlign: 'center' }}>{ticket.club || '4YOU'}</span>
+        <span className={`badge ${clubClass}`} style={{ minWidth: 80, textAlign: 'center', padding: '4px 10px' }}>{ticket.club || '4YOU'}</span>
         <div style={{ flex: 1 }}>
-          <h3 className="font-semibold text-sm leading-snug" style={{ color: 'var(--text-primary)' }}>
-            {ticket.title}
-          </h3>
-          {ticket.subtitle && (
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{ticket.subtitle}</p>
-          )}
+          <h3 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{ticket.title}</h3>
+          {ticket.subtitle && <p style={{ fontSize: 12, marginTop: 4, color: 'var(--text-muted)', fontWeight: 500 }}>{ticket.subtitle}</p>}
         </div>
-        <span className={`badge ${priority.cls}`}>{priority.label}</span>
-        <div style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 80, textAlign: 'right' }}>
-          {ticket.createdAt}
-        </div>
-        <div className="flex items-center gap-2 ml-4">
-          {columnId === 'new' && (
-            <button
-              onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
-              className="p-1.5 rounded-lg"
-              style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)', transition: 'all 0.15s' }}
-            >
-              <Play size={14} fill="currentColor" />
-            </button>
-          )}
-          <button
-            onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
-            className="p-1.5 rounded-lg"
-            style={{ background: 'rgba(123,61,255,0.1)', color: '#7B3DFF', border: '1px solid rgba(123,61,255,0.2)', transition: 'all 0.15s' }}
-          >
-            <CheckCircle size={14} />
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <StatusTimer ticket={ticket} />
+          <span className={`badge ${priority.cls}`} style={{ padding: '4px 10px' }}>{priority.label}</span>
+          <ChevronRight size={16} color="var(--text-muted)" />
         </div>
       </div>
     );
@@ -90,262 +138,451 @@ const TicketCard = ({ ticket, columnId, isList = false }) => {
     <div
       className="ticket-card"
       onClick={() => navigate(`/tickets/${ticket.id}`)}
-      style={{ cursor: 'pointer' }}
+      style={{ 
+        cursor: 'pointer', padding: '20px', borderRadius: 24, 
+        background: 'var(--bg-card)', border: '1px solid var(--border)',
+        marginBottom: 16, transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        ...cardStyle 
+      }}
     >
-      <div className="flex items-center gap-2 mb-3">
-        <span className={`badge ${clubClass}`}>{ticket.club || '4YOU'}</span>
-        <span className={`badge ${priority.cls} ml-auto`}>{priority.label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <span className={`badge ${clubClass}`} style={{ padding: '4px 12px', borderRadius: 8, fontSize: 9 }}>{ticket.club || '4YOU'}</span>
+        <div style={{ width: 4, height: 4, borderRadius: '50%', background: priority.color || '#555' }} />
       </div>
-      <h3 className="font-semibold text-sm leading-snug mb-4" style={{ color: 'var(--text-primary)' }}>
+
+      <h3 style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)', marginBottom: 10, lineHeight: 1.4, letterSpacing: '-0.02em' }}>
         {ticket.title}
       </h3>
+      
       {ticket.subtitle && (
-        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>{ticket.subtitle}</p>
+        <p style={{ fontSize: 12, marginBottom: 16, color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.5 }}>
+          {ticket.subtitle}
+        </p>
       )}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-          <span className="text-xs" style={{ letterSpacing: '0.02em', fontSize: 11 }}>{ticket.createdAt}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {columnId === 'new' && (
-            <button
-              onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
-              className="p-1.5 rounded-lg"
-              style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)', transition: 'all 0.15s' }}
-            >
-              <Play size={14} fill="currentColor" />
-            </button>
-          )}
-          <button
-            onClick={e => { e.stopPropagation(); navigate(`/tickets/${ticket.id}`); }}
-            className="p-1.5 rounded-lg"
-            style={{ background: 'rgba(123,61,255,0.1)', color: '#7B3DFF', border: '1px solid rgba(123,61,255,0.2)', transition: 'all 0.15s' }}
-          >
-            <CheckCircle size={14} />
-          </button>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+        <StatusTimer ticket={ticket} />
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)' }}>
+          <User size={12} />
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{ticket.assignee?.split(' ')[0] || '—'}</span>
         </div>
       </div>
     </div>
   );
 };
 
-export const DEMO_TICKETS = {
-  new: [
-    { id: 1, title: 'Переход на летний режим вентиляции', club: '4YOU', priority: 'medium', createdAt: 'около 1 месяца' },
-    { id: 2, title: 'Заменять натяжные потолки, по возможности поменять освещение', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
-    { id: 3, title: 'Сделать отдельную кухню для сотрудников', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
-    { id: 4, title: 'Кабинет напротив ОП оборудовать под переговорную с клиентами', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
-    { id: 5, title: 'Закрыть частично стекло в ОП (матовой пленкой, либо цветы)', club: 'COLIBRI', priority: 'medium', createdAt: '3 месяца' },
-    { id: 6, title: 'Разобрать склад, сделать стелажи', club: 'COLIBRI', priority: 'low', createdAt: '3 месяца' },
-    { id: 7, title: 'Единый музыкальный плейлист для всей сети HJ', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
-    { id: 8, title: 'Экраны в залах выровнять под один уровень', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
-  ],
-  in_progress: [
-    { id: 9, title: 'Переустановка счетчиков гор воды и пломбировка', club: '4YOU', priority: 'medium', createdAt: 'около 2 месяцев' },
-    { id: 10, title: 'Сделать новую систему розеток + упорядочить шнуры', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
-    { id: 11, title: 'Закрепить стальные кассеты (стены) по всему объекту', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
-    { id: 12, title: 'Заказ подставок для гантелей в зал Legs', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
-    { id: 13, title: 'Решить проблему в залах кардио с повышением температуры', club: 'COLIBRI', priority: 'critical', createdAt: '3 месяца' },
-    { id: 14, title: 'Изготовить форму для админов, сервисников', club: 'COLIBRI', priority: 'medium', createdAt: '3 месяца' },
-    { id: 15, title: 'Трещина в Legs на потолке огромная', club: '4YOU', priority: 'critical', createdAt: '3 месяца' },
-    { id: 16, title: 'Разработка и создание униформы для сотрудников', club: '4YOU', priority: 'medium', createdAt: '3 месяца' },
-    { id: 17, title: 'Подсветка мерч зоны, сделать гардеробный шкаф закрытый', club: 'COLIBRI', priority: 'medium', createdAt: '3 месяца' },
-    { id: 18, title: 'Сбой в оборудовании, одна лампа в буте не горит', club: 'VILLA', priority: 'medium', createdAt: '3 месяца' },
-  ],
-  paused: [
-    { id: 19, title: 'Фен Борк сломан (на ремонте)', club: '4YOU', priority: 'critical', createdAt: '2 месяца', subtitle: 'Ждём детали для сервис центра' },
-  ],
-  waiting: [
-    { id: 20, title: 'Работа с кровлей, протечки', club: '4YOU', priority: 'medium', createdAt: '1 месяц' },
-    { id: 21, title: 'Разборка серверной', club: 'COLIBRI', priority: 'medium', createdAt: '2 месяца', subtitle: 'Ждём Владимира, подтверди заяв' },
-  ],
-  closed: [
-    { id: 22, title: 'Замена зеркала в женской раздевалке', club: '4YOU', priority: 'medium', createdAt: '2 недели назад', closedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() }, // Closed 2 hours ago (Stays in Tickets)
-    { id: 23, title: 'Починить беговую дорожку №4', club: '4YOU', priority: 'high', createdAt: '1 месяц назад', closedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() }, // Closed 2 days ago (Goes to Archive)
-    { id: 24, title: 'Обновление ПО на турникетах', club: 'COLIBRI', priority: 'medium', createdAt: '3 недели назад', closedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString() }, // Closed 3 days ago (Goes to Archive but for COLIBRI)
-    { id: 25, title: 'Установка дополнительных кулеров', club: '4YOU', priority: 'low', createdAt: '2 месяца назад', closedAt: new Date(Date.now() - 120 * 60 * 60 * 1000).toISOString() }, // Old ticket for 4YOU archive
-  ],
+// ─── Create Ticket Modal ──────────────────────────────────────────────────────
+const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [club, setClub] = useState('');
+  const [priority, setPriority] = useState('medium');
+  const [assignee, setAssignee] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Identify CHEF role (more inclusive check)
+  const isChef = user?.email?.toLowerCase().includes('chef') || 
+                 user?.email?.toLowerCase().includes('sales5') ||
+                 user?.displayName?.toLowerCase().includes('chef') ||
+                 user?.displayName?.toLowerCase().includes('sales5') ||
+                 user?.email === 'dilshat.r@hj.fit'; 
+
+  useEffect(() => {
+    if (isOpen) {
+      setTitle('');
+      setDescription('');
+      setPriority('medium');
+      setIsSubmitting(false); // сбрасываем состояние загрузки при каждом открытии
+      // Default club for non-chef is 4YOU, but prefer activeClub if valid
+      const initialClub = (activeClub && activeClub !== 'ВСЕ') ? activeClub : (isChef ? '' : '4YOU');
+      setClub(initialClub);
+      // Default assignee is the current user or a fallback
+      setAssignee(user?.displayName || 'Сания (4YOU)');
+    }
+  }, [isOpen, isChef, user, activeClub]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title || !club) return;
+
+    setIsSubmitting(true);
+    try {
+      await onAdd({
+        title,
+        description,
+        club,
+        priority,
+        assignee,
+      });
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000,
+    }} onClick={onClose}>
+      <div style={{
+        width: 480, background: 'var(--bg-card)', border: '1px solid var(--border)',
+        borderRadius: 24, padding: 32, boxShadow: 'var(--shadow-card)',
+        position: 'relative'
+      }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 24, letterSpacing: '-0.02em' }}>
+          НОВАЯ ЗАЯВКА
+        </h2>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Клуб
+            </label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {CLUBS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setClub(c)}
+                  style={{
+                    padding: '8px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                    background: club === c ? 'var(--accent-purple)' : 'var(--bg-secondary)',
+                    color: club === c ? '#fff' : 'var(--text-secondary)',
+                    border: club === c ? '1px solid var(--accent-purple)' : '1px solid var(--border)',
+                    cursor: 'pointer',
+                    opacity: 1,
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
+              Заголовок задачи
+            </label>
+            <input
+              className="input-app"
+              style={{ width: '100%', borderRadius: 12 }}
+              placeholder="Коротко о сути..."
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
+              Срочность
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {PRIORITIES.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPriority(p.id)}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 12, fontSize: 11, fontWeight: 700,
+                    background: priority === p.id ? `${p.color}20` : 'var(--bg-secondary)',
+                    color: priority === p.id ? p.color : 'var(--text-muted)',
+                    border: priority === p.id ? `1px solid ${p.color}40` : '1px solid var(--border)',
+                    cursor: 'pointer', transition: 'all 0.15s'
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
+              Информация подробнее
+            </label>
+            <textarea
+              className="input-app"
+              style={{ width: '100%', borderRadius: 12, minHeight: 80, padding: 12, resize: 'none' }}
+              placeholder="Детали задачи..."
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
+              Ответственный
+            </label>
+            <select
+              className="input-app"
+              style={{ width: '100%', borderRadius: 12, cursor: 'pointer' }}
+              value={assignee.split(' (')[0]}
+              onChange={e => setAssignee(`${e.target.value} (${club || '?'})`)}
+            >
+              {MANAGERS.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ flex: 1, padding: '14px', borderRadius: 14, background: 'transparent', color: 'var(--text-muted)', fontWeight: 700, border: '1px solid var(--border)', cursor: 'pointer' }}
+            >
+              ОТМЕНА
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !title || !club}
+              style={{ 
+                flex: 2, padding: '14px', borderRadius: 14, 
+                background: isSubmitting ? 'var(--bg-secondary)' : 'var(--accent-purple)', 
+                color: '#fff', fontWeight: 800, border: 'none', 
+                cursor: isSubmitting ? 'not-allowed' : 'pointer', 
+                boxShadow: isSubmitting ? 'none' : '0 8px 24px rgba(123,61,255,0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+              }}
+            >
+              {isSubmitting ? (
+                <>
+                  <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }}></div>
+                  СОЗДАНИЕ...
+                </>
+              ) : 'СОЗДАТЬ'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+const KanbanColumn = ({ col, tickets, prevTicketIds }) => {
+  return (
+    <div className="kanban-col" style={{ flex: 1, minWidth: 280, display: 'flex', flexDirection: 'column' }}>
+      <div className="kanban-header" style={{ marginBottom: 16, padding: '0 8px' }}>
+        <span style={{ color: col.color, fontWeight: 900, fontSize: 12 }}>{col.label}</span>
+        <span className="col-count" style={{ marginLeft: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 8px', fontSize: 10, fontWeight: 800 }}>{tickets.length}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {tickets.map(ticket => {
+          const isNew = prevTicketIds && !prevTicketIds.has(ticket.id);
+          return <TicketCard key={ticket.id} ticket={ticket} columnId={col.id} isNew={isNew} />;
+        })}
+        {tickets.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '32px 0', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
+            ПУСТО
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
+// ─── Main page ────────────────────────────────────────────────────────────────
 const TicketsPage = () => {
-  const [activeClub, setActiveClub] = useState('ВСЕ');
+  const [activeClub,   setActiveClub]   = useState('ВСЕ');
   const [activeFilter, setActiveFilter] = useState('ВСЕ');
-  const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState('kanban'); // 'kanban', 'list', 'grid'
-  const { tickets } = useTickets();
+  const [search,       setSearch]       = useState('');
+  const [viewMode,     setViewMode]     = useState('kanban');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [prevColIds,    setPrevColIds]    = useState(null);
+
+  const { tickets, user, addTicket } = useTickets();
   const navigate = useNavigate();
 
-  // Use demo data if no Firestore tickets
-  const data = tickets && tickets.length > 0 ? {} : DEMO_TICKETS;
-
-  const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
-
-  // Flatten tickets for list and grid views
-  const flattenedTickets = COLUMNS.flatMap(col => {
-    let colTickets = data[col.id] || [];
-    if (activeClub !== 'ВСЕ') colTickets = colTickets.filter(t => t.club === activeClub);
-    if (search) colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
-    if (activeFilter !== 'ВСЕ' && col.label !== activeFilter) return [];
+  // Group tickets by status
+  const groupedTickets = React.useMemo(() => {
+    const result = { new: [], in_progress: [], paused: [], waiting: [], closed: [] };
+    if (!tickets) return result;
     
-    // Hide archived tickets from the main board
-    if (col.id === 'closed') {
-      const now = new Date();
-      colTickets = colTickets.filter(t => {
-        if (!t.closedAt) return false; // For demo: hide if no closed date (assumes it's old)
-        const closedDate = new Date(t.closedAt);
-        const diffHours = (now - closedDate) / (1000 * 60 * 60);
-        return diffHours <= 24;
+    tickets.forEach(t => {
+      const s = t.status || 'new';
+      if (result[s]) result[s].push(t);
+    });
+    return result;
+  }, [tickets]);
+
+  // Update prevColIds whenever groupedTickets changes (so we can detect new arrivals)
+  useEffect(() => {
+    const nextIds = {};
+    COLUMNS.forEach(col => {
+      nextIds[col.id] = new Set((groupedTickets[col.id] || []).map(t => t.id));
+    });
+
+    setPrevColIds(prev => {
+      // On first render there's nothing to diff
+      if (prev === null) return nextIds;
+
+      // Compute which IDs moved *into* each column
+      // (we don't need to store this — just return next so next diff is ready)
+      return nextIds;
+    });
+  }, [groupedTickets]);
+
+  // Filter logic ───────────────────────────────────────────────────────────────
+  const filterTickets = useCallback((colId, colTickets) => {
+    let filtered = colTickets || [];
+
+    // Club filter
+    if (activeClub !== 'ВСЕ') filtered = filtered.filter(t => t.club === activeClub);
+
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(t => (t.title || '').toLowerCase().includes(q));
+    }
+
+    // Status filter: hide columns that don't match
+    if (activeFilter !== 'ВСЕ') {
+      const targetCol = FILTER_TO_COL[activeFilter];
+      if (targetCol && targetCol !== colId) return [];
+    }
+
+    // Hide closed tickets closed before today from the main board
+    if (colId === 'closed') {
+      const todayStart = new Date().setHours(0,0,0,0);
+      filtered = filtered.filter(t => {
+        if (!t.closedAt) return false;
+        return new Date(t.closedAt).getTime() >= todayStart;
       });
     }
 
-    return colTickets.map(t => ({ ...t, columnId: col.id, columnLabel: col.label, columnColor: col.color }));
-  });
+    return filtered;
+  }, [activeClub, search, activeFilter]);
+
+  const flattenedTickets = React.useMemo(() =>
+    COLUMNS.flatMap(col =>
+      filterTickets(col.id, groupedTickets[col.id]).map(t => ({ ...t, columnId: col.id }))
+    ),
+    [filterTickets, groupedTickets]
+  );
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Top Page Header (matches screenshot) */}
-      <div className="flex items-start justify-between mb-6">
+      {/* Page header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, paddingRight: 56 }}>
         <div>
-          <h1 className="text-xl font-bold italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)' }}>
-            <span style={{ color: 'var(--accent-purple)' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-            </span>
+          <h1 style={{ fontSize: 20, fontWeight: 800, fontStyle: 'italic', color: 'var(--text-primary)', marginBottom: 4 }}>
             Все клубы: {activeClub === 'ВСЕ' ? 'ALL' : activeClub}
           </h1>
-          <p className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            <span style={{ color: 'var(--accent-purple)' }}>📍</span> ГЛОБАЛЬНЫЙ МОНИТОРИНГ
+          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+            📍 ГЛОБАЛЬНЫЙ МОНИТОРИНГ
           </p>
         </div>
-
-        <div className="flex items-center gap-4">
-          {/* Club Pills Container */}
-          <div className="flex items-center gap-1 p-1 rounded-full" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Club tabs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 4, borderRadius: 999, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
             {CLUBS_TABS.map(c => (
-              <button
-                key={c}
-                onClick={() => setActiveClub(c)}
-                className="px-4 py-1.5 rounded-full text-xs font-bold transition-all"
-                style={{
-                  background: activeClub === c ? 'var(--accent-purple)' : 'transparent',
-                  color: activeClub === c ? '#fff' : 'var(--text-secondary)',
-                  letterSpacing: '0.02em'
-                }}
-              >
-                {c}
-              </button>
+              <button key={c} onClick={() => setActiveClub(c)} style={{
+                padding: '6px 16px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                background: activeClub === c ? 'var(--accent-purple)' : 'transparent',
+                color: activeClub === c ? '#fff' : 'var(--text-secondary)',
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s', letterSpacing: '0.02em',
+              }}>{c}</button>
             ))}
           </div>
-
-          <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-xs font-bold transition-transform hover:-translate-y-0.5" style={{ background: '#b275ff', boxShadow: '0 4px 12px rgba(178,117,255,0.3)' }}>
-            <Plus size={16} strokeWidth={3} />
-            СОЗДАТЬ ЗАЯВКУ
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px',
+              borderRadius: 12, background: '#b275ff', color: '#fff', fontWeight: 700,
+              fontSize: 12, border: 'none', cursor: 'pointer', letterSpacing: '0.02em',
+              boxShadow: '0 4px 12px rgba(178,117,255,0.35)', transition: 'transform 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+          >
+            <Plus size={16} strokeWidth={3} /> СОЗДАТЬ ЗАЯВКУ
           </button>
         </div>
       </div>
 
-      {/* Search + Filters */}
-      <div className="flex items-center gap-4 mb-5">
-        <div className="relative flex-1 max-w-lg">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+      {/* Search + filters + view mode */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
+          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
-            className="input-app w-full pl-10"
-            placeholder="Поиск..."
+            className="input-app"
+            style={{ paddingLeft: 36, borderRadius: 12, width: '100%' }}
+            placeholder="Поиск заявки..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ borderRadius: '12px' }}
           />
         </div>
-        <div className="flex items-center gap-1">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {FILTERS.map(f => (
-            <button
-              key={f}
-              onClick={() => setActiveFilter(f)}
-              className={`filter-tab ${activeFilter === f ? 'active' : ''}`}
-            >
-              {f}
+            <button key={f} onClick={() => setActiveFilter(f)} className={`filter-tab ${activeFilter === f ? 'active' : ''}`}>{f}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', paddingLeft: 16, borderLeft: '1px solid var(--border)' }}>
+          {[['kanban', Columns, 'Доска'], ['list', List, 'Список'], ['grid', LayoutGrid, 'Сетка']].map(([mode, Icon, title]) => (
+            <button key={mode} onClick={() => setViewMode(mode)} title={title} style={{
+              padding: 6, borderRadius: 8, background: viewMode === mode ? 'var(--accent-purple)' : 'transparent',
+              color: viewMode === mode ? '#fff' : 'var(--text-muted)', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+              display: 'flex', alignItems: 'center',
+            }}>
+              <Icon size={16} />
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1 ml-4 border-l pl-4" style={{ borderColor: 'var(--border)' }}>
-          <button onClick={() => setViewMode('kanban')} title="Доска" className="p-1.5 rounded-lg transition-colors" style={{ background: viewMode === 'kanban' ? 'var(--accent-purple)' : 'transparent', color: viewMode === 'kanban' ? '#fff' : 'var(--text-muted)' }}>
-            <Columns size={16} />
-          </button>
-          <button onClick={() => setViewMode('list')} title="Список" className="p-1.5 rounded-lg transition-colors" style={{ background: viewMode === 'list' ? 'var(--accent-purple)' : 'transparent', color: viewMode === 'list' ? '#fff' : 'var(--text-muted)' }}>
-            <List size={16} />
-          </button>
-          <button onClick={() => setViewMode('grid')} title="Сетка" className="p-1.5 rounded-lg transition-colors" style={{ background: viewMode === 'grid' ? 'var(--accent-purple)' : 'transparent', color: viewMode === 'grid' ? '#fff' : 'var(--text-muted)' }}>
-            <LayoutGrid size={16} />
-          </button>
-        </div>
       </div>
 
-      {/* Boards / Views */}
+      {/* Board */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {viewMode === 'kanban' && (
-          <div className="flex gap-4 pb-4" style={{ minWidth: '100%' }}>
+          <div style={{ display: 'flex', gap: 20, paddingBottom: 16, minWidth: '100%', overflowX: 'auto' }}>
             {COLUMNS.map(col => {
-              let colTickets = data[col.id] || [];
-              if (activeClub !== 'ВСЕ') colTickets = colTickets.filter(t => t.club === activeClub);
-              if (search) colTickets = colTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
-              if (activeFilter !== 'ВСЕ' && col.label !== activeFilter) colTickets = []; // Hide tickets if filter doesn't match column
-
-              if (col.id === 'closed') {
-                const now = new Date();
-                colTickets = colTickets.filter(t => {
-                  if (!t.closedAt) return false;
-                  const closedDate = new Date(t.closedAt);
-                  return ((now - closedDate) / (1000 * 60 * 60)) <= 24;
-                });
-              }
-
+              const colTickets = filterTickets(col.id, groupedTickets[col.id]);
               return (
-                <div key={col.id} className="kanban-col">
-                  <div className="kanban-header">
-                    <span style={{ color: col.color }}>{col.label}</span>
-                    <span className="col-count">{colTickets.length}</span>
-                  </div>
-                  <div>
-                    {colTickets.map(ticket => (
-                      <TicketCard key={ticket.id} ticket={ticket} columnId={col.id} />
-                    ))}
-                    {colTickets.length === 0 && (
-                      <div className="text-center py-8 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                        ПУСТО
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <KanbanColumn
+                  key={col.id}
+                  col={col}
+                  tickets={colTickets}
+                  prevTicketIds={prevColIds?.[col.id]}
+                />
               );
             })}
           </div>
         )}
 
         {viewMode === 'grid' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', paddingBottom: '20px' }}>
-            {flattenedTickets.map(ticket => (
-              <TicketCard key={ticket.id} ticket={ticket} columnId={ticket.columnId} />
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, paddingBottom: 20 }}>
+            {flattenedTickets.map(t => <TicketCard key={t.id} ticket={t} columnId={t.columnId} />)}
             {flattenedTickets.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                Нет заявок, соответствующих фильтрам
-              </div>
+              <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Нет заявок</div>
             )}
           </div>
         )}
 
         {viewMode === 'list' && (
-          <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: '20px' }}>
-            {flattenedTickets.map(ticket => (
-              <TicketCard key={ticket.id} ticket={ticket} columnId={ticket.columnId} isList={true} />
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 20 }}>
+            {flattenedTickets.map(t => <TicketCard key={t.id} ticket={t} columnId={t.columnId} isList />)}
             {flattenedTickets.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                Нет заявок, соответствующих фильтрам
-              </div>
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Нет заявок</div>
             )}
           </div>
         )}
       </div>
+      {/* Create Modal */}
+      <CreateTicketModal 
+        isOpen={isCreateOpen} 
+        onClose={() => setIsCreateOpen(false)}
+        user={user}
+        onAdd={addTicket}
+        activeClub={activeClub}
+      />
     </div>
   );
 };

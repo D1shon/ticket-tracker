@@ -15,7 +15,7 @@ const ChecklistPage = () => {
   const dateKey = format(activeDate, 'yyyy-MM-dd');
 
   const getCheckProgress = (shiftId, cardId) => {
-    const docId = `${dateKey}_${shiftId}_${cardId}`;
+    const docId = `${dateKey}_${activeClub}_${shiftId}_${cardId}`;
     const data = checklistData[docId];
     if (!data || !data.states) return { answered: 0, total: CHECK_ITEMS[cardId].items.length };
     
@@ -31,7 +31,7 @@ const ChecklistPage = () => {
   };
 
   return (
-    <div className="animate-fade" style={{ background: '#070708', minHeight: '100%', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
+    <div className="animate-fade" style={{ background: 'var(--bg-primary)', minHeight: '100%', color: 'var(--text-primary)', fontFamily: 'var(--font-primary)' }}>
       
       {/* Header Area */}
       <div className="flex items-start justify-between mb-8">
@@ -40,7 +40,7 @@ const ChecklistPage = () => {
             <ShieldCheck style={{ color: '#a855f7' }} size={24} strokeWidth={2.5} />
             <h1 className="text-xl font-bold tracking-tight uppercase" style={{ letterSpacing: '0.02em' }}>Мониторинг клуба</h1>
           </div>
-          <p className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
             Регулярные проверки по расписанию: 6:30 - 11:30 - 16:30 - 21:30
           </p>
         </div>
@@ -49,16 +49,16 @@ const ChecklistPage = () => {
       {/* Filters Row */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex flex-col gap-3">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Клуб</span>
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111113] border border-white/5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Клуб</span>
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
             {CLUBS.map(club => (
               <button
                 key={club}
                 onClick={() => setActiveClub(club)}
                 className={`px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
                   activeClub === club 
-                    ? 'bg-[#222226] text-blue-400 border border-blue-500/20' 
-                    : 'text-white/40 hover:text-white/60'
+                    ? 'bg-[var(--bg-hover)] text-[var(--accent-blue)] border border-[var(--accent-blue)]/20' 
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
               >
                 {club}
@@ -68,9 +68,9 @@ const ChecklistPage = () => {
         </div>
 
         <div className="flex flex-col gap-3 items-end">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Дата смен</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Дата смен</span>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111113] border border-white/5">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
               <button
                 onClick={() => setActiveDate(prev => subDays(prev, 1))}
                 className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white/40 hover:text-white transition-all hover:bg-white/5"
@@ -81,21 +81,21 @@ const ChecklistPage = () => {
                 onClick={() => setActiveDate(startOfToday())}
                 className={`px-5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
                   dateKey === format(startOfToday(), 'yyyy-MM-dd') 
-                    ? 'bg-[#7B3DFF] text-white' 
-                    : 'text-white/40 hover:text-white/60'
+                    ? 'bg-[var(--accent-purple)] text-white' 
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
               >
                 СЕГОДНЯ
               </button>
               <button
                 onClick={() => setActiveDate(prev => addDays(prev, 1))}
-                className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white/40 hover:text-white transition-all hover:bg-white/5"
+                className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all hover:bg-[var(--bg-hover)]"
               >
                 →
               </button>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#111113] border border-white/5 text-[11px] font-bold text-white/70">
-              <Calendar size={14} className="text-purple-500" />
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-[11px] font-bold text-[var(--text-secondary)]">
+              <Calendar size={14} className="text-[var(--accent-purple)]" />
               {format(activeDate, 'dd.MM.yyyy')}
             </div>
           </div>
@@ -103,8 +103,8 @@ const ChecklistPage = () => {
       </div>
 
       {/* Status Label */}
-      <div className="flex items-center gap-2 mb-6 text-[10px] font-bold tracking-widest text-white/40 uppercase">
-        <Clock size={12} className="text-purple-500" />
+      <div className="flex items-center gap-2 mb-6 text-[10px] font-bold tracking-widest text-[var(--text-muted)] uppercase">
+        <Clock size={12} className="text-[var(--accent-purple)]" />
         Статус смен: {activeClub}
       </div>
 
@@ -114,7 +114,7 @@ const ChecklistPage = () => {
           <div 
             key={shift.id} 
             className={`relative rounded-2xl transition-all ${
-              shift.isCurrent ? 'bg-[#0a0a0c]' : 'bg-transparent'
+              shift.isCurrent ? 'bg-[var(--bg-card)]' : 'bg-transparent'
             }`}
             style={{ 
               border: shift.isCurrent ? '1px solid rgba(123,61,255,0.3)' : '1px solid transparent',
@@ -124,27 +124,27 @@ const ChecklistPage = () => {
             {/* Shift Header */}
             <div className="flex items-center justify-between p-5 pb-4">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#111113] border border-white/5 shadow-inner">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--bg-hover)] border border-[var(--border)] shadow-inner">
                   <shift.icon size={18} style={{ color: shift.color }} />
                 </div>
                 <div>
                   <div className="flex items-center gap-3">
                     <h3 className="text-base font-bold flex items-center gap-2">
                       <span style={{ color: shift.color }}>{shift.time}</span>
-                      <span className="text-white/90">{shift.name}</span>
+                      <span className="text-[var(--text-primary)]">{shift.name}</span>
                     </h3>
                     {shift.isCurrent && (
                       <span className="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 text-[9px] font-black uppercase tracking-tighter border border-blue-500/20">сейчас</span>
                     )}
                   </div>
-                  <p className="text-[11px] text-white/30 font-medium mt-0.5">{shift.cards.length} проверки · {shift.isCurrent ? 'в процессе' : 'ожидание'}</p>
+                  <p className="text-[11px] text-[var(--text-muted)] font-medium mt-0.5">{shift.cards.length} проверки · {shift.isCurrent ? 'в процессе' : 'ожидание'}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button className="text-white/20 hover:text-white/40 transition-colors">
+                <button className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                   <MoreHorizontal size={18} />
                 </button>
-                <button className="text-white/20 hover:text-white/40 transition-colors">
+                <button className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                   <ChevronDown size={18} />
                 </button>
               </div>
@@ -161,26 +161,26 @@ const ChecklistPage = () => {
                 return (
                   <div 
                     key={cardId}
-                    onClick={() => navigate(`/checklists/${shift.id}/${cardId}?date=${dateKey}`)}
-                    className={`group bg-[#111113] border rounded-2xl p-6 flex flex-col items-center justify-center gap-4 hover:bg-[#151518] transition-all cursor-pointer shadow-sm ${
-                      complete ? 'border-green-500/30' : 'border-white/5 hover:border-white/10'
+                    onClick={() => navigate(`/checklists/${shift.id}/${cardId}?date=${dateKey}&club=${activeClub}`)}
+                    className={`group bg-[var(--bg-card)] border rounded-2xl p-6 flex flex-col items-center justify-center gap-4 hover:bg-[var(--bg-hover)] transition-all cursor-pointer shadow-sm ${
+                      complete ? 'border-green-500/30' : 'border-[var(--border)] hover:border-[var(--accent-purple)]/30'
                     }`}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform shadow-lg ${
-                      complete ? 'bg-green-500/10 text-green-500' : 'bg-[#1a1a1d]'
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[var(--accent-purple)] group-hover:scale-110 transition-transform shadow-lg ${
+                      complete ? 'bg-green-500/10 text-green-500' : 'bg-[var(--bg-hover)]'
                     }`}>
                       {complete ? <ShieldCheck size={20} /> : <card.icon size={20} strokeWidth={2} />}
                     </div>
                     <div className="text-center w-full">
-                      <h4 className="text-xs font-bold text-white/90 mb-1 group-hover:text-white transition-colors">{card.title}</h4>
+                      <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1 group-hover:text-[var(--accent-purple)] transition-colors">{card.title}</h4>
                       <div className="flex flex-col items-center gap-2">
-                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${complete ? 'text-green-500/60' : 'text-white/30'}`}>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${complete ? 'text-green-500/60' : 'text-[var(--text-muted)]'}`}>
                           {complete ? 'Выполнено' : `${answered} из ${total} выполнено`}
                         </p>
                         {/* Small Progress Bar */}
-                        <div className="w-20 h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div className="w-20 h-1 bg-[var(--bg-hover)] rounded-full overflow-hidden">
                           <div 
-                            className={`h-full transition-all duration-500 ${complete ? 'bg-green-500' : 'bg-[#7B3DFF]'}`}
+                            className={`h-full transition-all duration-500 ${complete ? 'bg-green-500' : 'bg-[var(--accent-purple)]'}`}
                             style={{ width: `${percent}%` }}
                           />
                         </div>
