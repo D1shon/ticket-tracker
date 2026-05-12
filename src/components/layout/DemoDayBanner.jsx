@@ -16,7 +16,7 @@ const DemoDayBanner = () => {
       const todayKey = `demo_day_closed_${format(now, 'yyyy-MM-dd')}`;
       const isClosedManually = localStorage.getItem(todayKey);
 
-      if (true) { // FORCED FOR PREVIEW
+      if (isFriday && !isClosedManually) {
         setIsVisible(true);
       } else {
         setIsVisible(false);
