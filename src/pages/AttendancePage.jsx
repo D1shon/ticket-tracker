@@ -3,6 +3,9 @@ import { QrCode, Smartphone, MapPin, ShieldCheck, History, X, RefreshCcw, CheckC
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
+import { doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+
 const STAFF_LIST = ['Анастасия', 'Сания', 'Диас', 'Салтанат', 'Айнур', 'Азиз', 'Владимир'];
 
 const LiveClock = () => {
@@ -32,7 +35,36 @@ const AttendancePage = () => {
   const [activeSlot, setActiveSlot] = useState(null);
   const [qrProgress, setQrProgress] = useState(100);
   const [isVerifying, setIsVerifying] = useState(false);
-  
+
+  // Real-time Firebase Sync for QR Scan
+  useEffect(() => {
+    let unsubscribe = () => {};
+
+    if (showQrModal && activeSlot) {
+      // Listen for mobile verification
+      const adminName = activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name;
+      if (adminName) {
+        unsubscribe = onSnapshot(doc(db, 'attendance_sync', adminName), (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data.status === 'verified') {
+              setIsVerifying(true);
+              setTimeout(async () => {
+                confirmCheckIn();
+                setShowQrModal(false);
+                setIsVerifying(false);
+                // Cleanup sync doc
+                await deleteDoc(doc(db, 'attendance_sync', adminName));
+              }, 1500);
+            }
+          }
+        });
+      }
+    }
+
+    return () => unsubscribe();
+  }, [showQrModal, activeSlot, admin1.name, admin2.name]);
+
   const [history, setHistory] = useState([
     { id: 1, user: 'Диас', action: 'QR-SCAN', time: '06:28:44', club: 'VILLA', slot: 'Админ 1', geo: 'Verified' },
     { id: 2, user: 'Анастасия', action: 'QR-SCAN', time: '06:29:12', club: 'VILLA', slot: 'Админ 2', geo: 'Verified' },
@@ -52,17 +84,18 @@ const AttendancePage = () => {
     return () => clearInterval(interval);
   }, [showQrModal, isVerifying]);
 
-  const startQrCheckIn = (slotNum, data) => {
+  const startQrCheckIn = async (slotNum, data) => {
     if (!data.name) return;
     setActiveSlot({ slot: slotNum, name: data.name });
     setShowQrModal(true);
     setIsVerifying(false);
     setQrProgress(100);
 
-    // Simulate mobile scan after 5 seconds
-    setTimeout(() => {
-      if (showQrModal) simulateMobileScan();
-    }, 5000);
+    // Initialize sync state in Firebase
+    await setDoc(doc(db, 'attendance_sync', data.name), {
+      status: 'waiting',
+      timestamp: Date.now()
+    });
   };
 
   const simulateMobileScan = () => {
@@ -281,7 +314,7 @@ const AttendancePage = () => {
                {!isVerifying ? (
                  <>
                    <img 
-                     src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/scan')}&color=000000&margin=10&qzone=2`}
+                     src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(window.location.origin + '/scan?admin=' + (activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name))}&color=000000&margin=10&qzone=2`}
                      alt="QR Scan"
                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                    />

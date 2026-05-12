@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, MapPin, ShieldCheck, Camera, Smartphone, CheckCircle2, Lock, Navigation } from 'lucide-react';
+import { QrCode, MapPin, ShieldCheck, Camera, Smartphone, CheckCircle2, Lock, Navigation, X, RefreshCcw } from 'lucide-react';
 import { format } from 'date-fns';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const MobileScanner = () => {
   const [status, setStatus] = useState('idle'); // idle, scanning, verifying, success
   const [gpsLocked, setGpsLocked] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(true);
   const [isIOS, setIsIOS] = useState(false);
+  const [adminName, setAdminName] = useState('');
   const videoRef = React.useRef(null);
 
   useEffect(() => {
+    // Get admin name from URL params
+    const params = new URLSearchParams(window.location.search);
+    const name = params.get('admin');
+    if (name) setAdminName(name);
+
     // Detect OS
     const userAgent = window.navigator.userAgent.toLowerCase();
     setIsIOS(/iphone|ipad|ipod/.test(userAgent));
@@ -53,13 +61,27 @@ const MobileScanner = () => {
 
   const startScan = () => {
     setStatus('scanning');
-    // In real PWA, we would call navigator.mediaDevices.getUserMedia
   };
 
   const handleScanSimulation = () => {
     setStatus('verifying');
-    setTimeout(() => {
-      setStatus('success');
+    
+    setTimeout(async () => {
+      try {
+        if (adminName) {
+          // Send signal to Firebase that this admin is verified
+          await updateDoc(doc(db, 'attendance_sync', adminName), {
+            status: 'verified',
+            timestamp: Date.now(),
+            geo: 'Verified'
+          });
+        }
+        setStatus('success');
+      } catch (error) {
+        console.error("Verification failed:", error);
+        alert("Ошибка верификации. Попробуйте еще раз.");
+        setStatus('idle');
+      }
     }, 2500);
   };
 
@@ -70,7 +92,7 @@ const MobileScanner = () => {
            <CheckCircle2 size={48} />
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>ВЕРИФИЦИРОВАНО</h1>
-        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, marginBottom: 32 }}>Смена успешно открыта в клубе VILLA</p>
+        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, marginBottom: 32 }}>Смена успешно открыта для: <b>{adminName}</b></p>
         
         <div style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 24, padding: 20, textAlign: 'left' }}>
            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -119,9 +141,9 @@ const MobileScanner = () => {
           <div style={{ width: 140, height: 140, borderRadius: 40, background: 'rgba(124, 58, 237, 0.05)', border: '1px solid rgba(124, 58, 237, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-purple)', marginBottom: 32 }}>
              <QrCode size={64} />
           </div>
-          <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 12 }}>Готовы к работе?</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 12 }}>{adminName ? `Привет, ${adminName}` : 'Готовы к работе?'}</h2>
           <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, textAlign: 'center', maxWidth: 260, lineHeight: 1.5, marginBottom: 40 }}>
-            Для открытия смены отсканируйте динамический QR-код на рабочем компьютере.
+            {adminName ? 'Нажмите кнопку ниже, чтобы начать сканирование QR-кода на компьютере.' : 'Для открытия смены отсканируйте динамический QR-код на рабочем компьютере.'}
           </p>
           <button 
             onClick={startScan}
