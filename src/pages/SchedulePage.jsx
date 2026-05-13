@@ -27,7 +27,6 @@ import {
 import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
-import ScrollContainer from 'react-indiana-drag-scroll';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
@@ -339,19 +338,17 @@ const SchedulePage = () => {
       </div>
 
       <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-2xl relative">
-        <ScrollContainer 
+        <div 
           className="overflow-auto rounded-3xl table-scroll-container" 
           style={{ maxHeight: '60vh' }}
-          hideScrollbars={false}
-          ignoreElements="input, textarea, button"
         >
           <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px] select-none">
             <thead>
               <tr className="text-[9px] uppercase tracking-widest font-black text-[var(--text-muted)]">
-                <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">Сотрудник</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">Сотрудник</th>
                 
                 {daysInMonth.map(day => (
-                  <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className={`px-1 py-4 text-center min-w-[80px] ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
+                  <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className={`px-1 py-4 text-center min-w-[80px] ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
                     <div className="flex flex-col items-center gap-0.5"><span className="opacity-50">{format(day, 'eeeee', { locale: ru })}</span><span className="text-xs">{format(day, 'd')}</span></div>
                   </th>
                 ))}
@@ -369,7 +366,7 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 return (
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
-                    <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-card)', borderRight: '1px solid var(--border)' }} className="px-6 py-4">
+                    <td style={{ backgroundColor: 'var(--bg-card)', borderRight: '1px solid var(--border)' }} className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <Users size={14} className="text-[var(--text-muted)]" />
                         <div className="flex-1 flex items-center justify-between">
@@ -399,7 +396,7 @@ const SchedulePage = () => {
               })}
               {pendingRows.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }} className="px-6 py-4 shadow-[5px_0_10px_rgba(0,0,0,0.05)]">
+                  <td style={{ backgroundColor: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }} className="px-6 py-4">
                     <div className="flex items-center gap-4"><Users size={14} className="text-[var(--text-muted)]" /><input value={row.name} autoFocus onChange={e => setPendingRows(prev => prev.map(r => r.id === row.id ? { ...r, name: e.target.value } : r))} onKeyDown={e => e.key === 'Enter' && savePendingRow(row.id)} placeholder="ФИО..." className="bg-transparent text-sm text-[var(--text-primary)] outline-none w-full" /><button onClick={() => savePendingRow(row.id)} className="text-green-500"><Check size={16}/></button></div>
                   </td>
                   {daysInMonth.map(d => <td key={d.toString()} style={{ borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="text-[10px] text-[var(--text-muted)] text-center italic">—</td>)}
@@ -407,7 +404,7 @@ const SchedulePage = () => {
                 </tr>
               ))}
               <tr>
-                <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }} className="px-6 py-4 shadow-[5px_0_10px_rgba(0,0,0,0.05)]">
+                <td style={{ backgroundColor: 'var(--bg-secondary)', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)' }} className="px-6 py-4">
                   <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
                 </td>
                 <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
@@ -415,27 +412,25 @@ const SchedulePage = () => {
             </tbody>
             <tfoot>
               <tr>
-                {/* z-50 for bottom-left corner so it stays above everything when scrolling */}
-                <td style={{ position: 'sticky', bottom: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
+                <td style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
                 
-                {/* z-40 for the rest of the footer row so it stays on top when scrolling vertically */}
                 {daysInMonth.map(day => {
                   const dayNum = format(day, 'd');
                   const dayTotal = clubEmployees.reduce((sum, emp) => {
                     const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
                     return sum + calculateHours(val);
                   }, 0);
-                  return <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-1 py-4 text-center font-black text-[10px] text-[var(--text-secondary)]">{dayTotal > 0 ? `${dayTotal.toFixed(1)}ч` : '—'}</td>;
+                  return <td key={day.toString()} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-1 py-4 text-center font-black text-[10px] text-[var(--text-secondary)]">{dayTotal > 0 ? `${dayTotal.toFixed(1)}ч` : '—'}</td>;
                 })}
-                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
-                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)] shadow-[-5px_0_10px_rgba(0,0,0,0.05)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
+                {visibleCols.totalHours && <td style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
+                {canViewFull && visibleCols.salary && <td style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.advance && <td style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.correction && <td style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.toPay && <td style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
               </tr>
             </tfoot>
           </table>
-        </ScrollContainer>
+        </div>
       </div>
 
       {canViewFull && (
