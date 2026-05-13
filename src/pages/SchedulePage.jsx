@@ -345,8 +345,8 @@ const SchedulePage = () => {
           <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px] select-none">
             <thead>
               <tr className="text-[9px] uppercase tracking-widest font-black text-[var(--text-muted)]">
-                {/* Visual "Two-Part" Split using Sticky & Shadow */}
-                <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', boxShadow: '4px 0 12px -2px rgba(0,0,0,0.2)' }} className="px-6 py-5 min-w-[280px]">
+                {/* Visual "Two-Part" Split using Sticky & Thick Border */}
+                <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">
                   Сотрудник
                 </th>
                 
@@ -369,7 +369,7 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 return (
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
-                    <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-card)', boxShadow: '4px 0 12px -2px rgba(0,0,0,0.1)' }} className="px-6 py-4">
+                    <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <Users size={14} className="text-[var(--text-muted)]" />
                         <div className="flex-1 flex items-center justify-between">
@@ -399,7 +399,7 @@ const SchedulePage = () => {
               })}
               {pendingRows.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', boxShadow: '4px 0 12px -2px rgba(0,0,0,0.1)' }} className="px-6 py-4">
+                  <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
                     <div className="flex items-center gap-4"><Users size={14} className="text-[var(--text-muted)]" /><input value={row.name} autoFocus onChange={e => setPendingRows(prev => prev.map(r => r.id === row.id ? { ...r, name: e.target.value } : r))} onKeyDown={e => e.key === 'Enter' && savePendingRow(row.id)} placeholder="ФИО..." className="bg-transparent text-sm text-[var(--text-primary)] outline-none w-full" /><button onClick={() => savePendingRow(row.id)} className="text-green-500"><Check size={16}/></button></div>
                   </td>
                   {daysInMonth.map(d => <td key={d.toString()} style={{ borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="text-[10px] text-[var(--text-muted)] text-center italic">—</td>)}
@@ -407,7 +407,7 @@ const SchedulePage = () => {
                 </tr>
               ))}
               <tr>
-                <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', boxShadow: '4px 0 12px -2px rgba(0,0,0,0.1)' }} className="px-6 py-4">
+                <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
                   <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
                 </td>
                 <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
@@ -415,7 +415,7 @@ const SchedulePage = () => {
             </tbody>
             <tfoot>
               <tr>
-                <td style={{ position: 'sticky', bottom: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', boxShadow: '4px 0 12px -2px rgba(0,0,0,0.2)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
+                <td style={{ position: 'sticky', bottom: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
                 
                 {daysInMonth.map(day => {
                   const dayNum = format(day, 'd');
@@ -429,7 +429,7 @@ const SchedulePage = () => {
                 {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', boxShadow: '-4px 0 12px -2px rgba(0,0,0,0.2)' }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: '2px solid var(--border)' }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
               </tr>
             </tfoot>
           </table>
