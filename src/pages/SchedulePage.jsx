@@ -27,6 +27,7 @@ import {
 import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
+import ScrollContainer from 'react-indiana-drag-scroll';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
@@ -107,8 +108,8 @@ const SchedulePage = () => {
   // Restricted access for Managers
   const userClub = user?.club?.toUpperCase();
 
-  const [selectedClub, setSelectedClub] = useState(null);
-  const [view, setView] = useState('selection'); // 'selection' or 'grid'
+  const [selectedClub, setSelectedClub] = useState(userClub || null);
+  const [view, setView] = useState((!isChef && userClub) ? 'grid' : 'selection');
 
   // Filter clubs based on role
   const allowedClubs = useMemo(() => {
@@ -117,13 +118,13 @@ const SchedulePage = () => {
     return []; 
   }, [isChef, userClub]);
 
-  // Auto-select if only one club is allowed
+  // Auto-select if only one club is allowed or if user context updates
   useEffect(() => {
-    if (!isChef && userClub && view === 'selection') {
+    if (!isChef && userClub) {
       setSelectedClub(userClub);
       setView('grid');
     }
-  }, [userClub, isChef, view]);
+  }, [userClub, isChef]);
 
   const [pendingRows, setPendingRows] = useState([]);
   const [savingIds, setSavingIds] = useState(new Set());
@@ -133,6 +134,7 @@ const SchedulePage = () => {
   const [editNameValue, setEditNameValue] = useState('');
 
   const daysInMonth = useMemo(() => eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }), [currentMonth]);
+
   const monthKey = format(currentMonth, 'yyyy-MM');
 
   const visibleCols = settings?.visibleCols || { totalHours: true, salary: true, advance: true, correction: true, toPay: true };
@@ -201,8 +203,13 @@ const SchedulePage = () => {
     else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); tr++; }
     else if (e.key === 'ArrowUp') { e.preventDefault(); tr--; }
     else return;
+    
     const next = document.getElementById(`cell-${tr}-${tc}`);
-    if (next) next.focus();
+    if (next) {
+      next.focus();
+      // Ensure the cell is not hidden under sticky columns by scrolling it to the center
+      next.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
   };
 
   if (view === 'selection') {
@@ -332,8 +339,13 @@ const SchedulePage = () => {
       </div>
 
       <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-2xl relative">
-        <div className="overflow-auto rounded-3xl table-scroll-container" style={{ maxHeight: '60vh' }}>
-          <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px]">
+        <ScrollContainer 
+          className="overflow-auto rounded-3xl table-scroll-container" 
+          style={{ maxHeight: '60vh' }}
+          hideScrollbars={false}
+          ignoreElements="input, textarea, button"
+        >
+          <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px] select-none">
             <thead>
               <tr className="text-[9px] uppercase tracking-widest font-black text-[var(--text-muted)]">
                 <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">Сотрудник</th>
@@ -349,7 +361,7 @@ const SchedulePage = () => {
                 {canViewFull && visibleCols.advance && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Аванс</th>}
                 {canViewFull && visibleCols.correction && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Коррект.</th>}
                 
-                {canViewFull && visibleCols.toPay && <th style={{ position: 'sticky', top: 0, right: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[130px]">К выдаче</th>}
+                {canViewFull && visibleCols.toPay && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[130px]">К выдаче</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
@@ -381,7 +393,7 @@ const SchedulePage = () => {
                     {canViewFull && visibleCols.salary && <td className="px-4 py-4 text-center text-xs text-blue-400 bg-blue-500/5 font-bold border-r border-[var(--border)]">{stats.salary.toLocaleString()}</td>}
                     {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance || ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction || ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
-                    {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', right: 0, zIndex: 20, backgroundColor: 'var(--bg-card)', borderLeft: '1px solid var(--border)' }} className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
+                    {canViewFull && visibleCols.toPay && <td className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
               })}
@@ -423,7 +435,7 @@ const SchedulePage = () => {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </ScrollContainer>
       </div>
 
       {canViewFull && (

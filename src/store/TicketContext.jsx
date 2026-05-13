@@ -101,22 +101,49 @@ export const TicketProvider = ({ children }) => {
   const enrichUserWithRole = useCallback((u) => {
     if (!u) return null;
     const email = u.email?.toLowerCase() || '';
+    const nameStr = (u.displayName || '').toLowerCase();
     
-    // Managers list
-    const colibriManagers = [
-      '19.anastasiya.tkachenko.88@gmail.com',
-      'dilshat2504@gmail.com',
-      'anastassiya.b@hj.fit'
-    ];
-    
-    const isColibriManager = colibriManagers.includes(email);
-    const isChef = email.includes('chef') || email === 'dilshat.r@hj.fit' || email.includes('sales5');
+    let role = 'user';
+    let club = null;
+    let finalDisplayName = u.displayName || email.split('@')[0];
+
+    const isChef = email.includes('chef') || 
+                   email === 'dilshat.r@hj.fit' || 
+                   email.includes('sales5') || 
+                   email.includes('admin') ||
+                   nameStr.includes('chef') ||
+                   nameStr.includes('шеф');
+
+    if (isChef) {
+      role = 'admin';
+    } else {
+      if (email.includes('anastasia') || email.includes('anastassiya') || email.includes('anastasiya') || email.includes('tkachenko') || nameStr.includes('anastasia') || nameStr.includes('анастасия')) {
+        role = 'manager';
+        club = 'COLIBRI';
+        finalDisplayName = 'Анастасия';
+      } else if (email.includes('aziz') || nameStr.includes('азиз')) {
+        role = 'manager';
+        club = 'COLIBRI';
+      } else if (email.includes('sania') || email.includes('saniya') || nameStr.includes('сания')) {
+        role = 'manager';
+        club = '4YOU';
+      } else if (email.includes('ainur') || nameStr.includes('айнур')) {
+        role = 'manager';
+        club = '4YOU';
+      } else if (email.includes('dias') || nameStr.includes('диас')) {
+        role = 'manager';
+        club = 'VILLA';
+      } else if (email.includes('saltanat') || nameStr.includes('салтанат')) {
+        role = 'manager';
+        club = 'NURLY ORDA';
+      }
+    }
 
     return {
       ...u,
-      displayName: u.displayName || (isColibriManager ? 'Анастасия' : email.split('@')[0]),
-      role: isColibriManager ? 'manager' : (isChef ? 'admin' : 'user'),
-      club: isColibriManager ? 'COLIBRI' : null,
+      displayName: finalDisplayName,
+      role,
+      club
     };
   }, []);
 
@@ -275,15 +302,6 @@ export const TicketProvider = ({ children }) => {
     });
   }, []);
 
-  const logout = () => {
-    localStorage.removeItem('app_mock_user');
-    signOut(auth).then(() => {
-      setUser(null);
-      toast.success('Вы вышли из системы');
-    });
-    // In case signOut doesn't trigger onAuthStateChanged immediately for mock users
-    setUser(null);
-  };
 
   return (
     <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, addComment, uploadFile }}>
