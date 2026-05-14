@@ -27,6 +27,7 @@ import {
 import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
+import ScrollContainer from 'react-indiana-drag-scroll';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
@@ -338,9 +339,12 @@ const SchedulePage = () => {
       </div>
 
       <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-2xl relative overflow-hidden">
-        <div 
+        <ScrollContainer 
           className="overflow-auto table-scroll-container" 
           style={{ maxHeight: '60vh' }}
+          hideScrollbars={false}
+          nativeMobileScroll={true}
+          ignoreElements="input, textarea, button"
         >
           <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px] select-none">
             <thead>
@@ -433,7 +437,7 @@ const SchedulePage = () => {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </ScrollContainer>
       </div>
 
       {canViewFull && (
