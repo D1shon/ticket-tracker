@@ -150,19 +150,20 @@ export const TicketProvider = ({ children }) => {
   // ─── Auth ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
+      const savedMock = localStorage.getItem('app_mock_user');
+      if (savedMock) {
+        try { 
+          const mock = JSON.parse(savedMock);
+          setUser(enrichUserWithRole(mock));
+          setLoading(false);
+          return;
+        } catch {}
+      }
+
       if (u) {
         setUser(enrichUserWithRole(u));
-        localStorage.removeItem('app_mock_user');
       } else {
-        const savedMock = localStorage.getItem('app_mock_user');
-        if (savedMock) {
-          try { 
-            const mock = JSON.parse(savedMock);
-            setUser(enrichUserWithRole(mock));
-          } catch { setUser(null); }
-        } else {
-          setUser(null);
-        }
+        setUser(null);
       }
       setLoading(false);
     });
