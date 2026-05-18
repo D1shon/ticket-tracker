@@ -25,7 +25,8 @@ import {
   RefreshCw,
   Database,
   Pin,
-  PinOff
+  PinOff,
+  GripVertical
 } from 'lucide-react';
 import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
@@ -181,7 +182,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, settings, updateSettings } = useSchedule();
+  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
   const { user } = useTickets();
 
   // Identify CHEF role (robust check by email OR by role field)
@@ -228,6 +229,7 @@ const SchedulePage = () => {
   const [savingIds, setSavingIds] = useState(new Set());
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [stickyNames, setStickyNames] = useState(true);
+  const [draggedOverId, setDraggedOverId] = useState(null);
   
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -469,16 +471,52 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 return (
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
-                    <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <Users size={14} className="text-[var(--text-muted)]" />
-                        <div className="flex-1 flex items-center justify-between">
+                    <td 
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', emp.id);
+                        e.currentTarget.style.opacity = '0.5';
+                      }}
+                      onDragEnd={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                        setDraggedOverId(null);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                      }}
+                      onDragEnter={() => {
+                        setDraggedOverId(emp.id);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const draggedId = e.dataTransfer.getData('text/plain');
+                        if (draggedId && draggedId !== emp.id) {
+                          reorderEmployees(draggedId, emp.id);
+                        }
+                        setDraggedOverId(null);
+                      }}
+                      style={{ 
+                        position: stickyNames ? 'sticky' : 'relative', 
+                        left: 0, 
+                        zIndex: stickyNames ? 30 : 5, 
+                        backgroundColor: draggedOverId === emp.id ? 'var(--bg-hover)' : 'var(--bg-card)', 
+                        borderRight: '2px solid var(--border)',
+                        borderTop: draggedOverId === emp.id ? '2px solid var(--accent-purple)' : undefined,
+                        borderBottom: draggedOverId === emp.id ? '2px solid var(--accent-purple)' : undefined,
+                        cursor: 'grab'
+                      }} 
+                      className="px-6 py-4 transition-all"
+                    >
+                      <div className="flex items-center gap-2">
+                        <GripVertical size={14} className="text-[var(--text-muted)] cursor-grab shrink-0 opacity-40 group-hover:opacity-100 transition-opacity" />
+                        <Users size={14} className="text-[var(--text-muted)] shrink-0" />
+                        <div className="flex-1 flex items-center justify-between min-w-0">
                           {editingEmpId === emp.id ? (
                             <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
                           ) : (
-                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} className="text-sm font-bold text-[var(--text-primary)] cursor-pointer">{emp.name}</span>
+                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} className="text-sm font-bold text-[var(--text-primary)] cursor-pointer truncate">{emp.name}</span>
                           )}
-                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 shrink-0 ml-2">
                             <button onClick={() => moveEmployee(emp.id, 'up')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={12}/></button>
                             <button onClick={() => moveEmployee(emp.id, 'down')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={12}/></button>
                             <button onClick={() => removeEmployee(emp.id)} className="p-1 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={12}/></button>

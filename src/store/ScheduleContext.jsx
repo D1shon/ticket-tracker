@@ -289,6 +289,33 @@ export const ScheduleProvider = ({ children }) => {
     } catch {}
   };
 
+  // ─── reorderEmployees ───────────────────────────────────────────────────────
+  const reorderEmployees = async (draggedId, targetId) => {
+    try {
+      const draggedEmp = employees.find(e => e.id === draggedId);
+      if (!draggedEmp) return;
+      const clubName = draggedEmp.club || '4YOU';
+      const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
+      
+      const draggedIdx = clubEmps.findIndex(e => e.id === draggedId);
+      const targetIdx = clubEmps.findIndex(e => e.id === targetId);
+      
+      if (draggedIdx === -1 || targetIdx === -1 || draggedIdx === targetIdx) return;
+      
+      const reorderedClubEmps = [...clubEmps];
+      const [draggedItem] = reorderedClubEmps.splice(draggedIdx, 1);
+      reorderedClubEmps.splice(targetIdx, 0, draggedItem);
+      
+      const otherClubsEmps = employees.filter(e => (e.club || '4YOU') !== clubName);
+      const newEmployees = [...otherClubsEmps, ...reorderedClubEmps];
+      
+      setEmployees(newEmployees);
+      await Promise.all(newEmployees.map((emp, i) => updateDoc(doc(db, 'employees', emp.id), { order: i })));
+    } catch (e) {
+      console.error('Error reordering:', e);
+    }
+  };
+
   // ─── updateSettings ───────────────────────────────────────────────────────
   const updateSettings = async (s) => {
     setSettings(s);
@@ -299,7 +326,7 @@ export const ScheduleProvider = ({ children }) => {
     <ScheduleContext.Provider value={{
       scheduleData, employees, loading, isSaving,
       updateCell, addEmployee, removeEmployee, updateEmployee,
-      updateAdvance, updateCorrection, moveEmployee,
+      updateAdvance, updateCorrection, moveEmployee, reorderEmployees,
       settings, updateSettings
     }}>
       {children}
