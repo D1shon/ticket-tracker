@@ -416,7 +416,7 @@ const SchedulePage = () => {
   }
 
   return (
-    <div className="space-y-6 animate-fade">
+    <div className="space-y-6 animate-fade w-full max-w-full overflow-hidden">
       <div className="flex items-center justify-between bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-xl">
         <div className="flex items-center gap-5">
           {isChef && (

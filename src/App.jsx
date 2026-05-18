@@ -55,8 +55,8 @@ const ProtectedLayout = ({ children }) => {
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex' }}>
       <Sidebar />
       <NotificationCorner />
-      <div className="main-content-wrapper" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        <main style={{ flex: 1, padding: '24px 28px', overflow: 'auto' }}>
+      <div className="main-content-wrapper" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }}>
+        <main style={{ flex: 1, padding: '24px 28px', overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}>
           {children}
         </main>
       </div>
