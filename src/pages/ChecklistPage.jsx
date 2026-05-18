@@ -36,8 +36,8 @@ const ChecklistPage = () => {
     );
   }
 
-  // Strictly filter clubs for managers
-  const availableClubs = (isManager && userClub) ? [userClub] : CLUBS;
+  // Strictly filter clubs for managers, and exclude 'ВСЕ КЛУБЫ' for checklists
+  const availableClubs = (isManager && userClub) ? [userClub] : CLUBS.filter(c => c !== 'ВСЕ КЛУБЫ');
 
   const [activeClub, setActiveClub] = useState(userClub || '4YOU');
   const [activeDate, setActiveDate] = useState(startOfToday());

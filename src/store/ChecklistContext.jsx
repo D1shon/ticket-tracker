@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useTickets } from './TicketContext';
+import { toast } from 'sonner';
 
 const ChecklistContext = createContext();
 
@@ -19,9 +20,8 @@ export const ChecklistProvider = ({ children }) => {
   const [checklistData, setChecklistData] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // Subscribe to checklists collection immediately on mount to prevent any race conditions with auth
   useEffect(() => {
-    if (!user) return;
-
     const q = query(collection(db, 'checklists'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = {};
@@ -30,10 +30,13 @@ export const ChecklistProvider = ({ children }) => {
       });
       setChecklistData(data);
       setLoading(false);
+    }, (error) => {
+      console.error('[ChecklistContext] subscription error:', error);
+      toast.error(`Ошибка загрузки чек-листов: ${error.message}`);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, []);
 
   const updateCheckState = async (dateKey, shiftId, cardId, club, itemStates, itemIssues, itemTimestamps) => {
     try {
@@ -47,10 +50,11 @@ export const ChecklistProvider = ({ children }) => {
         issues: itemIssues,
         timestamps: itemTimestamps || {},
         updatedAt: serverTimestamp(),
-        updatedBy: user.email
+        updatedBy: user?.email || 'system'
       });
     } catch (error) {
       console.error("Error updating checklist:", error);
+      toast.error(`Ошибка сохранения чек-листа в облаке: ${error.message || error}`);
     }
   };
 
