@@ -127,6 +127,10 @@ export const TicketProvider = ({ children }) => {
       } else if (email.includes('sania') || email.includes('saniya') || nameStr.includes('сания')) {
         role = 'manager';
         club = '4YOU';
+      } else if (email === 'ainura030594@gmail.com') {
+        role = 'manager';
+        club = 'NURLY ORDA';
+        finalDisplayName = 'Айнура';
       } else if (email.includes('ainur') || nameStr.includes('айнур')) {
         role = 'manager';
         club = '4YOU';

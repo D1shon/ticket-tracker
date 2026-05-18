@@ -14,9 +14,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-const EMAIL = 'saniya.o@hj.fit';
+const EMAIL = 'ainura030594@gmail.com';
 const PASSWORD = 'HeroTrack2026!';
-const DISPLAY_NAME = 'Сания (4YOU)';
+const DISPLAY_NAME = 'Айнура (NURLY ORDA)';
 
 async function main() {
   try {
