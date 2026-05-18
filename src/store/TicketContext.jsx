@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { signInAnonymously, signOut } from 'firebase/auth';
 
 // ─── Strict Whitelist and Role Mapping ─────────────────────────────────────────
 // Only these exact email addresses are allowed to access the application.
@@ -155,6 +155,14 @@ export const TicketProvider = ({ children }) => {
         const parsed = JSON.parse(saved);
         if (isEmailAllowed(parsed.email)) {
           setUser(enrichUserWithRole(parsed));
+          
+          // Authenticate Firebase anonymously if needed to authorize Firestore connection
+          if (!auth.currentUser) {
+            signInAnonymously(auth).catch(err => {
+              console.error("[TicketContext] Anonymous auth restoration failed:", err);
+            });
+          }
+          
           setLoading(false);
           return;
         } else {
@@ -164,27 +172,22 @@ export const TicketProvider = ({ children }) => {
       } catch {}
     }
 
-    // Sync with Firebase Auth state
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u && isEmailAllowed(u.email)) {
-        setUser(enrichUserWithRole(u));
-      } else {
-        if (u) {
-          // Sign out unauthorized users automatically
-          signOut(auth).catch(() => {});
-        }
-        setUser(null);
-      }
-      setLoading(false);
-    });
-    
-    return unsub;
+    setUser(null);
+    setLoading(false);
   }, [enrichUserWithRole]);
 
   const login = async (email) => {
     const normalizedEmail = (email || '').toLowerCase().trim();
     if (!isEmailAllowed(normalizedEmail)) {
       throw new Error('Этот email не зарегистрирован в системе. Обратитесь к администратору.');
+    }
+    
+    // Authenticate with Firebase anonymously to satisfy security rules (request.auth != null)
+    try {
+      await signInAnonymously(auth);
+    } catch (authErr) {
+      console.error("[TicketContext] Anonymous auth failed:", authErr);
+      throw new Error('Не удалось подключиться к базе данных. Проверьте интернет-соединение.');
     }
     
     const sessionUser = { email: normalizedEmail, uid: 'session_' + normalizedEmail };
