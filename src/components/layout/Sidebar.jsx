@@ -12,12 +12,12 @@ const Sidebar = () => {
   
   // Load saved theme from localStorage (default: light)
   const [isDark, setIsDark] = useState(() => {
-    return localStorage.getItem('herotrack-theme') === 'dark';
+    return localStorage.getItem('hjtrack-theme') === 'dark';
   });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('herotrack-theme', isDark ? 'dark' : 'light');
+    localStorage.setItem('hjtrack-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
   // Close sidebar on navigation (mobile)

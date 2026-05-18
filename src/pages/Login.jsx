@@ -34,7 +34,7 @@ const Login = () => {
             HJ
           </div>
           <h1 className="text-2xl font-bold text-foreground">С возвращением!</h1>
-          <p className="text-muted-foreground mt-1 text-center">Войдите в систему управления заявками Herotrack</p>
+          <p className="text-muted-foreground mt-1 text-center">Войдите в систему управления заявками HJTRACK</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
