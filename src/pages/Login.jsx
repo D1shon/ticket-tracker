@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import { useTickets } from '../store/TicketContext';
-import { Mail, Lock, LogIn } from 'lucide-react';
+import { Mail, LogIn, AlertCircle } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useTickets();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     try {
-      await login(email, 'common-password'); // Using a simplified internal password for quick access
-    } catch (error) {
-      console.error(error);
+      await login(email.trim().toLowerCase());
+    } catch (err) {
+      setError(err.message || 'Этот email не найден в системе. Обратитесь к администратору.');
     } finally {
       setLoading(false);
     }
@@ -47,19 +49,17 @@ const Login = () => {
                 placeholder="name@company.com"
                 className="w-full bg-muted/50 border border-border rounded-xl py-2.5 pl-10 pr-4 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
                 required
+                autoFocus
               />
             </div>
           </div>
 
-
-
-          <div className="flex items-center justify-between text-sm py-1">
-            <label className="flex items-center gap-2 text-muted-foreground cursor-pointer">
-              <input type="checkbox" className="rounded border-border bg-muted text-primary focus:ring-primary/50 w-4 h-4" />
-              Запомнить меня
-            </label>
-            <a href="#" className="text-primary hover:underline font-medium">Забыли пароль?</a>
-          </div>
+          {error && (
+            <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+              <AlertCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -79,7 +79,7 @@ const Login = () => {
 
         <div className="mt-8 pt-6 border-t border-border text-center">
           <p className="text-sm text-muted-foreground">
-            Нет аккаунта? <a href="#" className="text-primary font-medium hover:underline">Обратитесь к администратору</a>
+            Нет доступа? <a href="#" className="text-primary font-medium hover:underline">Обратитесь к администратору</a>
           </p>
         </div>
       </div>

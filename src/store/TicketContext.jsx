@@ -1,9 +1,31 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  signOut 
-} from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+
+// ─── Strict Whitelist and Role Mapping ─────────────────────────────────────────
+// Only these exact email addresses are allowed to access the application.
+// You can easily manage who gets what role and club in this single place!
+const USER_ROLES = {
+  // Chefs (Full Administration rights)
+  'dilshat.r@hj.fit': { role: 'chef', club: null, displayName: 'Дильшат' },
+  'magzhan@hj.fit': { role: 'chef', club: null, displayName: 'Магжан' },
+  
+  // Managers (Club-specific management rights)
+  'daewure@mail.ru': { role: 'manager', club: 'COLIBRI', displayName: 'Менеджер Колибри' },
+  'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнура' },
+  'diassd9806@gmail.com': { role: 'manager', club: 'VILLA', displayName: 'Диас' },
+  
+  // Placeholders for other known managers (change to their real emails if needed)
+  'anastasia@hj.fit': { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
+  'saniya@hj.fit': { role: 'manager', club: '4YOU', displayName: 'Сания' },
+  'aziz@hj.fit': { role: 'manager', club: 'COLIBRI', displayName: 'Азиз' },
+  'saltanat@hj.fit': { role: 'manager', club: 'NURLY ORDA', displayName: 'Салтанат' },
+};
+
+function isEmailAllowed(email) {
+  if (!email) return false;
+  const normalized = email.toLowerCase().trim();
+  return normalized in USER_ROLES;
+}
 import { 
   collection, 
   query, 
@@ -100,113 +122,83 @@ export const TicketProvider = ({ children }) => {
   // ─── Profile Helper ──────────────────────────────────────────────────────
   const enrichUserWithRole = useCallback((u) => {
     if (!u) return null;
-    const email = u.email?.toLowerCase() || '';
-    const nameStr = (u.displayName || '').toLowerCase();
+    const email = (u.email || '').toLowerCase().trim();
     
-    let role = 'user';
-    let club = null;
-    let finalDisplayName = u.displayName || email.split('@')[0];
-
-    const isChef = email.includes('chef') || 
-                   email === 'dilshat.r@hj.fit' || 
-                   email.includes('sales5') || 
-                   email.includes('admin') ||
-                   nameStr.includes('chef') ||
-                   nameStr.includes('шеф');
-
-    if (isChef) {
-      role = 'chef';
-    } else {
-      if (email.includes('anastasia') || email.includes('anastassiya') || email.includes('anastasiya') || email.includes('tkachenko') || nameStr.includes('anastasia') || nameStr.includes('анастасия')) {
-        role = 'manager';
-        club = 'COLIBRI';
-        finalDisplayName = 'Анастасия';
-      } else if (email.includes('aziz') || nameStr.includes('азиз')) {
-        role = 'manager';
-        club = 'COLIBRI';
-      } else if (email.includes('sania') || email.includes('saniya') || nameStr.includes('сания')) {
-        role = 'manager';
-        club = '4YOU';
-      } else if (email === 'ainura030594@gmail.com') {
-        role = 'manager';
-        club = 'NURLY ORDA';
-        finalDisplayName = 'Айнура';
-      } else if (email === 'daewure@mail.ru') {
-        role = 'manager';
-        club = 'COLIBRI';
-        finalDisplayName = 'Менеджер Колибри';
-      } else if (email === 'diassd9806@gmail.com') {
-        role = 'manager';
-        club = 'VILLA';
-        finalDisplayName = 'Диас';
-      } else if (email.includes('ainur') || nameStr.includes('айнур')) {
-        role = 'manager';
-        club = '4YOU';
-      } else if (email.includes('dias') || nameStr.includes('диас')) {
-        role = 'manager';
-        club = 'VILLA';
-      } else if (email.includes('saltanat') || nameStr.includes('салтанат')) {
-        role = 'manager';
-        club = 'NURLY ORDA';
-      }
+    const registered = USER_ROLES[email];
+    if (registered) {
+      return {
+        ...u,
+        displayName: registered.displayName || u.displayName || email.split('@')[0],
+        role: registered.role,
+        club: registered.club
+      };
     }
 
+    // Default fallback (no permissions)
     return {
       ...u,
-      displayName: finalDisplayName,
-      role,
-      club
+      displayName: u.displayName || email.split('@')[0],
+      role: 'user',
+      club: null
     };
   }, []);
 
   // ─── Auth ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      const savedMock = localStorage.getItem('app_mock_user');
-      if (savedMock) {
-        try { 
-          const mock = JSON.parse(savedMock);
-          setUser(enrichUserWithRole(mock));
+    // Clear legacy mock sessions
+    localStorage.removeItem('app_mock_user');
+
+    // Restore session from localStorage if available and verified
+    const saved = localStorage.getItem('app_session_user');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (isEmailAllowed(parsed.email)) {
+          setUser(enrichUserWithRole(parsed));
           setLoading(false);
           return;
-        } catch {}
-      }
+        } else {
+          // Stale or invalid session, purge it
+          localStorage.removeItem('app_session_user');
+        }
+      } catch {}
+    }
 
-      if (u) {
+    // Sync with Firebase Auth state
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u && isEmailAllowed(u.email)) {
         setUser(enrichUserWithRole(u));
       } else {
+        if (u) {
+          // Sign out unauthorized users automatically
+          signOut(auth).catch(() => {});
+        }
         setUser(null);
       }
       setLoading(false);
     });
+    
     return unsub;
   }, [enrichUserWithRole]);
 
-  const login = async (email, password) => {
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      setUser(enrichUserWithRole(cred.user));
-      localStorage.removeItem('app_mock_user');
-      toast.success('Вход выполнен');
-    } catch (e) {
-      console.warn('[Login] Firebase auth error, falling back to local state:', e.code);
-      const mockUser = enrichUserWithRole({
-        email: email,
-        uid: 'local_' + Date.now(),
-      });
-      setUser(mockUser);
-      localStorage.setItem('app_mock_user', JSON.stringify(mockUser));
-      toast.info(`Вход в демо-режиме: ${mockUser.role === 'manager' ? 'Менеджер (Колибри)' : 'Администратор'}`);
+  const login = async (email) => {
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    if (!isEmailAllowed(normalizedEmail)) {
+      throw new Error('Этот email не зарегистрирован в системе. Обратитесь к администратору.');
     }
+    
+    const sessionUser = { email: normalizedEmail, uid: 'session_' + normalizedEmail };
+    const enriched = enrichUserWithRole(sessionUser);
+    setUser(enriched);
+    localStorage.setItem('app_session_user', JSON.stringify(sessionUser));
+    toast.success('Вход выполнен');
   };
 
   const logout = () => {
-    localStorage.removeItem('app_mock_user');
-    signOut(auth).then(() => {
-      setUser(null);
-      toast.success('Вы вышли из системы');
-    });
+    localStorage.removeItem('app_session_user');
+    signOut(auth).catch(() => {});
     setUser(null);
+    toast.success('Вы вышли из системы');
   };
 
   // ─── Firestore live listener ──────────────────────────────────────────────
@@ -314,7 +306,6 @@ export const TicketProvider = ({ children }) => {
       );
     });
   }, []);
-
 
   return (
     <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, addComment, uploadFile }}>

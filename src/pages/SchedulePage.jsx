@@ -185,15 +185,12 @@ const SchedulePage = () => {
   const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
   const { user } = useTickets();
 
-  // Identify CHEF role (robust check by email OR by role field)
+  // Identify CHEF role — only these two emails have full chef access
   const isChef = useMemo(() => {
     const email = user?.email?.toLowerCase() || '';
-    const name = user?.displayName?.toUpperCase() || '';
-    return email.includes('chef') || 
-           name.includes('CHEF') || 
+    return user?.role === 'chef' ||
            email === 'dilshat.r@hj.fit' ||
-           email.includes('sales5') ||
-           user?.role === 'chef';
+           email === 'magzhan@hj.fit';
   }, [user]);
 
   const isManager = user?.role === 'manager';
