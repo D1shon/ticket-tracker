@@ -1,6 +1,6 @@
 import { Coffee, Sun, Moon, Activity, Sparkles, Wrench, ShieldCheck } from 'lucide-react';
 
-export const CLUBS = ['ВСЕ КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'MY TASK'];
+export const CLUBS = ['ВСЕ КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
 export const CHECK_ITEMS = {
   'equipment': {

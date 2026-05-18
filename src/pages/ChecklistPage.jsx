@@ -7,6 +7,20 @@ import { ru } from 'date-fns/locale';
 import { useChecklist } from '../store/ChecklistContext';
 import { useTickets } from '../store/TicketContext';
 
+const getFormattedTime = (updatedAt) => {
+  if (!updatedAt) return '';
+  let date;
+  if (typeof updatedAt.toDate === 'function') {
+    date = updatedAt.toDate();
+  } else if (updatedAt.seconds) {
+    date = new Date(updatedAt.seconds * 1000);
+  } else {
+    date = new Date(updatedAt);
+  }
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+};
+
 const ChecklistPage = () => {
   const context = useTickets();
   const user = context?.user;
@@ -181,9 +195,15 @@ const ChecklistPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-5 pt-0">
               {shift.cards.map(cardId => {
                 const card = CHECK_ITEMS[cardId];
+                const docId = `${dateKey}_${activeClub}_${shift.id}_${cardId}`;
+                const checkDoc = checklistData[docId];
                 const { answered, total } = getCheckProgress(shift.id, cardId);
                 const complete = answered === total;
                 const percent = (answered / total) * 100;
+                
+                // Get checked-by info dynamically
+                const checkedBy = checkDoc?.updatedBy ? checkDoc.updatedBy.split('@')[0] : null;
+                const checkedTime = checkDoc?.updatedAt ? getFormattedTime(checkDoc.updatedAt) : null;
                 
                 return (
                   <div 
@@ -211,6 +231,14 @@ const ChecklistPage = () => {
                             style={{ width: `${percent}%` }}
                           />
                         </div>
+                        {/* Status update stamp verifying who checked and when */}
+                        {checkedBy && (
+                          <div className={`mt-2 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${
+                            complete ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                          }`}>
+                            👤 {checkedBy} {checkedTime ? `в ${checkedTime}` : ''}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
