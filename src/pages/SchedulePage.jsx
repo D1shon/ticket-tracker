@@ -425,29 +425,6 @@ const SchedulePage = () => {
             )}
           </div>
 
-          {/* Pin / Unpin employee column toggle */}
-          <button
-            onClick={() => setStickyNames(v => !v)}
-            title={stickyNames ? 'Открепить колонку сотрудников (для скриншота)' : 'Закрепить колонку сотрудников'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px',
-              borderRadius: 12,
-              border: `1px solid ${stickyNames ? 'var(--accent-purple)' : 'var(--border)'}`,
-              background: stickyNames ? 'rgba(139,92,246,0.12)' : 'var(--bg-hover)',
-              color: stickyNames ? 'var(--accent-purple)' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: 10,
-              fontWeight: 900,
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              transition: 'all 0.2s',
-            }}
-          >
-            {stickyNames ? <Pin size={13} /> : <PinOff size={13} />}
-            {stickyNames ? 'Закреплено' : 'Откреплено'}
-          </button>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronLeft size={20} /></button>
             <div className="text-center min-w-[140px]">

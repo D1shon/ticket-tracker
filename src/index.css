@@ -304,7 +304,7 @@ select.input-app {
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* Table Scrollbar */
-.table-scroll-container::-webkit-scrollbar { height: 12px; }
+.table-scroll-container::-webkit-scrollbar { height: 14px; }
 .table-scroll-container::-webkit-scrollbar-track { background: var(--bg-primary); border-top: 1px solid var(--border); }
-.table-scroll-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; border: 3px solid var(--bg-primary); }
-.table-scroll-container::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+.table-scroll-container::-webkit-scrollbar-thumb { background: var(--accent-purple); border-radius: 10px; border: 3px solid var(--bg-primary); transition: background-color 0.2s; }
+.table-scroll-container::-webkit-scrollbar-thumb:hover { background: #7c3aed; }
