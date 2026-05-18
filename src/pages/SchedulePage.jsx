@@ -229,7 +229,40 @@ const SchedulePage = () => {
   const [savingIds, setSavingIds] = useState(new Set());
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [stickyNames, setStickyNames] = useState(true);
-  const [draggedOverId, setDraggedOverId] = useState(null);
+
+  const tableContainerRef = useRef(null);
+  const [isDraggingTable, setIsDraggingTable] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [dragScrollLeft, setDragScrollLeft] = useState(0);
+
+  const handleTableMouseDown = (e) => {
+    if (
+      e.target.tagName === 'INPUT' || 
+      e.target.tagName === 'BUTTON' || 
+      e.target.tagName === 'SELECT' || 
+      e.target.closest('button') || 
+      e.target.closest('input') ||
+      e.target.classList.contains('cursor-pointer') ||
+      e.target.closest('.no-drag')
+    ) {
+      return;
+    }
+    setIsDraggingTable(true);
+    setDragStartX(e.pageX - tableContainerRef.current.offsetLeft);
+    setDragScrollLeft(tableContainerRef.current.scrollLeft);
+  };
+
+  const handleTableMouseMove = (e) => {
+    if (!isDraggingTable) return;
+    e.preventDefault();
+    const x = e.pageX - tableContainerRef.current.offsetLeft;
+    const walk = (x - dragStartX) * 1.5;
+    tableContainerRef.current.scrollLeft = dragScrollLeft - walk;
+  };
+
+  const handleTableMouseUpOrLeave = () => {
+    setIsDraggingTable(false);
+  };
   
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -427,6 +460,37 @@ const SchedulePage = () => {
             )}
           </div>
 
+          {/* Beautiful modern Pin toggle button */}
+          <button
+            onClick={() => setStickyNames(v => !v)}
+            title={stickyNames ? 'Разрешить свободную прокрутку всей таблицы до конца (для скриншотов)' : 'Зафиксировать колонки сотрудников и итогов по бокам'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 16px',
+              borderRadius: 14,
+              border: `1px solid ${stickyNames ? 'var(--accent-purple)' : 'var(--border)'}`,
+              background: stickyNames ? 'rgba(139,92,246,0.08)' : 'var(--bg-hover)',
+              color: stickyNames ? 'var(--accent-purple)' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: 10,
+              fontWeight: 900,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'scale(1.02)';
+              e.currentTarget.style.borderColor = 'var(--accent-purple)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'scale(1)';
+              if (!stickyNames) e.currentTarget.style.borderColor = 'var(--border)';
+            }}
+          >
+            {stickyNames ? <Pin size={12} className="fill-[var(--accent-purple)]" /> : <PinOff size={12} />}
+            {stickyNames ? 'Закреплено' : 'Свободный скролл'}
+          </button>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronLeft size={20} /></button>
             <div className="text-center min-w-[140px]">
@@ -441,8 +505,13 @@ const SchedulePage = () => {
 
       <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-2xl relative overflow-hidden">
         <div 
-          className="overflow-auto table-scroll-container" 
-          style={{ maxHeight: '72vh', overflowX: 'auto', overflowY: 'auto' }}
+          ref={tableContainerRef}
+          className="overflow-auto table-scroll-container cursor-grab active:cursor-grabbing" 
+          style={{ maxHeight: '72vh', overflowX: 'auto', overflowY: 'auto', userSelect: isDraggingTable ? 'none' : 'auto' }}
+          onMouseDown={handleTableMouseDown}
+          onMouseMove={handleTableMouseMove}
+          onMouseUp={handleTableMouseUpOrLeave}
+          onMouseLeave={handleTableMouseUpOrLeave}
         >
           <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px] select-none">
             <thead>
@@ -471,52 +540,16 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 return (
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
-                    <td 
-                      draggable={true}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('text/plain', emp.id);
-                        e.currentTarget.style.opacity = '0.5';
-                      }}
-                      onDragEnd={(e) => {
-                        e.currentTarget.style.opacity = '1';
-                        setDraggedOverId(null);
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                      }}
-                      onDragEnter={() => {
-                        setDraggedOverId(emp.id);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const draggedId = e.dataTransfer.getData('text/plain');
-                        if (draggedId && draggedId !== emp.id) {
-                          reorderEmployees(draggedId, emp.id);
-                        }
-                        setDraggedOverId(null);
-                      }}
-                      style={{ 
-                        position: stickyNames ? 'sticky' : 'relative', 
-                        left: 0, 
-                        zIndex: stickyNames ? 30 : 5, 
-                        backgroundColor: draggedOverId === emp.id ? 'var(--bg-hover)' : 'var(--bg-card)', 
-                        borderRight: '2px solid var(--border)',
-                        borderTop: draggedOverId === emp.id ? '2px solid var(--accent-purple)' : undefined,
-                        borderBottom: draggedOverId === emp.id ? '2px solid var(--accent-purple)' : undefined,
-                        cursor: 'grab'
-                      }} 
-                      className="px-6 py-4 transition-all"
-                    >
-                      <div className="flex items-center gap-2">
-                        <GripVertical size={14} className="text-[var(--text-muted)] cursor-grab shrink-0 opacity-40 group-hover:opacity-100 transition-opacity" />
-                        <Users size={14} className="text-[var(--text-muted)] shrink-0" />
-                        <div className="flex-1 flex items-center justify-between min-w-0">
+                    <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
+                      <div className="flex items-center gap-4">
+                        <Users size={14} className="text-[var(--text-muted)]" />
+                        <div className="flex-1 flex items-center justify-between">
                           {editingEmpId === emp.id ? (
                             <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
                           ) : (
-                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} className="text-sm font-bold text-[var(--text-primary)] cursor-pointer truncate">{emp.name}</span>
+                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} className="text-sm font-bold text-[var(--text-primary)] cursor-pointer">{emp.name}</span>
                           )}
-                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 shrink-0 ml-2">
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
                             <button onClick={() => moveEmployee(emp.id, 'up')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={12}/></button>
                             <button onClick={() => moveEmployee(emp.id, 'down')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={12}/></button>
                             <button onClick={() => removeEmployee(emp.id)} className="p-1 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={12}/></button>
