@@ -23,7 +23,9 @@ import {
   X,
   CloudLightning,
   RefreshCw,
-  Database
+  Database,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
@@ -225,6 +227,7 @@ const SchedulePage = () => {
   const [pendingRows, setPendingRows] = useState([]);
   const [savingIds, setSavingIds] = useState(new Set());
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [stickyNames, setStickyNames] = useState(true);
   
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -422,6 +425,29 @@ const SchedulePage = () => {
             )}
           </div>
 
+          {/* Pin / Unpin employee column toggle */}
+          <button
+            onClick={() => setStickyNames(v => !v)}
+            title={stickyNames ? 'Открепить колонку сотрудников (для скриншота)' : 'Закрепить колонку сотрудников'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px',
+              borderRadius: 12,
+              border: `1px solid ${stickyNames ? 'var(--accent-purple)' : 'var(--border)'}`,
+              background: stickyNames ? 'rgba(139,92,246,0.12)' : 'var(--bg-hover)',
+              color: stickyNames ? 'var(--accent-purple)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontSize: 10,
+              fontWeight: 900,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              transition: 'all 0.2s',
+            }}
+          >
+            {stickyNames ? <Pin size={13} /> : <PinOff size={13} />}
+            {stickyNames ? 'Закреплено' : 'Откреплено'}
+          </button>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronLeft size={20} /></button>
             <div className="text-center min-w-[140px]">
@@ -435,18 +461,15 @@ const SchedulePage = () => {
       </div>
 
       <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-2xl relative overflow-hidden">
-        <ScrollContainer 
+        <div 
           className="overflow-auto table-scroll-container" 
-          style={{ maxHeight: '60vh' }}
-          hideScrollbars={false}
-          nativeMobileScroll={true}
-          ignoreElements="input, textarea, button"
+          style={{ maxHeight: '72vh', overflowX: 'auto', overflowY: 'auto' }}
         >
           <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px] select-none">
             <thead>
               <tr className="text-[9px] uppercase tracking-widest font-black text-[var(--text-muted)]">
                 {/* Visual "Two-Part" Split using Sticky & Thick Border */}
-                <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">
+                <th style={{ position: stickyNames ? 'sticky' : 'relative', top: 0, left: 0, zIndex: stickyNames ? 50 : 10, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">
                   Сотрудник
                 </th>
                 
@@ -461,7 +484,7 @@ const SchedulePage = () => {
                 {canViewFull && visibleCols.advance && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Аванс</th>}
                 {canViewFull && visibleCols.correction && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Коррект.</th>}
                 
-                {canViewFull && visibleCols.toPay && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[130px]">К выдаче</th>}
+                {canViewFull && visibleCols.toPay && <th style={{ position: 'sticky', top: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-5 text-center min-w-[130px]">К выдаче</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
@@ -469,7 +492,7 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 return (
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
-                    <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
+                    <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <Users size={14} className="text-[var(--text-muted)]" />
                         <div className="flex-1 flex items-center justify-between">
@@ -493,13 +516,13 @@ const SchedulePage = () => {
                     {canViewFull && visibleCols.salary && <td className="px-4 py-4 text-center text-xs text-blue-400 bg-blue-500/5 font-bold border-r border-[var(--border)]">{stats.salary.toLocaleString()}</td>}
                     {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance || ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction || ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
-                    {canViewFull && visibleCols.toPay && <td className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
+                    {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
               })}
               {pendingRows.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
+                  <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
                     <div className="flex items-center gap-4"><Users size={14} className="text-[var(--text-muted)]" /><input value={row.name} autoFocus onChange={e => setPendingRows(prev => prev.map(r => r.id === row.id ? { ...r, name: e.target.value } : r))} onKeyDown={e => e.key === 'Enter' && savePendingRow(row.id)} placeholder="ФИО..." className="bg-transparent text-sm text-[var(--text-primary)] outline-none w-full" /><button onClick={() => savePendingRow(row.id)} className="text-green-500"><Check size={16}/></button></div>
                   </td>
                   {daysInMonth.map(d => <td key={d.toString()} style={{ borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="text-[10px] text-[var(--text-muted)] text-center italic">—</td>)}
@@ -507,7 +530,7 @@ const SchedulePage = () => {
                 </tr>
               ))}
               <tr>
-                <td style={{ position: 'sticky', left: 0, zIndex: 30, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
+                <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
                   <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
                 </td>
                 <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
@@ -515,7 +538,7 @@ const SchedulePage = () => {
             </tbody>
             <tfoot>
               <tr>
-                <td style={{ position: 'sticky', bottom: 0, left: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
+                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 0, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
                 
                 {daysInMonth.map(day => {
                   const dayNum = format(day, 'd');
@@ -529,11 +552,11 @@ const SchedulePage = () => {
                 {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: 0, zIndex: 50, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: '2px solid var(--border)' }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
               </tr>
             </tfoot>
           </table>
-        </ScrollContainer>
+        </div>
       </div>
 
       {canViewFull && (
