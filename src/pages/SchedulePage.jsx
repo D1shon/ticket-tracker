@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { 
   format, 
   startOfMonth, 
@@ -48,64 +49,159 @@ const HOLIDAYS_2026 = [
   '2026-07-06', '2026-08-30', '2026-10-25', '2026-12-16', '2026-12-17'
 ];
 
-const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToday, onKeyDown, updateCell, rowIdx, colIdx }) => {
-  const inputRef = useRef(null);
-  const [localValue, setLocalValue] = useState(initialValue || '');
-  const timeoutRef = useRef(null);
+const SHIFT_OPTIONS = [
+  { label: '6:30–14:30',  value: '6:30-14:30',  bg: '#3b82f6', text: '#fff' },
+  { label: '14:30–22:30', value: '14:30-22:30', bg: '#f97316', text: '#fff' },
+  { label: '8:30–14:30',  value: '8:30-14:30',  bg: '#a855f7', text: '#fff' },
+  { label: '14:30–21:30', value: '14:30-21:30', bg: '#8b5cf6', text: '#fff' },
+];
 
-  useEffect(() => {
-    setLocalValue(initialValue || '');
-  }, [initialValue]);
-
-  const handleChange = (e) => {
-    const val = e.target.value;
-    setLocalValue(val);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      if (val !== initialValue) updateCell(monthKey, empId, dayNum, val);
-    }, 800);
-  };
-
-  const handleBlur = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (localValue !== initialValue) updateCell(monthKey, empId, dayNum, localValue);
-  };
+const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToday, onKeyDown, updateCell, rowIdx, colIdx, canEdit = true }) => {
+  const [open, setOpen] = useState(false);
+  const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
+  const cellRef = useRef(null);
 
   const getShiftColor = (val) => {
     if (!val) return 'bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]';
-    const norm = val.trim().replace('.', ':');
-    if (norm === '6:30-14:30' || norm === '6:30') return 'bg-blue-500/10 text-blue-400 border-blue-500/30';
-    if (norm === '14:30-22:30' || norm === '14:30') return 'bg-orange-500/10 text-orange-400 border-orange-500/30';
-    if (norm === '8:30-14:30' || norm === '8:30' || norm === '14:30-21:30') return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+    const norm = val.trim();
+    if (norm === '6:30-14:30') return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+    if (norm === '14:30-22:30') return 'bg-orange-500/20 text-orange-400 border-orange-500/40';
+    if (norm === '8:30-14:30') return 'bg-purple-500/20 text-purple-400 border-purple-500/40';
+    if (norm === '14:30-21:30') return 'bg-violet-500/20 text-violet-400 border-violet-500/40';
     return 'bg-rose-500/10 text-rose-400 border-rose-500/40';
   };
 
+  const handleOpen = () => {
+    if (!canEdit) return;
+    const rect = cellRef.current.getBoundingClientRect();
+    setPickerPos({ top: rect.bottom + 4, left: rect.left + rect.width / 2 });
+    setOpen(o => !o);
+  };
+
+  const handleSelect = (value) => {
+    updateCell(monthKey, empId, dayNum, value === initialValue ? '' : value);
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    document.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [open]);
+
+  const picker = open && ReactDOM.createPortal(
+    <div
+      onMouseDown={e => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        top: pickerPos.top,
+        left: pickerPos.left,
+        transform: 'translateX(-50%)',
+        zIndex: 9999,
+        minWidth: 320,
+        borderRadius: 12,
+        overflow: 'hidden',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+        border: '1px solid var(--border)',
+        background: 'var(--bg-card)',
+      }}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+        {SHIFT_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onMouseDown={e => { e.stopPropagation(); handleSelect(opt.value); }}
+            style={{
+              background: initialValue === opt.value ? opt.bg : 'transparent',
+              color: initialValue === opt.value ? opt.text : opt.bg,
+              border: 'none',
+              borderBottom: `2px solid ${opt.bg}`,
+              padding: '14px 8px',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'all 0.12s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              outline: 'none',
+            }}
+            onMouseEnter={e => { if (initialValue !== opt.value) e.currentTarget.style.background = opt.bg + '33'; }}
+            onMouseLeave={e => { if (initialValue !== opt.value) e.currentTarget.style.background = 'transparent'; }}
+          >
+            {initialValue === opt.value && <Check size={12} />}
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      {initialValue && (
+        <button
+          onMouseDown={e => { e.stopPropagation(); handleSelect(''); }}
+          style={{
+            width: '100%', padding: '9px', fontSize: 11, fontWeight: 700,
+            color: '#f87171', background: 'transparent', border: 'none',
+            borderTop: '1px solid var(--border)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(248,113,113,0.1)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          <X size={11} /> Очистить
+        </button>
+      )}
+    </div>,
+    document.body
+  );
+
   return (
-    <td className={`p-1 border-r border-[var(--border)] ${isHoliday ? 'bg-red-500/5' : ''} ${isToday ? 'bg-purple-500/10' : ''} min-w-[80px]`} onClick={() => inputRef.current?.focus()}>
-      <input ref={inputRef} data-row={rowIdx} data-col={colIdx} id={`cell-${rowIdx}-${colIdx}`} type="text" value={localValue} onChange={handleChange} onBlur={handleBlur} onKeyDown={(e) => onKeyDown(e, rowIdx, colIdx, localValue)} placeholder="—" className={`w-full h-full min-h-[38px] rounded-lg text-[11px] text-center outline-none transition-all font-bold placeholder:text-[var(--text-muted)]/20 border ${getShiftColor(localValue)} focus:ring-2 focus:ring-[var(--accent-purple)]/50 focus:bg-[var(--bg-hover)]`} />
+    <td
+      ref={cellRef}
+      className={`p-1 border-r border-[var(--border)] relative select-none ${isHoliday ? 'bg-red-500/5' : ''} ${isToday ? 'bg-purple-500/10' : ''} min-w-[90px]`}
+      onClick={handleOpen}
+    >
+      <div
+        id={`cell-${rowIdx}-${colIdx}`}
+        className={`w-full min-h-[38px] rounded-lg text-[10px] text-center font-bold border flex items-center justify-center transition-all ${getShiftColor(initialValue)} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default opacity-75'}`}
+      >
+        {initialValue || (canEdit ? <span className="opacity-20 text-[16px]">+</span> : <span className="opacity-10">—</span>)}
+      </div>
+      {picker}
     </td>
   );
 };
+
 
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, settings, updateSettings } = useSchedule();
   const { user } = useTickets();
 
-  // Identify CHEF role (robust check)
+  // Identify CHEF role (robust check by email OR by role field)
   const isChef = useMemo(() => {
     const email = user?.email?.toLowerCase() || '';
     const name = user?.displayName?.toUpperCase() || '';
     return email.includes('chef') || 
            name.includes('CHEF') || 
            email === 'dilshat.r@hj.fit' ||
-           email.includes('sales5');
+           email.includes('sales5') ||
+           user?.role === 'chef';
   }, [user]);
 
   const isManager = user?.role === 'manager';
+  // Admin role: sees schedule only, NO financial data
+  const isAdmin = user?.role === 'admin';
+  // Only Chef and Manager can see salary/payroll columns
   const canViewFull = isChef || isManager;
+  // Only Chef and Manager can edit shift cells — Admins are read-only
+  const canEditSchedule = isChef || isManager;
 
-  // Restricted access for Managers
+  // Restricted access for Managers and Admins
   const userClub = user?.club?.toUpperCase();
 
   const [selectedClub, setSelectedClub] = useState(userClub || null);
@@ -391,9 +487,9 @@ const SchedulePage = () => {
                       </div>
                     </td>
                     {daysInMonth.map((day, dIdx) => (
-                      <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[`${monthKey}_${emp.id}`]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} />
+                      <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[`${monthKey}_${emp.id}`]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} canEdit={canEditSchedule} />
                     ))}
-                    {visibleCols.totalHours && <td className="px-4 py-4 text-center text-xs text-[var(--accent-purple)] bg-purple-500/5 font-bold border-r border-[var(--border)]">{stats.totalHours.toFixed(1)} ч</td>}
+                    {canViewFull && visibleCols.totalHours && <td className="px-4 py-4 text-center text-xs text-[var(--accent-purple)] bg-purple-500/5 font-bold border-r border-[var(--border)]">{stats.totalHours.toFixed(1)} ч</td>}
                     {canViewFull && visibleCols.salary && <td className="px-4 py-4 text-center text-xs text-blue-400 bg-blue-500/5 font-bold border-r border-[var(--border)]">{stats.salary.toLocaleString()}</td>}
                     {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance || ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction || ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}

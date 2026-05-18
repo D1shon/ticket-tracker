@@ -115,7 +115,7 @@ export const TicketProvider = ({ children }) => {
                    nameStr.includes('шеф');
 
     if (isChef) {
-      role = 'admin';
+      role = 'chef';
     } else {
       if (email.includes('anastasia') || email.includes('anastassiya') || email.includes('anastasiya') || email.includes('tkachenko') || nameStr.includes('anastasia') || nameStr.includes('анастасия')) {
         role = 'manager';
