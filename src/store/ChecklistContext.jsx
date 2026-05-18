@@ -7,7 +7,8 @@ import {
   doc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, auth } from '../lib/firebase';
 import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
 
@@ -20,22 +21,50 @@ export const ChecklistProvider = ({ children }) => {
   const [checklistData, setChecklistData] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Subscribe to checklists collection immediately on mount to prevent any race conditions with auth
+  // Safely subscribe to checklists only after Firebase Auth credentials are fully established
   useEffect(() => {
-    const q = query(collection(db, 'checklists'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = {};
-      snapshot.docs.forEach(doc => {
-        data[doc.id] = doc.data();
-      });
-      setChecklistData(data);
-      setLoading(false);
-    }, (error) => {
-      console.error('[ChecklistContext] subscription error:', error);
-      toast.error(`Ошибка загрузки чек-листов: ${error.message}`);
+    let unsubscribeChecklists = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        // Authenticated session ready, attach live listener
+        const q = query(collection(db, 'checklists'));
+        
+        // Clean up previous subscription just in case
+        if (unsubscribeChecklists) {
+          unsubscribeChecklists();
+        }
+
+        unsubscribeChecklists = onSnapshot(q, (snapshot) => {
+          const data = {};
+          snapshot.docs.forEach(doc => {
+            data[doc.id] = doc.data();
+          });
+          setChecklistData(data);
+          setLoading(false);
+        }, (error) => {
+          console.error('[ChecklistContext] subscription error:', error);
+          if (error.code !== 'cancelled') {
+            toast.error(`Ошибка загрузки чек-листов: ${error.message}`);
+          }
+        });
+      } else {
+        // No authenticated session, detach listener and clear state
+        if (unsubscribeChecklists) {
+          unsubscribeChecklists();
+          unsubscribeChecklists = null;
+        }
+        setChecklistData({});
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeChecklists) {
+        unsubscribeChecklists();
+      }
+    };
   }, []);
 
   const updateCheckState = async (dateKey, shiftId, cardId, club, itemStates, itemIssues, itemTimestamps) => {
