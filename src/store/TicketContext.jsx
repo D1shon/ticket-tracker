@@ -131,6 +131,14 @@ export const TicketProvider = ({ children }) => {
         role = 'manager';
         club = 'NURLY ORDA';
         finalDisplayName = 'Айнура';
+      } else if (email === 'daewure@mail.ru') {
+        role = 'manager';
+        club = 'COLIBRI';
+        finalDisplayName = 'Менеджер Колибри';
+      } else if (email === 'diassd9806@gmail.com') {
+        role = 'manager';
+        club = 'VILLA';
+        finalDisplayName = 'Диас';
       } else if (email.includes('ainur') || nameStr.includes('айнур')) {
         role = 'manager';
         club = '4YOU';
