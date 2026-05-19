@@ -33,6 +33,28 @@ const REASON_CONFIG = {
   finish: { title: 'ИТОГ ВЫПОЛНЕНИЯ ЗАДАЧИ',      color: '#22c55e', btnLabel: 'ПОДТВЕРДИТЬ ЗАВЕРШЕНИЕ', bg: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.2)'  },
 };
 
+// Helper to safely format Firestore timestamp, Date object, or ISO string for display
+const formatCreatedDate = (createdAt) => {
+  if (!createdAt) return '—';
+  if (typeof createdAt.toDate === 'function') {
+    try {
+      return createdAt.toDate().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {}
+  }
+  if (typeof createdAt.seconds === 'number') {
+    try {
+      return new Date(createdAt.seconds * 1000).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {}
+  }
+  try {
+    const d = new Date(createdAt);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+  } catch {}
+  return typeof createdAt === 'object' ? '—' : String(createdAt);
+};
+
 // ─── Live counter (counts seconds from a given ISO timestamp) ────────────────
 function useLiveSeconds(sinceISO, active) {
   const [secs, setSecs] = useState(0);
@@ -573,27 +595,6 @@ const TicketDetail = () => {
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Исполнитель</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#4f8ef7' }}>{ticket.assignee}</span>
               </div>
-// Helper to safely format Firestore timestamp, Date object, or ISO string for display
-const formatCreatedDate = (createdAt) => {
-  if (!createdAt) return '—';
-  if (typeof createdAt.toDate === 'function') {
-    try {
-      return createdAt.toDate().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch {}
-  }
-  if (typeof createdAt.seconds === 'number') {
-    try {
-      return new Date(createdAt.seconds * 1000).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch {}
-  }
-  try {
-    const d = new Date(createdAt);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
-  } catch {}
-  return typeof createdAt === 'object' ? '—' : String(createdAt);
-};
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Calendar size={14} color="var(--text-muted)" />
