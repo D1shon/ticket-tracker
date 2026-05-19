@@ -50,8 +50,16 @@ export const CallProvider = ({ children }) => {
       setIsInCall(true);
       toast.success(`Вы вошли в комнату: ${displayName}`);
     } catch (error) {
-      console.error(error);
-      toast.error('Ошибка входа в созвон');
+      console.error("[CallContext] Join call error:", error);
+      const errStr = String(error);
+      
+      if (errStr.includes('Permission denied') || errStr.includes('NotAllowedError') || error?.code === 'PERMISSION_DENIED') {
+        toast.error('Ошибка доступа: Разрешите браузеру доступ к камере и микрофону (нажмите на значок замочка/настроек слева от URL сайта).', { duration: 8000 });
+      } else if (errStr.includes('NotFoundError') || errStr.includes('devices not found') || error?.code === 'DEVICE_NOT_FOUND') {
+        toast.error('Ошибка устройств: Камера или микрофон не обнаружены. Пожалуйста, подключите их и попробуйте снова.', { duration: 8000 });
+      } else {
+        toast.error(`Ошибка входа в созвон: ${error?.message || 'Неизвестная ошибка'}`);
+      }
     }
   };
 
