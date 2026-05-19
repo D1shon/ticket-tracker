@@ -33,26 +33,24 @@ const REASON_CONFIG = {
   finish: { title: 'ИТОГ ВЫПОЛНЕНИЯ ЗАДАЧИ',      color: '#22c55e', btnLabel: 'ПОДТВЕРДИТЬ ЗАВЕРШЕНИЕ', bg: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.2)'  },
 };
 
+// Helper to safely parse Firestore timestamp, Date object, or string into a Date object
+const parseSafeDate = (d) => {
+  if (!d) return null;
+  if (typeof d.toDate === 'function') {
+    try { return d.toDate(); } catch {}
+  }
+  if (typeof d.seconds === 'number') {
+    return new Date(d.seconds * 1000);
+  }
+  const p = new Date(d);
+  return isNaN(p.getTime()) ? null : p;
+};
+
 // Helper to safely format Firestore timestamp, Date object, or ISO string for display
 const formatCreatedDate = (createdAt) => {
-  if (!createdAt) return '—';
-  if (typeof createdAt.toDate === 'function') {
-    try {
-      return createdAt.toDate().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch {}
-  }
-  if (typeof createdAt.seconds === 'number') {
-    try {
-      return new Date(createdAt.seconds * 1000).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch {}
-  }
-  try {
-    const d = new Date(createdAt);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
-  } catch {}
-  return typeof createdAt === 'object' ? '—' : String(createdAt);
+  const d = parseSafeDate(createdAt);
+  if (!d) return '—';
+  return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
 // ─── Live counter (counts seconds from a given ISO timestamp) ────────────────
@@ -60,7 +58,9 @@ function useLiveSeconds(sinceISO, active) {
   const [secs, setSecs] = useState(0);
   useEffect(() => {
     if (!active || !sinceISO) { setSecs(0); return; }
-    const tick = () => setSecs(Math.max(0, Math.floor((Date.now() - new Date(sinceISO).getTime()) / 1000)));
+    const date = parseSafeDate(sinceISO);
+    if (!date) { setSecs(0); return; }
+    const tick = () => setSecs(Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000)));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -69,6 +69,7 @@ function useLiveSeconds(sinceISO, active) {
 }
 
 function fmtSecs(s) {
+  if (isNaN(s)) return '0с';
   if (s < 60)   return `${s}с`;
   if (s < 3600) return `${Math.floor(s / 60)}мин ${s % 60}с`;
   const h = Math.floor(s / 3600);
@@ -81,6 +82,7 @@ function fmtSecs(s) {
 const TimerBox = ({ label, sinceISO, accumulatedSeconds = 0, color, active }) => {
   const liveSecs = useLiveSeconds(sinceISO, active);
   const totalSecs = accumulatedSeconds + liveSecs;
+  const parsedSince = parseSafeDate(sinceISO);
   
   return (
     <div style={{
@@ -92,9 +94,9 @@ const TimerBox = ({ label, sinceISO, accumulatedSeconds = 0, color, active }) =>
       <div style={{ fontSize: 22, fontWeight: 800, color, marginBottom: 6, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>
         {(totalSecs > 0 || active) ? fmtSecs(totalSecs) : '—'}
       </div>
-      {active && sinceISO && (
+      {active && parsedSince && (
         <div style={{ fontSize: 10, color: `${color}99`, marginBottom: 4 }}>
-          с {new Date(sinceISO).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+          с {parsedSince.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
         </div>
       )}
       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.03em' }}>{label}</div>
@@ -248,15 +250,9 @@ const TicketDetail = () => {
 
     // Calculate elapsed time in previous status
     let elapsed = 0;
-    const parseDate = (d) => {
-      if (!d) return null;
-      if (typeof d.toDate === 'function') return d.toDate();
-      const p = new Date(d);
-      return isNaN(p.getTime()) ? null : p;
-    };
 
     if (localStatusChangedAt) {
-      const startDate = parseDate(localStatusChangedAt);
+      const startDate = parseSafeDate(localStatusChangedAt);
       if (startDate) {
         elapsed = Math.floor((new Date(now).getTime() - startDate.getTime()) / 1000);
         if (elapsed < 0) elapsed = 0;
