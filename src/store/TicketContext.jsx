@@ -183,18 +183,26 @@ export const TicketProvider = ({ children }) => {
     }
     
     // Authenticate with Firebase anonymously to satisfy security rules (request.auth != null)
+    let offlineMode = false;
     try {
       await signInAnonymously(auth);
     } catch (authErr) {
       console.error("[TicketContext] Anonymous auth failed:", authErr);
-      throw new Error('Не удалось подключиться к базе данных. Проверьте интернет-соединение.');
+      offlineMode = true;
     }
     
     const sessionUser = { email: normalizedEmail, uid: 'session_' + normalizedEmail };
     const enriched = enrichUserWithRole(sessionUser);
     setUser(enriched);
     localStorage.setItem('app_session_user', JSON.stringify(sessionUser));
-    toast.success('Вход выполнен');
+    
+    if (offlineMode) {
+      toast.warning('Вход выполнен в автономном режиме. Облачная база данных недоступна (требуется включить Anonymous Auth в Firebase Console).', {
+        duration: 8000
+      });
+    } else {
+      toast.success('Вход выполнен');
+    }
   };
 
   const logout = () => {

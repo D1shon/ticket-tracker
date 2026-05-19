@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
   collection, 
   query, 
@@ -9,7 +9,7 @@ import {
   deleteDoc,
   updateDoc
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
 
@@ -75,6 +75,57 @@ export const ScheduleProvider = ({ children }) => {
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings)); } catch {}
   }, [settings]);
+
+  // ─── Track state updates for safe cloud sync ─────────────────────────────
+  const stateRef = useRef({ employees, scheduleData, settings });
+  useEffect(() => {
+    stateRef.current = { employees, scheduleData, settings };
+  }, [employees, scheduleData, settings]);
+
+  // ─── Sync local offline data to cloud when authenticated ─────────────────
+  const hasSyncedRef = useRef(false);
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (!firebaseUser || hasSyncedRef.current) return;
+      hasSyncedRef.current = true;
+      
+      try {
+        const { employees: currentEmps, scheduleData: currentSched, settings: currentSettings } = stateRef.current;
+        console.log("[ScheduleContext] Authenticated, starting sync of local data to cloud...");
+        
+        // 1. Sync Employees
+        if (currentEmps.length > 0) {
+          for (const emp of currentEmps) {
+            await setDoc(doc(db, 'employees', emp.id), emp, { merge: true });
+          }
+        }
+        
+        // 2. Sync Schedules
+        const scheduleEntries = Object.entries(currentSched);
+        if (scheduleEntries.length > 0) {
+          for (const [docId, data] of scheduleEntries) {
+            if (!data || !data.days) continue;
+            await setDoc(doc(db, 'schedules', docId), {
+              ...data,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+        }
+        
+        // 3. Sync Settings
+        if (currentSettings) {
+          await setDoc(doc(db, 'settings', 'schedule'), currentSettings, { merge: true });
+        }
+        
+        console.log("[ScheduleContext] Sync completed successfully");
+      } catch (err) {
+        console.error("[ScheduleContext] Sync failed:", err);
+        hasSyncedRef.current = false;
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   // ─── scheduleData listener: LOCAL ALWAYS WINS ─────────────────────────────
   useEffect(() => {
