@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
 
 const NotificationContext = createContext();
@@ -103,89 +104,105 @@ export const NotificationProvider = ({ children }) => {
 
   // ─── Watch Firestore tickets ──────────────────────────────────────────────
   useEffect(() => {
-    // No orderBy — mixed Timestamp/string types in createdAt crash Firestore SDK.
-    const q = query(collection(db, 'tickets'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const currentTickets = {};
-      snapshot.docs.forEach(d => { currentTickets[d.id] = { id: d.id, ...d.data() }; });
+    let unsubscribeTickets = null;
 
-      // Skip first load — just memorize current state
-      if (prevTicketsRef.current === null) {
-        prevTicketsRef.current = currentTickets;
-        return;
-      }
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        if (unsubscribeTickets) return; // Already listening
 
-      const prev = prevTicketsRef.current;
+        // No orderBy — mixed Timestamp/string types in createdAt crash Firestore SDK.
+        const q = query(collection(db, 'tickets'));
+        unsubscribeTickets = onSnapshot(q, (snapshot) => {
+          const currentTickets = {};
+          snapshot.docs.forEach(d => { currentTickets[d.id] = { id: d.id, ...d.data() }; });
 
-      snapshot.docChanges().forEach(change => {
-        const ticket = { id: change.doc.id, ...change.doc.data() };
-        const oldTicket = prev[ticket.id];
-
-        // ── New ticket created ──
-        if (change.type === 'added' && !oldTicket) {
-          pushNotification(
-            EVENT_TYPES.NEW_TICKET,
-            '🆕 Новая заявка',
-            `"${ticket.title || 'Без названия'}"`,
-            { ticketId: ticket.id, ticketTitle: ticket.title }
-          );
-          return;
-        }
-
-        if (change.type === 'modified' && oldTicket) {
-          // ── Status changed ──
-          if (oldTicket.status !== ticket.status && ticket.status) {
-            const statusInfo = STATUS_LABELS[ticket.status] || { label: ticket.status, icon: '🔔', color: '#7B3DFF' };
-            pushNotification(
-              EVENT_TYPES.STATUS_CHANGE,
-              `${statusInfo.icon} ${statusInfo.label}`,
-              `Заявка: "${ticket.title || 'Без названия'}"`,
-              { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status }
-            );
+          // Skip first load — just memorize current state
+          if (prevTicketsRef.current === null) {
+            prevTicketsRef.current = currentTickets;
+            return;
           }
 
-          // ── New comment / message ──
-          const oldComments = oldTicket.comments || [];
-          const newComments = ticket.comments || [];
-          if (newComments.length > oldComments.length) {
-            const added = newComments.slice(oldComments.length);
-            added.forEach(comment => {
-              const hasFile = !!comment.attachment;
-              const hasText = comment.text && comment.text.trim().length > 0;
+          const prev = prevTicketsRef.current;
 
-              if (hasFile && hasText) {
+          snapshot.docChanges().forEach(change => {
+            const ticket = { id: change.doc.id, ...change.doc.data() };
+            const oldTicket = prev[ticket.id];
+
+            // ── New ticket created ──
+            if (change.type === 'added' && !oldTicket) {
+              pushNotification(
+                EVENT_TYPES.NEW_TICKET,
+                '🆕 Новая заявка',
+                `"${ticket.title || 'Без названия'}"`,
+                { ticketId: ticket.id, ticketTitle: ticket.title }
+              );
+              return;
+            }
+
+            if (change.type === 'modified' && oldTicket) {
+              // ── Status changed ──
+              if (oldTicket.status !== ticket.status && ticket.status) {
+                const statusInfo = STATUS_LABELS[ticket.status] || { label: ticket.status, icon: '🔔', color: '#7B3DFF' };
                 pushNotification(
-                  EVENT_TYPES.FILE_ATTACHED,
-                  `📎 Сообщение с файлом`,
-                  `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                  { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
-                );
-              } else if (hasFile) {
-                pushNotification(
-                  EVENT_TYPES.FILE_ATTACHED,
-                  `📎 Прикреплён файл`,
-                  `В заявке "${ticket.title || 'Без названия'}" — ${comment.attachment.name || 'файл'}`,
-                  { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
-                );
-              } else if (hasText) {
-                pushNotification(
-                  EVENT_TYPES.NEW_MESSAGE,
-                  `💬 Новое сообщение`,
-                  `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                  { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
+                  EVENT_TYPES.STATUS_CHANGE,
+                  `${statusInfo.icon} ${statusInfo.label}`,
+                  `Заявка: "${ticket.title || 'Без названия'}"`,
+                  { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status }
                 );
               }
-            });
-          }
-        }
-      });
 
-      prevTicketsRef.current = currentTickets;
-    }, (error) => {
-      console.error('Notification watcher error:', error);
+              // ── New comment / message ──
+              const oldComments = oldTicket.comments || [];
+              const newComments = ticket.comments || [];
+              if (newComments.length > oldComments.length) {
+                const added = newComments.slice(oldComments.length);
+                added.forEach(comment => {
+                  const hasFile = !!comment.attachment;
+                  const hasText = comment.text && comment.text.trim().length > 0;
+
+                  if (hasFile && hasText) {
+                    pushNotification(
+                      EVENT_TYPES.FILE_ATTACHED,
+                      `📎 Сообщение с файлом`,
+                      `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
+                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
+                    );
+                  } else if (hasFile) {
+                    pushNotification(
+                      EVENT_TYPES.FILE_ATTACHED,
+                      `📎 Прикреплён файл`,
+                      `В заявке "${ticket.title || 'Без названия'}" — ${comment.attachment.name || 'файл'}`,
+                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
+                    );
+                  } else if (hasText) {
+                    pushNotification(
+                      EVENT_TYPES.NEW_MESSAGE,
+                      `💬 Новое сообщение`,
+                      `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
+                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
+                    );
+                  }
+                });
+              }
+            }
+          });
+
+          prevTicketsRef.current = currentTickets;
+        }, (error) => {
+          console.error('Notification watcher error:', error);
+        });
+      } else {
+        if (unsubscribeTickets) {
+          unsubscribeTickets();
+          unsubscribeTickets = null;
+        }
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeTickets) unsubscribeTickets();
+    };
   }, [pushNotification]);
 
   // ─── Helpers for UI ───────────────────────────────────────────────────────

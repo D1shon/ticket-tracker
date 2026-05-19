@@ -82,140 +82,124 @@ export const ScheduleProvider = ({ children }) => {
     stateRef.current = { employees, scheduleData, settings };
   }, [employees, scheduleData, settings]);
 
-  // ─── Sync local offline data to cloud when authenticated ─────────────────
+  // ─── Sync local offline data to cloud & load database listeners when authenticated ─────────────────
   const hasSyncedRef = useRef(false);
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      if (!firebaseUser || hasSyncedRef.current) return;
-      hasSyncedRef.current = true;
-      
-      try {
-        const { employees: currentEmps, scheduleData: currentSched, settings: currentSettings } = stateRef.current;
-        console.log("[ScheduleContext] Authenticated, starting sync of local data to cloud...");
-        
-        // 1. Sync Employees
-        if (currentEmps.length > 0) {
-          for (const emp of currentEmps) {
-            await setDoc(doc(db, 'employees', emp.id), emp, { merge: true });
+    let unsubSchedules = null;
+    let unsubSettings = null;
+    let unsubEmployees = null;
+
+    const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        // 1. Sync offline changes first
+        if (!hasSyncedRef.current) {
+          hasSyncedRef.current = true;
+          try {
+            const { employees: currentEmps, scheduleData: currentSched, settings: currentSettings } = stateRef.current;
+            console.log("[ScheduleContext] Authenticated, starting sync of local data to cloud...");
+            
+            // Sync Employees
+            if (currentEmps.length > 0) {
+              for (const emp of currentEmps) {
+                await setDoc(doc(db, 'employees', emp.id), emp, { merge: true });
+              }
+            }
+            // Sync Schedules
+            const scheduleEntries = Object.entries(currentSched);
+            if (scheduleEntries.length > 0) {
+              for (const [docId, data] of scheduleEntries) {
+                if (!data || !data.days) continue;
+                await setDoc(doc(db, 'schedules', docId), {
+                  ...data,
+                  updatedAt: serverTimestamp()
+                }, { merge: true });
+              }
+            }
+            // Sync Settings
+            if (currentSettings) {
+              await setDoc(doc(db, 'settings', 'schedule'), currentSettings, { merge: true });
+            }
+            console.log("[ScheduleContext] Sync completed successfully");
+          } catch (err) {
+            console.error("[ScheduleContext] Sync failed:", err);
+            hasSyncedRef.current = false;
           }
         }
-        
-        // 2. Sync Schedules
-        const scheduleEntries = Object.entries(currentSched);
-        if (scheduleEntries.length > 0) {
-          for (const [docId, data] of scheduleEntries) {
-            if (!data || !data.days) continue;
-            await setDoc(doc(db, 'schedules', docId), {
-              ...data,
-              updatedAt: serverTimestamp()
-            }, { merge: true });
-          }
+
+        // 2. Start listeners
+        if (!unsubSchedules) {
+          unsubSchedules = onSnapshot(query(collection(db, 'schedules')), (snapshot) => {
+            const remoteData = {};
+            snapshot.docs.forEach(d => { remoteData[d.id] = d.data(); });
+            setScheduleData(prev => {
+              const merged = { ...prev };
+              for (const [id, remoteDoc] of Object.entries(remoteData)) {
+                if (!merged[id]) {
+                  merged[id] = remoteDoc;
+                } else {
+                  const localDays = merged[id].days || {};
+                  const remoteDays = remoteDoc.days || {};
+                  const mergedDays = { ...remoteDays, ...localDays };
+                  merged[id] = {
+                    ...remoteDoc,
+                    ...merged[id],
+                    days: mergedDays
+                  };
+                }
+              }
+              return merged;
+            });
+            setLoading(false);
+          }, (error) => {
+            console.error('[ScheduleContext] schedules load error:', error);
+            setLoading(false);
+            toast.error('Ошибка связи с базой данных. Работаем в оффлайн-режиме.');
+          });
         }
-        
-        // 3. Sync Settings
-        if (currentSettings) {
-          await setDoc(doc(db, 'settings', 'schedule'), currentSettings, { merge: true });
+
+        if (!unsubSettings) {
+          unsubSettings = onSnapshot(doc(db, 'settings', 'schedule'), (snapshot) => {
+            if (snapshot.exists()) {
+              setSettings(prev => ({ ...snapshot.data(), ...prev }));
+            }
+          });
         }
-        
-        console.log("[ScheduleContext] Sync completed successfully");
-      } catch (err) {
-        console.error("[ScheduleContext] Sync failed:", err);
-        hasSyncedRef.current = false;
+
+        if (!unsubEmployees) {
+          unsubEmployees = onSnapshot(query(collection(db, 'employees')), (snapshot) => {
+            const remoteEmployees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            setEmployees(prev => {
+              if (prev.length === 0 && remoteEmployees.length > 0) {
+                return [...remoteEmployees].sort((a, b) => (a.order || 0) - (b.order || 0));
+              }
+              if (prev.length > 0) {
+                const localIds = new Set(prev.map(e => e.id));
+                const newFromRemote = remoteEmployees.filter(e => !localIds.has(e.id));
+                if (newFromRemote.length === 0) return prev;
+                const combined = [...prev, ...newFromRemote];
+                combined.sort((a, b) => (a.order || 0) - (b.order || 0));
+                return combined;
+              }
+              return prev;
+            });
+          }, (error) => {
+            console.error('[ScheduleContext] employees load error:', error);
+          });
+        }
+      } else {
+        // Clean up listeners on sign-out
+        if (unsubSchedules) { unsubSchedules(); unsubSchedules = null; }
+        if (unsubSettings) { unsubSettings(); unsubSettings = null; }
+        if (unsubEmployees) { unsubEmployees(); unsubEmployees = null; }
       }
     });
-    
-    return () => unsubscribe();
-  }, []);
 
-  // ─── scheduleData listener: LOCAL ALWAYS WINS ─────────────────────────────
-  useEffect(() => {
-    const q = query(collection(db, 'schedules'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const remoteData = {};
-      snapshot.docs.forEach(d => { remoteData[d.id] = d.data(); });
-
-      setScheduleData(prev => {
-        const merged = { ...prev };
-
-        for (const [id, remoteDoc] of Object.entries(remoteData)) {
-          if (!merged[id]) {
-            // Not in local at all — safe to add from remote
-            merged[id] = remoteDoc;
-          } else {
-            // Exists locally — local always wins for day cells
-            const localDays = merged[id].days || {};
-            const remoteDays = remoteDoc.days || {};
-
-            // Remote days as base, local days override
-            const mergedDays = { ...remoteDays, ...localDays };
-
-            merged[id] = {
-              ...remoteDoc,   // remote top-level fields (advance, correction…)
-              ...merged[id],  // local top-level fields override remote
-              days: mergedDays
-            };
-          }
-        }
-        return merged;
-      });
-
-      setLoading(false);
-    }, (error) => {
-      console.error('Ошибка загрузки данных:', error);
-      setLoading(false); // Never get stuck on loading even on error
-      toast.error('Ошибка связи с базой данных. Работаем в оффлайн-режиме.');
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // ─── settings listener: LOCAL ALWAYS WINS ─────────────────────────────────
-  useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'schedule'), (snapshot) => {
-      if (snapshot.exists()) {
-        setSettings(prev => {
-          // Local settings take absolute priority over remote
-          return { ...snapshot.data(), ...prev };
-        });
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // ─── employees listener: LOCAL ALWAYS WINS ────────────────────────────────
-  useEffect(() => {
-    const q = query(collection(db, 'employees'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const remoteEmployees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      setEmployees(prev => {
-        if (prev.length === 0 && remoteEmployees.length > 0) {
-          // Local list is empty — safe to load from remote
-          return [...remoteEmployees].sort((a, b) => (a.order || 0) - (b.order || 0));
-        }
-
-        if (prev.length > 0) {
-          // Local list exists — it is the absolute source of truth
-          // Only add remote employees that do NOT exist locally (new on another device)
-          const localIds = new Set(prev.map(e => e.id));
-          const newFromRemote = remoteEmployees.filter(e => !localIds.has(e.id));
-
-          if (newFromRemote.length === 0) {
-            // Nothing new from remote — keep local list UNCHANGED
-            return prev;
-          }
-
-          // Append new remote employees and re-sort by order field
-          const combined = [...prev, ...newFromRemote];
-          combined.sort((a, b) => (a.order || 0) - (b.order || 0));
-          return combined;
-        }
-
-        return prev;
-      });
-    }, (error) => {
-      console.error('Ошибка загрузки сотрудников:', error);
-    });
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubSchedules) unsubSchedules();
+      if (unsubSettings) unsubSettings();
+      if (unsubEmployees) unsubEmployees();
+    };
   }, []);
 
   // ─── updateCell ───────────────────────────────────────────────────────────

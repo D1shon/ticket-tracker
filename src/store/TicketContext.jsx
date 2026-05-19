@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { signInAnonymously, signOut } from 'firebase/auth';
+import { signInAnonymously, signOut, onAuthStateChanged } from 'firebase/auth';
 
 // ─── Strict Whitelist and Role Mapping ─────────────────────────────────────────
 // Only these exact email addresses are allowed to access the application.
@@ -214,41 +214,58 @@ export const TicketProvider = ({ children }) => {
 
   // ─── Firestore live listener ──────────────────────────────────────────────
   useEffect(() => {
-    const q = query(collection(db, 'tickets'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'modified') {
-          const newData = change.doc.data();
-          const oldData = allTicketsRef.current.find(t => t.id === change.doc.id);
-          if (oldData && oldData.status !== newData.status) {
-            const LABELS = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто' };
-            toast(`Статус: ${LABELS[newData.status] || newData.status}`, {
-              description: `"${newData.title}"`, duration: 4000,
-            });
-          }
-        }
-      });
-      const fresh = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setTickets(prev => {
-        if (fresh.length === 0 && prev.length > 0) return prev;
-        const map = {};
-        fresh.forEach(t => { map[t.id] = t; });
-        prev.forEach(t => {
-          if (!map[t.id]) {
-            if (String(t.id).startsWith('temp_')) return;
-            if (!isFirebaseId(String(t.id))) map[t.id] = t;
-            else {
-              const age = Date.now() - new Date(t.createdAt || 0).getTime();
-              if (age < 30_000) map[t.id] = t;
+    let unsubTickets = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        if (unsubTickets) return; // Already listening
+
+        const q = query(collection(db, 'tickets'));
+        unsubTickets = onSnapshot(q, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'modified') {
+              const newData = change.doc.data();
+              const oldData = allTicketsRef.current.find(t => t.id === change.doc.id);
+              if (oldData && oldData.status !== newData.status) {
+                const LABELS = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто' };
+                toast(`Статус: ${LABELS[newData.status] || newData.status}`, {
+                  description: `"${newData.title}"`, duration: 4000,
+                });
+              }
             }
-          }
+          });
+          const fresh = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          setTickets(prev => {
+            if (fresh.length === 0 && prev.length > 0) return prev;
+            const map = {};
+            fresh.forEach(t => { map[t.id] = t; });
+            prev.forEach(t => {
+              if (!map[t.id]) {
+                if (String(t.id).startsWith('temp_')) return;
+                if (!isFirebaseId(String(t.id))) map[t.id] = t;
+                else {
+                  const age = Date.now() - new Date(t.createdAt || 0).getTime();
+                  if (age < 30_000) map[t.id] = t;
+                }
+              }
+            });
+            return sortByRecentActivity(Object.values(map));
+          });
+        }, (error) => {
+          console.error('[TicketContext] listener error:', error.code, error.message);
         });
-        return sortByRecentActivity(Object.values(map));
-      });
-    }, (error) => {
-      console.error('[TicketContext] listener error:', error.code, error.message);
+      } else {
+        if (unsubTickets) {
+          unsubTickets();
+          unsubTickets = null;
+        }
+      }
     });
-    return unsub;
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubTickets) unsubTickets();
+    };
   }, []);
 
   const updateTicket = useCallback(async (ticketId, updates) => {
