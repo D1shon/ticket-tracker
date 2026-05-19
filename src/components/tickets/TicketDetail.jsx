@@ -573,10 +573,32 @@ const TicketDetail = () => {
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Исполнитель</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#4f8ef7' }}>{ticket.assignee}</span>
               </div>
+// Helper to safely format Firestore timestamp, Date object, or ISO string for display
+const formatCreatedDate = (createdAt) => {
+  if (!createdAt) return '—';
+  if (typeof createdAt.toDate === 'function') {
+    try {
+      return createdAt.toDate().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {}
+  }
+  if (typeof createdAt.seconds === 'number') {
+    try {
+      return new Date(createdAt.seconds * 1000).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {}
+  }
+  try {
+    const d = new Date(createdAt);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+  } catch {}
+  return typeof createdAt === 'object' ? '—' : String(createdAt);
+};
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Calendar size={14} color="var(--text-muted)" />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Создана</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{ticket.createdAt}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{formatCreatedDate(ticket.createdAt)}</span>
               </div>
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
