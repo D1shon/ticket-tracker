@@ -57,6 +57,8 @@ const SHIFT_OPTIONS = [
   { label: '14:30–22:30', value: '14:30-22:30', bg: '#f97316', text: '#fff' },
   { label: '8:30–14:30',  value: '8:30-14:30',  bg: '#a855f7', text: '#fff' },
   { label: '14:30–21:30', value: '14:30-21:30', bg: '#8b5cf6', text: '#fff' },
+  { label: '6:30–22:30',  value: '6:30-22:30',  bg: '#ec4899', text: '#fff' },
+  { label: '8:30–21:30',  value: '8:30-21:30',  bg: '#10b981', text: '#fff' },
 ];
 
 const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToday, onKeyDown, updateCell, rowIdx, colIdx, canEdit = true }) => {
@@ -71,6 +73,8 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     if (norm === '14:30-22:30') return 'bg-orange-500/20 text-orange-400 border-orange-500/40';
     if (norm === '8:30-14:30') return 'bg-purple-500/20 text-purple-400 border-purple-500/40';
     if (norm === '14:30-21:30') return 'bg-violet-500/20 text-violet-400 border-violet-500/40';
+    if (norm === '6:30-22:30') return 'bg-pink-500/20 text-pink-400 border-pink-500/40';
+    if (norm === '8:30-21:30') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
     return 'bg-rose-500/10 text-rose-400 border-rose-500/40';
   };
 
