@@ -3,12 +3,12 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, updateProfile, fetchSignInMethodsForEmail } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCiDHP-Jj11LJdojVk_71VxxzvKT4TmayI",
-  authDomain: "ticket-tracker-inky.firebaseapp.com",
-  projectId: "ticket-tracker-inky",
-  storageBucket: "ticket-tracker-inky.appspot.com",
-  messagingSenderId: "898511478144",
-  appId: "1:898511478144:web:e3f695427d14f479d20f9c"
+  apiKey: "AIzaSyCPAitt8EX3ialTb2-_1FQimmlpw5blFYk",
+  authDomain: "hjtrack-928f5.firebaseapp.com",
+  projectId: "hjtrack-928f5",
+  storageBucket: "hjtrack-928f5.firebasestorage.app",
+  messagingSenderId: "236581443884",
+  appId: "1:236581443884:web:a9ce84dcbf0efc59267489"
 };
 
 const app = initializeApp(firebaseConfig);
