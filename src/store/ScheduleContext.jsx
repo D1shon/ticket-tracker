@@ -95,15 +95,9 @@ export const ScheduleProvider = ({ children }) => {
         if (!hasSyncedRef.current) {
           hasSyncedRef.current = true;
           try {
-            const { employees: currentEmps, scheduleData: currentSched, settings: currentSettings } = stateRef.current;
+            const { scheduleData: currentSched, settings: currentSettings } = stateRef.current;
             console.log("[ScheduleContext] Authenticated, starting sync of local data to cloud...");
             
-            // Sync Employees
-            if (currentEmps.length > 0) {
-              for (const emp of currentEmps) {
-                await setDoc(doc(db, 'employees', emp.id), emp, { merge: true });
-              }
-            }
             // Sync Schedules
             const scheduleEntries = Object.entries(currentSched);
             if (scheduleEntries.length > 0) {
@@ -168,20 +162,7 @@ export const ScheduleProvider = ({ children }) => {
         if (!unsubEmployees) {
           unsubEmployees = onSnapshot(query(collection(db, 'employees')), (snapshot) => {
             const remoteEmployees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            setEmployees(prev => {
-              if (prev.length === 0 && remoteEmployees.length > 0) {
-                return [...remoteEmployees].sort((a, b) => (a.order || 0) - (b.order || 0));
-              }
-              if (prev.length > 0) {
-                const localIds = new Set(prev.map(e => e.id));
-                const newFromRemote = remoteEmployees.filter(e => !localIds.has(e.id));
-                if (newFromRemote.length === 0) return prev;
-                const combined = [...prev, ...newFromRemote];
-                combined.sort((a, b) => (a.order || 0) - (b.order || 0));
-                return combined;
-              }
-              return prev;
-            });
+            setEmployees(remoteEmployees.sort((a, b) => (a.order || 0) - (b.order || 0)));
           }, (error) => {
             console.error('[ScheduleContext] employees load error:', error);
           });
