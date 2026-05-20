@@ -12,20 +12,43 @@ const CallOverlay = () => {
   const localRef = useRef(null);
   const remoteRef = useRef(null);
 
+  // Local video/screen track rendering
   useEffect(() => {
-    if (localVideoTrack && localRef.current && !isScreenSharing) {
-      localVideoTrack.play(localRef.current);
-    }
-    if (screenTrack && localRef.current && isScreenSharing) {
-      screenTrack.play(localRef.current);
+    const track = isScreenSharing ? screenTrack : localVideoTrack;
+    const container = localRef.current;
+    if (track && container) {
+      container.innerHTML = '';
+      try {
+        track.play(container);
+      } catch (err) {
+        console.error("[CallOverlay] Error playing local track:", err);
+      }
+      return () => {
+        try {
+          track.stop();
+        } catch (e) {}
+      };
     }
   }, [localVideoTrack, screenTrack, isScreenSharing, isInCall, size]);
 
+  // Remote video rendering
+  const remoteVideoTrack = remoteUsers[0]?.videoTrack;
   useEffect(() => {
-    if (remoteUsers.length > 0 && remoteRef.current) {
-      remoteUsers[0].videoTrack.play(remoteRef.current);
+    const container = remoteRef.current;
+    if (remoteVideoTrack && container) {
+      container.innerHTML = '';
+      try {
+        remoteVideoTrack.play(container);
+      } catch (err) {
+        console.error("[CallOverlay] Error playing remote track:", err);
+      }
+      return () => {
+        try {
+          remoteVideoTrack.stop();
+        } catch (e) {}
+      };
     }
-  }, [remoteUsers, size]);
+  }, [remoteVideoTrack, size]);
 
   // Handle dragging
   const handleMouseDown = (e) => {
@@ -68,6 +91,9 @@ const CallOverlay = () => {
     setSize(prev => (prev === 3 ? 1 : prev + 1));
   };
 
+  const remoteUser = remoteUsers[0];
+  const hasRemoteVideo = !!remoteUser?.videoTrack;
+  const hasRemoteAudio = !!remoteUser?.audioTrack;
   const hasRemote = remoteUsers.length > 0;
 
   return (
@@ -117,7 +143,7 @@ const CallOverlay = () => {
               onClick={(e) => { e.stopPropagation(); leaveCall(); }} 
               style={{ background: '#ef4444', border: 'none', padding: '6px', borderRadius: 8, color: 'white', cursor: 'pointer' }}
             >
-              <PhoneOff size={14} />
+               <PhoneOff size={14} />
             </button>
          </div>
       </div>
@@ -139,8 +165,17 @@ const CallOverlay = () => {
          {/* Remote Video */}
          {hasRemote ? (
            <div style={{ position: 'relative', background: '#1a1a20', aspectRatio: '4/3' }}>
-              <div ref={remoteRef} style={{ width: '100%', height: '100%' }} />
-              <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: 6, fontSize: 10, color: 'white', fontWeight: 800 }}>Собеседник</div>
+              {hasRemoteVideo ? (
+                <div ref={remoteRef} style={{ width: '100%', height: '100%' }} />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.15)', width: '100%', height: '100%' }}>
+                   <User size={size === 1 ? 40 : 80} strokeWidth={1} />
+                   <span style={{ fontSize: 10, fontWeight: 800, marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Камера выключена</span>
+                </div>
+              )}
+              <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: 6, fontSize: 10, color: 'white', fontWeight: 800 }}>
+                 Собеседник {hasRemoteAudio ? '🎤' : '🔇'}
+              </div>
            </div>
          ) : !isScreenSharing && (
            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.15)', aspectRatio: '4/3' }}>

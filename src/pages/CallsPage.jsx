@@ -4,14 +4,14 @@ import { useCall } from '../store/CallContext';
 import { Video, Play, Plus, Activity, SignalHigh, BarChart3, ShieldCheck } from 'lucide-react';
 
 const CallsPage = () => {
-  const { isInCall, joinCall } = useCall();
+  const { isInCall, joinCall, roomCounts } = useCall();
   const navigate = useNavigate();
 
   if (isInCall) {
     return (
       <div style={{ textAlign: 'center', padding: '100px 20px' }}>
           <div style={{ width: 80, height: 80, background: 'var(--accent-green-bg)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', border: '1px solid var(--accent-green-border)' }}>
-             <div style={{ width: 20, height: 20, background: 'var(--accent-green)', borderRadius: '50%', animate: 'pulse 2s infinite' }}></div>
+             <div style={{ width: 20, height: 20, background: 'var(--accent-green)', borderRadius: '50%', animation: 'pulse 2s infinite' }}></div>
           </div>
           <h2 style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 12 }}>ВЫ В СОЗВОНЕ</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 400, margin: '0 auto 32px' }}>
@@ -36,14 +36,34 @@ const CallsPage = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <h3 style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Выберите зал</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-              {['Зал переговоров', 'HR Отдел'].map((n, i) => (
-                <button key={i} onClick={() => joinCall(n)} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 32, textAlign: 'left', cursor: 'pointer', transition: 'all 0.3s', boxShadow: 'var(--shadow-card)' }}>
-                   <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--accent-blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '1px solid var(--accent-blue-border)' }}><Play size={22} color="var(--accent-blue)" /></div>
-                   <div style={{ fontWeight: 900, color: 'var(--text-primary)', fontSize: 17 }}>{n}</div>
-                </button>
-              ))}
-              <button onClick={() => { const name = prompt('Название (Latin):'); if (name) joinCall(name); }} style={{ background: 'var(--bg-hover)', border: '1px dashed var(--accent-blue)', borderRadius: 28, padding: 32, textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                 <Plus size={24} color="var(--accent-blue)" />
+              {['Зал переговоров', 'HR Отдел'].map((n, i) => {
+                const channelId = n === 'Зал переговоров' ? 'main_room' : 'hr_room';
+                const count = roomCounts?.[channelId] || 0;
+                return (
+                  <button key={i} onClick={() => joinCall(n)} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 32, textAlign: 'left', cursor: 'pointer', transition: 'all 0.3s', boxShadow: 'var(--shadow-card)', position: 'relative', overflow: 'hidden' }}>
+                     <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginBottom: 16 }}>
+                       <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--accent-blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--accent-blue-border)' }}>
+                         <Play size={22} color="var(--accent-blue)" />
+                       </div>
+                       <div style={{ marginLeft: 'auto' }}>
+                         {count > 0 ? (
+                           <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
+                             В группе: {count}
+                           </span>
+                         ) : (
+                           <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                             Свободно
+                           </span>
+                         )}
+                       </div>
+                     </div>
+                     <div style={{ fontWeight: 900, color: 'var(--text-primary)', fontSize: 17 }}>{n}</div>
+                  </button>
+                );
+              })}
+              <button onClick={() => { const name = prompt('Название (Latin):'); if (name) joinCall(name); }} style={{ background: 'var(--bg-hover)', border: '1px dashed var(--accent-blue)', borderRadius: 28, padding: 32, textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 146 }}>
+                 <Plus size={24} color="var(--accent-blue)" style={{ marginBottom: 8 }} />
                  <div style={{ fontWeight: 800, color: 'var(--accent-blue)', fontSize: 13 }}>Своя комната</div>
               </button>
             </div>
