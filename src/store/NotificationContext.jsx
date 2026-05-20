@@ -81,38 +81,79 @@ function loadReadSet() {
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export const NotificationProvider = ({ children }) => {
-  const [notifications, setNotifications] = useState(() => {
-    // Load stored notifications but filter out those from other clubs
-    const stored = loadStored();
-    const userClub = getSessionUserClub();
-    if (userClub === null) return stored; // chef sees all
-    return stored.filter(n => {
-      // If the notification has no ticketId it's a system message — keep it
-      if (!n.ticketId) return true;
-      // If we stored club on the notification meta, use it
-      if (n.club) return (n.club || '').toUpperCase() === userClub.toUpperCase();
-      // Otherwise keep it (we can't filter without club info)
-      return true;
-    });
+  const [currentUserEmail, setCurrentUserEmail] = useState(() => {
+    try {
+      const raw = localStorage.getItem('app_session_user');
+      return raw ? JSON.parse(raw).email : null;
+    } catch {
+      return null;
+    }
   });
-  const [readIds, setReadIds] = useState(loadReadSet);
-  const [panelOpen, setPanelOpen] = useState(false);
 
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const raw = localStorage.getItem('app_session_user');
+      if (!raw) return [];
+      const { email } = JSON.parse(raw);
+      const emailKey = email.toLowerCase().trim();
+      const stored = localStorage.getItem(`app_notifications_v1_${emailKey}`);
+      const loaded = stored ? JSON.parse(stored) : [];
+      const userClub = getSessionUserClub();
+      if (userClub === null) return loaded;
+      return loaded.filter(n => {
+        if (!n.ticketId) return true;
+        if (n.club) return (n.club || '').toUpperCase() === userClub.toUpperCase();
+        return true;
+      });
+    } catch {
+      return [];
+    }
+  });
+
+  const [readIds, setReadIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('app_session_user');
+      if (!raw) return new Set();
+      const { email } = JSON.parse(raw);
+      const emailKey = email.toLowerCase().trim();
+      const stored = localStorage.getItem(`app_notifications_read_v1_${emailKey}`);
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch {
+      return new Set();
+    }
+  });
+
+  const [panelOpen, setPanelOpen] = useState(false);
   const prevTicketsRef = useRef(null); // null means "first load — don't fire"
 
   // Persist notifications
   useEffect(() => {
+    let email = null;
     try {
-      // Keep only last 100 notifications
+      const raw = localStorage.getItem('app_session_user');
+      if (raw) email = JSON.parse(raw).email;
+    } catch {}
+    
+    if (!email) return;
+    try {
+      const emailKey = email.toLowerCase().trim();
       const trimmed = notifications.slice(0, 100);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      localStorage.setItem(`app_notifications_v1_${emailKey}`, JSON.stringify(trimmed));
     } catch {}
   }, [notifications]);
 
   // Persist read ids
   useEffect(() => {
+    let email = null;
     try {
-      localStorage.setItem(READ_KEY, JSON.stringify([...readIds]));
+      const raw = localStorage.getItem('app_session_user');
+      if (raw) email = JSON.parse(raw).email;
+    } catch {}
+    
+    if (!email) return;
+    try {
+      const emailKey = email.toLowerCase().trim();
+      localStorage.setItem(`app_notifications_read_v1_${emailKey}`, JSON.stringify([...readIds]));
     } catch {}
   }, [readIds]);
 
@@ -154,6 +195,43 @@ export const NotificationProvider = ({ children }) => {
 
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        // Read current email from localStorage
+        let email = null;
+        try {
+          const raw = localStorage.getItem('app_session_user');
+          if (raw) email = JSON.parse(raw).email;
+        } catch {}
+
+        if (email) {
+          const emailKey = email.toLowerCase().trim();
+          setCurrentUserEmail(email);
+
+          // Load notifications for this user
+          let loadedNotifs = [];
+          try {
+            const rawNotifs = localStorage.getItem(`app_notifications_v1_${emailKey}`);
+            loadedNotifs = rawNotifs ? JSON.parse(rawNotifs) : [];
+          } catch {}
+
+          // Filter loaded notifications to ensure they belong to user's club (extra safety)
+          const userClub = getSessionUserClub();
+          if (userClub !== null) {
+            loadedNotifs = loadedNotifs.filter(n => {
+              if (!n.ticketId) return true;
+              if (n.club) return (n.club || '').toUpperCase() === userClub.toUpperCase();
+              return true;
+            });
+          }
+          setNotifications(loadedNotifs);
+
+          let loadedRead = new Set();
+          try {
+            const rawRead = localStorage.getItem(`app_notifications_read_v1_${emailKey}`);
+            loadedRead = new Set(rawRead ? JSON.parse(rawRead) : []);
+          } catch {}
+          setReadIds(loadedRead);
+        }
+
         if (unsubscribeTickets) return; // Already listening
 
         // No orderBy — mixed Timestamp/string types in createdAt crash Firestore SDK.
@@ -243,6 +321,10 @@ export const NotificationProvider = ({ children }) => {
           console.error('Notification watcher error:', error);
         });
       } else {
+        setCurrentUserEmail(null);
+        setNotifications([]);
+        setReadIds(new Set());
+        prevTicketsRef.current = null;
         if (unsubscribeTickets) {
           unsubscribeTickets();
           unsubscribeTickets = null;

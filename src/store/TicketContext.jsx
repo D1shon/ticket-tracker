@@ -233,21 +233,7 @@ export const TicketProvider = ({ children }) => {
             }
           } catch {}
 
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === 'modified') {
-              const newData = change.doc.data();
-              const oldData = allTicketsRef.current.find(t => t.id === change.doc.id);
-              // Only show toast if this ticket belongs to the user's club (or user is chef)
-              const ticketClub = (newData.club || '').toUpperCase();
-              const clubMatch = sessionClub === null || ticketClub === (sessionClub || '').toUpperCase();
-              if (clubMatch && oldData && oldData.status !== newData.status) {
-                const LABELS = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто' };
-                toast(`Статус: ${LABELS[newData.status] || newData.status}`, {
-                  description: `"${newData.title}"`, duration: 4000,
-                });
-              }
-            }
-          });
+          // Toasts on status/ticket changes are now handled cleanly by NotificationContext.jsx
           const fresh = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           setTickets(prev => {
             // If Firestore returned real data — use it as the single source of truth.
