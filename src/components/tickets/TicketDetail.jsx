@@ -202,11 +202,10 @@ const ReasonPanel = ({ action, onConfirm, onCancel }) => {
 const TicketDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { tickets, updateTicket, addComment, uploadFile } = useTickets();
+  const { tickets, user, loading, updateTicket, addComment, uploadFile } = useTickets();
 
   // Find real ticket from context (id from URL is always a string)
-  // Since DEMO_TICKETS are now part of `tickets`, they will be found here.
-  const ticket = tickets?.find(t => String(t.id) === String(id)) || tickets?.[0] || {};
+  const ticket = tickets?.find(t => String(t.id) === String(id));
 
   // ─── Local status override ───────────────────────────────────────────────
   // ticket comes from DEMO_TICKETS (static) when not found in Firebase.
@@ -214,12 +213,12 @@ const TicketDetail = () => {
   // there yet, the derived `ticket` object never updates → timer never starts.
   // Solution: keep a local copy of status + statusChangedAt that ALWAYS updates
   // immediately on button click, regardless of Firebase.
-  const [localStatus,          setLocalStatus]          = useState(ticket.status || 'new');
-  const [localStatusChangedAt, setLocalStatusChangedAt] = useState(ticket.statusChangedAt || null);
+  const [localStatus,          setLocalStatus]          = useState(ticket?.status || 'new');
+  const [localStatusChangedAt, setLocalStatusChangedAt] = useState(ticket?.statusChangedAt || null);
   const [accumulatedTime,      setAccumulatedTime]      = useState({
-    work: ticket.accWork || 0,
-    pause: ticket.accPause || 0,
-    wait: ticket.accWait || 0,
+    work: ticket?.accWork || 0,
+    pause: ticket?.accPause || 0,
+    wait: ticket?.accWait || 0,
   });
 
   // Sync from Firebase when the real ticket loads into context
@@ -280,13 +279,13 @@ const TicketDetail = () => {
     };
     if (reason) update.statusReason = reason;
     if (newStatus === 'closed') update.closedAt = now;
-    if (updateTicket) await updateTicket(ticket.id, update);
-  }, [ticket.id, updateTicket, localStatus, localStatusChangedAt, accumulatedTime]);
+    if (updateTicket && ticket?.id) await updateTicket(ticket.id, update);
+  }, [ticket?.id, updateTicket, localStatus, localStatusChangedAt, accumulatedTime]);
 
 
   const [pendingAction, setPendingAction] = useState(null);
   const [statusReport, setStatusReport]   = useState(null);
-  const [messages,     setMessages]       = useState(ticket.comments || []);
+  const [messages,     setMessages]       = useState(ticket?.comments || []);
   const [msgInput,     setMsgInput]       = useState('');
   const [starred,      setStarred]        = useState(false);
   const chatRef    = useRef(null);
@@ -334,7 +333,7 @@ const TicketDetail = () => {
     const text = msgInput.trim();
     if (!text && !attachment) return;
 
-    if (addComment) {
+    if (addComment && ticket?.id) {
       await addComment(ticket.id, text, attachment || null);
     } else {
       // local fallback
@@ -346,7 +345,7 @@ const TicketDetail = () => {
     }
     setMsgInput('');
     setAttachment(null);
-  }, [msgInput, attachment, ticket.id, addComment]);
+  }, [msgInput, attachment, ticket?.id, addComment]);
 
   // ── file upload ────────────────────────────────────────────────────────────
   const handleFileChange = useCallback(async (e) => {
@@ -390,6 +389,39 @@ const TicketDetail = () => {
 
   const sColor = { new: '#22c55e', in_progress: '#9b5de5', paused: '#f59e0b', waiting: '#f97316', closed: '#55556a' }[localStatus] || '#22c55e';
   const sLabel = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто' }[localStatus] || localStatus;
+
+  // ── Access Control and Loading Check ──
+  const userClub = user?.club?.toUpperCase();
+  const isManager = user?.role === 'manager';
+  const hasAccess = !isManager || !userClub || !ticket?.club || ticket.club.toUpperCase() === userClub;
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+        <div style={{ width: 40, height: 40, border: '3px solid rgba(79,142,247,0.2)', borderTop: '3px solid #4f8ef7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+      </div>
+    );
+  }
+
+  if (!ticket || !ticket.id) {
+    return (
+      <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '60vh', color: 'var(--text-muted)', gap: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Заявка не найдена</h2>
+        <p style={{ fontSize: 13 }}>Заявка не существует или у вас нет прав на её просмотр.</p>
+        <button onClick={() => navigate('/tickets')} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--accent-purple)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Назад к списку</button>
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return (
+      <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '60vh', color: 'var(--text-muted)', gap: 16 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Доступ ограничен</h2>
+        <p style={{ fontSize: 13 }}>Эта заявка принадлежит другому клубу ({ticket.club?.toUpperCase()}).</p>
+        <button onClick={() => navigate('/tickets')} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--accent-purple)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Назад к списку</button>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
