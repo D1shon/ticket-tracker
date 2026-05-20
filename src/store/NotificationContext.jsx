@@ -10,6 +10,39 @@ export const useNotifications = () => useContext(NotificationContext);
 const STORAGE_KEY = 'app_notifications_v1';
 const READ_KEY = 'app_notifications_read_v1';
 
+// ─── Role map (mirrors TicketContext) ────────────────────────────────────────
+const USER_ROLES = {
+  'dilshat.r@hj.fit':     { role: 'chef',    club: null },
+  'magzhan@hj.fit':       { role: 'chef',    club: null },
+  'daewure@mail.ru':      { role: 'manager', club: 'COLIBRI' },
+  'ainura030594@gmail.com':{ role: 'manager', club: 'NURLY ORDA' },
+  'diassd9806@gmail.com': { role: 'manager', club: 'VILLA' },
+  'anastasia@hj.fit':     { role: 'manager', club: 'COLIBRI' },
+  'saniya@hj.fit':        { role: 'manager', club: '4YOU' },
+  'aziz@hj.fit':          { role: 'manager', club: 'COLIBRI' },
+  'saltanat@hj.fit':      { role: 'manager', club: 'NURLY ORDA' },
+};
+
+/** Returns the club of the currently logged-in session user, or null for chefs/unknown. */
+function getSessionUserClub() {
+  try {
+    const raw = localStorage.getItem('app_session_user');
+    if (!raw) return null;
+    const { email } = JSON.parse(raw);
+    const profile = USER_ROLES[(email || '').toLowerCase().trim()];
+    return profile?.club ?? null; // null means chef → sees everything
+  } catch {
+    return null;
+  }
+}
+
+/** Returns true if the current user is allowed to see a ticket with the given club. */
+function canSeeTicket(ticketClub) {
+  const userClub = getSessionUserClub();
+  if (userClub === null) return true; // chef — unrestricted
+  return (ticketClub || '').toUpperCase() === userClub.toUpperCase();
+}
+
 const STATUS_LABELS = {
   new:         { label: 'Новая заявка',      icon: '🆕', color: '#4C94FF' },
   in_progress: { label: 'Принята в работу',  icon: '⚡', color: '#70B11D' },
@@ -48,7 +81,20 @@ function loadReadSet() {
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export const NotificationProvider = ({ children }) => {
-  const [notifications, setNotifications] = useState(loadStored);
+  const [notifications, setNotifications] = useState(() => {
+    // Load stored notifications but filter out those from other clubs
+    const stored = loadStored();
+    const userClub = getSessionUserClub();
+    if (userClub === null) return stored; // chef sees all
+    return stored.filter(n => {
+      // If the notification has no ticketId it's a system message — keep it
+      if (!n.ticketId) return true;
+      // If we stored club on the notification meta, use it
+      if (n.club) return (n.club || '').toUpperCase() === userClub.toUpperCase();
+      // Otherwise keep it (we can't filter without club info)
+      return true;
+    });
+  });
   const [readIds, setReadIds] = useState(loadReadSet);
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -130,16 +176,21 @@ export const NotificationProvider = ({ children }) => {
 
             // ── New ticket created ──
             if (change.type === 'added' && !oldTicket) {
+              // Only notify if this ticket belongs to the user's club
+              if (!canSeeTicket(ticket.club)) return;
               pushNotification(
                 EVENT_TYPES.NEW_TICKET,
                 '🆕 Новая заявка',
                 `"${ticket.title || 'Без названия'}"`,
-                { ticketId: ticket.id, ticketTitle: ticket.title }
+                { ticketId: ticket.id, ticketTitle: ticket.title, club: ticket.club }
               );
               return;
             }
 
             if (change.type === 'modified' && oldTicket) {
+              // Skip notifications for tickets outside the user's club
+              if (!canSeeTicket(ticket.club)) return;
+
               // ── Status changed ──
               if (oldTicket.status !== ticket.status && ticket.status) {
                 const statusInfo = STATUS_LABELS[ticket.status] || { label: ticket.status, icon: '🔔', color: '#7B3DFF' };
@@ -147,7 +198,7 @@ export const NotificationProvider = ({ children }) => {
                   EVENT_TYPES.STATUS_CHANGE,
                   `${statusInfo.icon} ${statusInfo.label}`,
                   `Заявка: "${ticket.title || 'Без названия'}"`,
-                  { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status }
+                  { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status, club: ticket.club }
                 );
               }
 
@@ -165,21 +216,21 @@ export const NotificationProvider = ({ children }) => {
                       EVENT_TYPES.FILE_ATTACHED,
                       `📎 Сообщение с файлом`,
                       `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
+                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, club: ticket.club }
                     );
                   } else if (hasFile) {
                     pushNotification(
                       EVENT_TYPES.FILE_ATTACHED,
                       `📎 Прикреплён файл`,
                       `В заявке "${ticket.title || 'Без названия'}" — ${comment.attachment.name || 'файл'}`,
-                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
+                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, club: ticket.club }
                     );
                   } else if (hasText) {
                     pushNotification(
                       EVENT_TYPES.NEW_MESSAGE,
                       `💬 Новое сообщение`,
                       `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author }
+                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, club: ticket.club }
                     );
                   }
                 });

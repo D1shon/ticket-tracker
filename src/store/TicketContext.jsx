@@ -222,11 +222,25 @@ export const TicketProvider = ({ children }) => {
 
         const q = query(collection(db, 'tickets'));
         unsubTickets = onSnapshot(q, (snapshot) => {
+          // Determine session user's club for toast filtering
+          let sessionClub = null;
+          try {
+            const raw = localStorage.getItem('app_session_user');
+            if (raw) {
+              const { email } = JSON.parse(raw);
+              const profile = USER_ROLES[(email || '').toLowerCase().trim()];
+              sessionClub = profile?.club ?? null;
+            }
+          } catch {}
+
           snapshot.docChanges().forEach((change) => {
             if (change.type === 'modified') {
               const newData = change.doc.data();
               const oldData = allTicketsRef.current.find(t => t.id === change.doc.id);
-              if (oldData && oldData.status !== newData.status) {
+              // Only show toast if this ticket belongs to the user's club (or user is chef)
+              const ticketClub = (newData.club || '').toUpperCase();
+              const clubMatch = sessionClub === null || ticketClub === (sessionClub || '').toUpperCase();
+              if (clubMatch && oldData && oldData.status !== newData.status) {
                 const LABELS = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто' };
                 toast(`Статус: ${LABELS[newData.status] || newData.status}`, {
                   description: `"${newData.title}"`, duration: 4000,
@@ -286,6 +300,8 @@ export const TicketProvider = ({ children }) => {
         status: 'new',
         createdAt: serverTimestamp(),
         createdBy: user?.uid || 'anonymous',
+        createdByEmail: user?.email || '',
+        createdByClub: user?.club || ticketData.club || '',
         comments: [],
       });
       toast.success('Задача создана');
