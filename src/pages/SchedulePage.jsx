@@ -118,6 +118,8 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     <div
       data-portal-picker="true"
       onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      onMouseUp={e => e.stopPropagation()}
       style={{
         position: 'fixed',
         top: pickerPos.top,
