@@ -64,6 +64,7 @@ const SHIFT_OPTIONS = [
 const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToday, onKeyDown, updateCell, rowIdx, colIdx, canEdit = true }) => {
   const [open, setOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
+  const [customValue, setCustomValue] = useState('');
   const cellRef = useRef(null);
 
   const getShiftColor = (val) => {
@@ -75,13 +76,15 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     if (norm === '14:30-21:30') return 'bg-violet-500/20 text-violet-400 border-violet-500/40';
     if (norm === '6:30-22:30') return 'bg-pink-500/20 text-pink-400 border-pink-500/40';
     if (norm === '8:30-21:30') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
-    return 'bg-rose-500/10 text-rose-400 border-rose-500/40';
+    // Any other custom value (like 8:00-17:00, выходной, etc.)
+    return 'bg-purple-500/10 text-[var(--accent-purple)] border-purple-500/30';
   };
 
   const handleOpen = () => {
     if (!canEdit) return;
     const rect = cellRef.current.getBoundingClientRect();
     setPickerPos({ top: rect.bottom + 4, left: rect.left + rect.width / 2 });
+    setCustomValue(initialValue || '');
     setOpen(o => !o);
   };
 
@@ -91,8 +94,18 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
   };
 
   useEffect(() => {
+    if (open) {
+      setCustomValue(initialValue || '');
+    }
+  }, [open, initialValue]);
+
+  useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
+    const close = (e) => {
+      // Do not close if click/mousedown is inside the portal-picker
+      if (e.target.closest('[data-portal-picker]')) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', close);
     window.addEventListener('scroll', close, true);
     return () => {
@@ -103,6 +116,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
   const picker = open && ReactDOM.createPortal(
     <div
+      data-portal-picker="true"
       onMouseDown={e => e.stopPropagation()}
       style={{
         position: 'fixed',
@@ -111,9 +125,9 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
         transform: 'translateX(-50%)',
         zIndex: 9999,
         minWidth: 320,
-        borderRadius: 12,
+        borderRadius: 16,
         overflow: 'hidden',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
         border: '1px solid var(--border)',
         background: 'var(--bg-card)',
       }}
@@ -127,7 +141,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
               background: initialValue === opt.value ? opt.bg : 'transparent',
               color: initialValue === opt.value ? opt.text : opt.bg,
               border: 'none',
-              borderBottom: `2px solid ${opt.bg}`,
+              borderBottom: `1px solid var(--border)`,
               padding: '14px 8px',
               fontSize: 13,
               fontWeight: 800,
@@ -139,7 +153,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
               gap: 6,
               outline: 'none',
             }}
-            onMouseEnter={e => { if (initialValue !== opt.value) e.currentTarget.style.background = opt.bg + '33'; }}
+            onMouseEnter={e => { if (initialValue !== opt.value) e.currentTarget.style.background = opt.bg + '1a'; }}
             onMouseLeave={e => { if (initialValue !== opt.value) e.currentTarget.style.background = 'transparent'; }}
           >
             {initialValue === opt.value && <Check size={12} />}
@@ -147,19 +161,77 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
           </button>
         ))}
       </div>
+
+      {/* Custom manual input field */}
+      <div style={{ padding: 14, borderTop: '1px solid var(--border)', background: 'rgba(255,255,255,0.01)' }}>
+        <div style={{ fontSize: 9, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.08em' }}>
+          Свой вариант / время:
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={customValue}
+            placeholder="например: 10:00-19:00 или 8"
+            onChange={e => setCustomValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelect(customValue);
+              }
+            }}
+            style={{
+              flex: 1,
+              background: 'var(--bg-hover)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: '8px 12px',
+              fontSize: 12,
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              outline: 'none',
+              transition: 'border-color 0.2s',
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--accent-purple)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+          />
+          <button
+            onMouseDown={e => {
+              e.stopPropagation();
+              handleSelect(customValue);
+            }}
+            style={{
+              background: 'var(--accent-purple)',
+              color: 'white',
+              border: 'none',
+              borderRadius: 10,
+              padding: '8px 16px',
+              fontSize: 11,
+              fontWeight: 900,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            ОК
+          </button>
+        </div>
+      </div>
+
       {initialValue && (
         <button
           onMouseDown={e => { e.stopPropagation(); handleSelect(''); }}
           style={{
-            width: '100%', padding: '9px', fontSize: 11, fontWeight: 700,
-            color: '#f87171', background: 'transparent', border: 'none',
+            width: '100%', padding: '10px', fontSize: 10, fontWeight: 800,
+            color: '#ef4444', background: 'transparent', border: 'none',
             borderTop: '1px solid var(--border)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            textTransform: 'uppercase', letterSpacing: '0.05em'
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(248,113,113,0.1)'}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
-          <X size={11} /> Очистить
+          <X size={11} /> Очистить смену
         </button>
       )}
     </div>,
