@@ -43,7 +43,7 @@ import { toast } from 'sonner';
 const TicketContext = createContext();
 export const useTickets = () => useContext(TicketContext);
 
-const TICKETS_STORAGE_KEY = 'tickets_cache_v4';
+const TICKETS_STORAGE_KEY = 'tickets_cache_v5'; // bumped to invalidate old per-club caches
 
 // Firebase document IDs are always 20-char alphanumeric strings (not pure digits)
 // Demo ticket IDs are short strings like '1', '9', '19'
@@ -250,17 +250,21 @@ export const TicketProvider = ({ children }) => {
           });
           const fresh = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           setTickets(prev => {
-            if (fresh.length === 0 && prev.length > 0) return prev;
+            // If Firestore returned real data — use it as the single source of truth.
+            // Only fall back to cached/demo data when Firestore is completely empty.
+            if (fresh.length === 0) {
+              // Keep previous state (may include demo tickets in offline mode)
+              return prev.length > 0 ? prev : prev;
+            }
+
+            // Merge: Firestore data wins; also keep any temp_ (optimistic) tickets
+            // that haven't been confirmed yet (< 30s old).
             const map = {};
             fresh.forEach(t => { map[t.id] = t; });
             prev.forEach(t => {
-              if (!map[t.id]) {
-                if (String(t.id).startsWith('temp_')) return;
-                if (!isFirebaseId(String(t.id))) map[t.id] = t;
-                else {
-                  const age = Date.now() - new Date(t.createdAt || 0).getTime();
-                  if (age < 30_000) map[t.id] = t;
-                }
+              if (!map[t.id] && String(t.id).startsWith('temp_')) {
+                const age = Date.now() - new Date(t.createdAt || 0).getTime();
+                if (age < 30_000) map[t.id] = t;
               }
             });
             return sortByRecentActivity(Object.values(map));
