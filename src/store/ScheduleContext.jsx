@@ -100,8 +100,7 @@ export const ScheduleProvider = ({ children }) => {
     stateRef.current = { employees, scheduleData, settings, dailyRazvozka };
   }, [employees, scheduleData, settings, dailyRazvozka]);
 
-  // ─── Sync local offline data to cloud & load database listeners when authenticated ─────────────────
-  const hasSyncedRef = useRef(false);
+  // ─── Load database listeners when authenticated ─────────────────
   useEffect(() => {
     let unsubSchedules = null;
     let unsubSettings = null;
@@ -110,47 +109,7 @@ export const ScheduleProvider = ({ children }) => {
 
     const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        // 1. Sync offline changes first
-        if (!hasSyncedRef.current) {
-          hasSyncedRef.current = true;
-          try {
-            const { scheduleData: currentSched, settings: currentSettings, dailyRazvozka: currentDailyRazvozka } = stateRef.current;
-            console.log("[ScheduleContext] Authenticated, starting sync of local data to cloud...");
-            
-            // Sync Schedules
-            const scheduleEntries = Object.entries(currentSched);
-            if (scheduleEntries.length > 0) {
-              for (const [docId, data] of scheduleEntries) {
-                if (!data || !data.days) continue;
-                await setDoc(doc(db, 'schedules', docId), {
-                  ...data,
-                  updatedAt: serverTimestamp()
-                }, { merge: true });
-              }
-            }
-            // Sync Settings
-            if (currentSettings) {
-              await setDoc(doc(db, 'settings', 'schedule'), currentSettings, { merge: true });
-            }
-            // Sync Daily Razvozka
-            const dailyRazvEntries = Object.entries(currentDailyRazvozka || {});
-            if (dailyRazvEntries.length > 0) {
-              for (const [docId, data] of dailyRazvEntries) {
-                if (!data || !data.days) continue;
-                await setDoc(doc(db, 'daily_razvozka', docId), {
-                  ...data,
-                  updatedAt: serverTimestamp()
-                });
-              }
-            }
-            console.log("[ScheduleContext] Sync completed successfully");
-          } catch (err) {
-            console.error("[ScheduleContext] Sync failed:", err);
-            hasSyncedRef.current = false;
-          }
-        }
-
-        // 2. Start listeners
+        // Start listeners
         if (!unsubSchedules) {
           unsubSchedules = onSnapshot(query(collection(db, 'schedules')), (snapshot) => {
             const remoteData = {};
