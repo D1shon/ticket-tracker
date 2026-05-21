@@ -271,7 +271,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
+  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
   const { user } = useTickets();
 
   // Identify CHEF role — only these two emails have full chef access
@@ -439,16 +439,43 @@ const SchedulePage = () => {
       const calculatedSalary = totalHours * rate;
       const salaryOverride = data.salaryOverride || 0;
       const salary = salaryOverride > 0 ? salaryOverride : calculatedSalary;
+      
+      const calculatedRazvozka = razvozka;
+      const razvozkaOverride = data.razvozkaOverride || 0;
+      const finalRazvozka = razvozkaOverride > 0 ? razvozkaOverride : calculatedRazvozka;
+
       const advance = data.advance || 0;
       const correction = data.correction || 0;
-      const toPay = salary + razvozka - advance + correction;
+      const toPay = salary + finalRazvozka - advance + correction;
       
-      stats[emp.id] = { totalHours, salary, calculatedSalary, salaryOverride, razvozka, advance, correction, toPay };
+      stats[emp.id] = { 
+        totalHours, 
+        salary, 
+        calculatedSalary, 
+        salaryOverride, 
+        razvozka: finalRazvozka, 
+        calculatedRazvozka, 
+        razvozkaOverride, 
+        advance, 
+        correction, 
+        toPay 
+      };
     });
     return stats;
   }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate]);
 
-  const getEmployeeStats = (empId) => employeeStats[empId] || { totalHours: 0, salary: 0, razvozka: 0, advance: 0, correction: 0, toPay: 0 };
+  const getEmployeeStats = (empId) => employeeStats[empId] || { 
+    totalHours: 0, 
+    salary: 0, 
+    calculatedSalary: 0, 
+    salaryOverride: 0, 
+    razvozka: 0, 
+    calculatedRazvozka: 0, 
+    razvozkaOverride: 0, 
+    advance: 0, 
+    correction: 0, 
+    toPay: 0 
+  };
 
   const getClubTotal = (clubName) => {
     const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
@@ -475,22 +502,11 @@ const SchedulePage = () => {
 
   // Total transport (Razvozka) cost for the month — 1500 per day per working employee (excluding weekends and holidays)
   const razvozkaTotal = useMemo(() => {
-    return daysInMonth.reduce((total, day) => {
-      const dayNum = format(day, 'd');
-      const dayOfWeek = day.getDay();
-      const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
-      const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
-
-      if (isWeekendDay || isHolidayDay) return total;
-
-      let count = 0;
-      clubEmployees.forEach(emp => {
-        const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
-        if (isWorkingShift(val)) count++;
-      });
-      return total + count * 1500;
+    return clubEmployees.reduce((sum, emp) => {
+      const stats = employeeStats[emp.id] || { razvozka: 0 };
+      return sum + stats.razvozka;
     }, 0);
-  }, [daysInMonth, clubEmployees, scheduleData, monthKey]);
+  }, [clubEmployees, employeeStats]);
 
 
   const handleKeyDown = (e, row, col) => {
@@ -737,7 +753,18 @@ const SchedulePage = () => {
                         />
                       </td>
                     )}
-                    {canViewFull && visibleCols.razvozka && <td className="px-4 py-4 text-center text-xs text-emerald-400 bg-emerald-500/5 font-bold border-r border-[var(--border)]">{stats.razvozka.toLocaleString()}</td>}
+                    {canViewFull && visibleCols.razvozka && (
+                      <td className="p-0 bg-emerald-500/5 border-r border-[var(--border)]">
+                        <input
+                          type="number"
+                          disabled={!canViewFull}
+                          className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-emerald-400 outline-none"
+                          value={stats.razvozkaOverride || ''}
+                          placeholder={stats.calculatedRazvozka || ''}
+                          onChange={e => updateRazvozkaOverride(monthKey, emp.id, e.target.value)}
+                        />
+                      </td>
+                    )}
                     {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance || ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction || ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}

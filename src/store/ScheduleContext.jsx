@@ -275,6 +275,21 @@ export const ScheduleProvider = ({ children }) => {
     } finally { setIsSaving(false); }
   };
 
+  // ─── updateRazvozkaOverride ───────────────────────────────────────────────
+  const updateRazvozkaOverride = async (monthKey, employeeId, val) => {
+    const docId = `${monthKey}_${employeeId}`;
+    setScheduleData(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], employeeId, monthKey, razvozkaOverride: parseFloat(val) || 0 }
+    }));
+    try {
+      setIsSaving(true);
+      await setDoc(doc(db, 'schedules', docId), {
+        employeeId, monthKey, razvozkaOverride: parseFloat(val) || 0
+      }, { merge: true });
+    } finally { setIsSaving(false); }
+  };
+
   // ─── addEmployee ──────────────────────────────────────────────────────────
   const addEmployee = async (name, club = '4YOU') => {
     try {
@@ -359,7 +374,7 @@ export const ScheduleProvider = ({ children }) => {
     <ScheduleContext.Provider value={{
       scheduleData, employees, loading, isSaving,
       updateCell, addEmployee, removeEmployee, updateEmployee,
-      updateAdvance, updateCorrection, updateSalaryOverride, moveEmployee, reorderEmployees,
+      updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees,
       settings, updateSettings
     }}>
       {children}
