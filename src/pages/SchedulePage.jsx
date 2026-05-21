@@ -427,7 +427,11 @@ const SchedulePage = () => {
         const hrs = calculateHours(val);
         totalHours += hrs;
         
-        if (isWorkingShift(val)) {
+        const dayOfWeek = day.getDay();
+        const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
+        const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
+
+        if (isWorkingShift(val) && !isWeekendDay && !isHolidayDay) {
           razvozka += 1500;
         }
       });
@@ -467,10 +471,16 @@ const SchedulePage = () => {
     return employees.filter(e => (e.club || '4YOU') === selectedClub);
   }, [employees, selectedClub]);
 
-  // Total transport (Razvozka) cost for the month — 1500 per day per working employee
+  // Total transport (Razvozka) cost for the month — 1500 per day per working employee (excluding weekends and holidays)
   const razvozkaTotal = useMemo(() => {
     return daysInMonth.reduce((total, day) => {
       const dayNum = format(day, 'd');
+      const dayOfWeek = day.getDay();
+      const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
+      const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
+
+      if (isWeekendDay || isHolidayDay) return total;
+
       let count = 0;
       clubEmployees.forEach(emp => {
         const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
@@ -791,12 +801,16 @@ const SchedulePage = () => {
                 </td>
                 {daysInMonth.map(day => {
                   const dayNum = format(day, 'd');
+                  const dayOfWeek = day.getDay();
+                  const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
+                  const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
+
                   let workingCount = 0;
                   clubEmployees.forEach(emp => {
                     const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
                     if (isWorkingShift(val)) workingCount++;
                   });
-                  const dailyAmount = workingCount * 1500;
+                  const dailyAmount = (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
                   return (
                     <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="px-1 py-2 text-center">
                       {dailyAmount > 0 ? (
@@ -853,7 +867,7 @@ const SchedulePage = () => {
               <span style={{ fontSize: 24 }}>🚗</span>
               <div>
                 <p style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Развозка за месяц</p>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>1 500 ₸ за смену на каждого сотрудника</p>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>1 500 ₸ за смену на каждого сотрудника (кроме выходных и праздников)</p>
               </div>
             </div>
             <p style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent-purple)', letterSpacing: '-0.03em' }}>
