@@ -44,21 +44,28 @@ export const ScheduleProvider = ({ children }) => {
     } catch { return []; }
   });
   const [settings, setSettings] = useState(() => {
+    const defaultSettings = {
+      shift1: '8:30-14:30',
+      shift2: '14:30-21:30',
+      hourlyRate: 1500,
+      visibleCols: { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true }
+    };
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      return saved ? JSON.parse(saved) : {
-        shift1: '8:30-14:30',
-        shift2: '14:30-21:30',
-        hourlyRate: 1500,
-        visibleCols: { totalHours: true, salary: true, advance: true, correction: true, toPay: true }
-      };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...defaultSettings,
+          ...parsed,
+          visibleCols: {
+            ...defaultSettings.visibleCols,
+            ...(parsed.visibleCols || {})
+          }
+        };
+      }
+      return defaultSettings;
     } catch {
-      return {
-        shift1: '8:30-14:30',
-        shift2: '14:30-21:30',
-        hourlyRate: 1500,
-        visibleCols: { totalHours: true, salary: true, advance: true, correction: true, toPay: true }
-      };
+      return defaultSettings;
     }
   });
 
@@ -154,7 +161,19 @@ export const ScheduleProvider = ({ children }) => {
         if (!unsubSettings) {
           unsubSettings = onSnapshot(doc(db, 'settings', 'schedule'), (snapshot) => {
             if (snapshot.exists()) {
-              setSettings(prev => ({ ...snapshot.data(), ...prev }));
+              const remote = snapshot.data();
+              setSettings(prev => {
+                const defaultVisibleCols = { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true };
+                return {
+                  ...defaultVisibleCols,
+                  ...remote,
+                  visibleCols: {
+                    ...defaultVisibleCols,
+                    ...(remote.visibleCols || {}),
+                    ...(prev?.visibleCols || {})
+                  }
+                };
+              });
             }
           });
         }

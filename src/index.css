@@ -29,6 +29,10 @@
   --sidebar-bg:     #FFFFFF;
   --sidebar-border: #E2E8F0;
 
+  /* Razvozka Row Opaque Backgrounds */
+  --bg-razvozka-sticky: #F6F2FE;
+  --bg-razvozka-cell:   #F8F5FE;
+
   /* Topbar */
   --topbar-bg:      rgba(255,255,255,0.85);
 
@@ -58,6 +62,10 @@
   --sidebar-bg:     #111115;
   --sidebar-border: #22222A;
   --topbar-bg:      rgba(11,11,14,0.90);
+
+  /* Razvozka Row Opaque Backgrounds */
+  --bg-razvozka-sticky: #1B1727;
+  --bg-razvozka-cell:   #181623;
 
   --shadow-card:    0 10px 30px -10px rgba(0,0,0,0.5);
   --shadow-sidebar: none;

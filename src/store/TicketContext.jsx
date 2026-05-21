@@ -11,8 +11,11 @@ const USER_ROLES = {
   
   // Managers (Club-specific management rights)
   'daewure@mail.ru': { role: 'manager', club: 'COLIBRI', displayName: 'Менеджер Колибри' },
-  'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнура' },
+  'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнур' },
   'diassd9806@gmail.com': { role: 'manager', club: 'VILLA', displayName: 'Диас' },
+  'kurbanovtimur585@gmail.com': { role: 'manager', club: '4YOU', displayName: 'Тимур' },
+  'kelessovaan@gmail.com': { role: 'manager', club: 'VILLA', displayName: 'Алина' },
+  'azimuus@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Азиз' },
   
   // Placeholders for other known managers (change to their real emails if needed)
   'anastasia@hj.fit': { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
