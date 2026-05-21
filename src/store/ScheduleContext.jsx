@@ -270,12 +270,12 @@ export const ScheduleProvider = ({ children }) => {
     const docId = `${monthKey}_${employeeId}`;
     setScheduleData(prev => ({
       ...prev,
-      [docId]: { ...prev[docId], employeeId, monthKey, advance: parseFloat(val) || 0 }
+      [docId]: { ...prev[docId], employeeId, monthKey, advance: val }
     }));
     try {
       setIsSaving(true);
       await setDoc(doc(db, 'schedules', docId), {
-        employeeId, monthKey, advance: parseFloat(val) || 0
+        employeeId, monthKey, advance: val
       }, { merge: true });
     } finally { setIsSaving(false); }
   };
@@ -285,12 +285,12 @@ export const ScheduleProvider = ({ children }) => {
     const docId = `${monthKey}_${employeeId}`;
     setScheduleData(prev => ({
       ...prev,
-      [docId]: { ...prev[docId], employeeId, monthKey, correction: parseFloat(val) || 0 }
+      [docId]: { ...prev[docId], employeeId, monthKey, correction: val }
     }));
     try {
       setIsSaving(true);
       await setDoc(doc(db, 'schedules', docId), {
-        employeeId, monthKey, correction: parseFloat(val) || 0
+        employeeId, monthKey, correction: val
       }, { merge: true });
     } finally { setIsSaving(false); }
   };
@@ -300,12 +300,12 @@ export const ScheduleProvider = ({ children }) => {
     const docId = `${monthKey}_${employeeId}`;
     setScheduleData(prev => ({
       ...prev,
-      [docId]: { ...prev[docId], employeeId, monthKey, salaryOverride: parseFloat(val) || 0 }
+      [docId]: { ...prev[docId], employeeId, monthKey, salaryOverride: val }
     }));
     try {
       setIsSaving(true);
       await setDoc(doc(db, 'schedules', docId), {
-        employeeId, monthKey, salaryOverride: parseFloat(val) || 0
+        employeeId, monthKey, salaryOverride: val
       }, { merge: true });
     } finally { setIsSaving(false); }
   };
@@ -315,12 +315,12 @@ export const ScheduleProvider = ({ children }) => {
     const docId = `${monthKey}_${employeeId}`;
     setScheduleData(prev => ({
       ...prev,
-      [docId]: { ...prev[docId], employeeId, monthKey, razvozkaOverride: parseFloat(val) || 0 }
+      [docId]: { ...prev[docId], employeeId, monthKey, razvozkaOverride: val }
     }));
     try {
       setIsSaving(true);
       await setDoc(doc(db, 'schedules', docId), {
-        employeeId, monthKey, razvozkaOverride: parseFloat(val) || 0
+        employeeId, monthKey, razvozkaOverride: val
       }, { merge: true });
     } finally { setIsSaving(false); }
   };
@@ -328,16 +328,16 @@ export const ScheduleProvider = ({ children }) => {
   // ─── updateDailyRazvozka ──────────────────────────────────────────────────
   const updateDailyRazvozka = async (monthKey, club, day, value) => {
     const docId = `${monthKey}_${club}`;
-    const parsedVal = value === '' ? null : (parseFloat(value) || 0);
+    const cleanVal = value === '' ? null : value;
 
     let updatedDays = {};
     setDailyRazvozka(prev => {
       const currentDoc = prev[docId] || { monthKey, club, days: {} };
       const newDays = { ...currentDoc.days };
-      if (parsedVal === null) {
+      if (cleanVal === null) {
         delete newDays[day];
       } else {
-        newDays[day] = parsedVal;
+        newDays[day] = cleanVal;
       }
       updatedDays = newDays;
       return {

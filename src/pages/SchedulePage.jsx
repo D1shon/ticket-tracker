@@ -462,9 +462,11 @@ const SchedulePage = () => {
           const W = workingEmps.length;
           
           const overrideVal = clubDailyRazvozka[dayNum];
-          if (overrideVal !== undefined && overrideVal !== null && overrideVal !== '') {
+          const hasOverride = overrideVal !== undefined && overrideVal !== null && overrideVal !== '';
+          if (hasOverride) {
             if (W > 0) {
-              razvozka += Number(overrideVal) / W;
+              const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
+              razvozka += dailyAmount / W;
             }
           } else {
             if (!isWeekendDay && !isHolidayDay) {
@@ -475,27 +477,29 @@ const SchedulePage = () => {
       });
       
       const calculatedSalary = totalHours * rate;
-      const salaryOverride = data.salaryOverride || 0;
-      const salary = salaryOverride > 0 ? salaryOverride : calculatedSalary;
+      const hasSalaryOverride = data.salaryOverride !== undefined && data.salaryOverride !== null && data.salaryOverride !== '';
+      const salaryOverrideNum = hasSalaryOverride ? (data.salaryOverride === '-' ? 0 : (parseFloat(data.salaryOverride) || 0)) : null;
+      const salary = hasSalaryOverride ? salaryOverrideNum : calculatedSalary;
       
       const calculatedRazvozka = razvozka;
-      const razvozkaOverride = data.razvozkaOverride || 0;
-      const finalRazvozka = razvozkaOverride > 0 ? razvozkaOverride : calculatedRazvozka;
+      const hasRazvozkaOverride = data.razvozkaOverride !== undefined && data.razvozkaOverride !== null && data.razvozkaOverride !== '';
+      const razvozkaOverrideNum = hasRazvozkaOverride ? (data.razvozkaOverride === '-' ? 0 : (parseFloat(data.razvozkaOverride) || 0)) : null;
+      const finalRazvozka = hasRazvozkaOverride ? razvozkaOverrideNum : calculatedRazvozka;
 
-      const advance = data.advance || 0;
-      const correction = data.correction || 0;
+      const advance = data.advance === '-' ? 0 : (parseFloat(data.advance) || 0);
+      const correction = data.correction === '-' ? 0 : (parseFloat(data.correction) || 0);
       const toPay = salary + finalRazvozka - advance + correction;
       
       stats[emp.id] = { 
         totalHours, 
         salary, 
         calculatedSalary, 
-        salaryOverride, 
+        salaryOverride: data.salaryOverride, 
         razvozka: finalRazvozka, 
         calculatedRazvozka, 
-        razvozkaOverride, 
-        advance, 
-        correction, 
+        razvozkaOverride: data.razvozkaOverride, 
+        advance: data.advance, 
+        correction: data.correction, 
         toPay 
       };
     });
@@ -559,8 +563,10 @@ const SchedulePage = () => {
       });
 
       const overrideVal = clubDailyRazvozka[dayNum];
-      if (overrideVal !== undefined && overrideVal !== null && overrideVal !== '') {
-        total += Number(overrideVal);
+      const hasOverride = overrideVal !== undefined && overrideVal !== null && overrideVal !== '';
+      if (hasOverride) {
+        const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
+        total += dailyAmount;
       } else {
         total += (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
       }
@@ -804,10 +810,10 @@ const SchedulePage = () => {
                     {canViewFull && visibleCols.salary && (
                       <td className="p-0 bg-blue-500/5 border-r border-[var(--border)]">
                         <input
-                          type="number"
+                          type="text"
                           disabled={!canViewFull}
                           className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-blue-400 outline-none"
-                          value={stats.salaryOverride || ''}
+                          value={stats.salaryOverride ?? ''}
                           placeholder={stats.calculatedSalary || ''}
                           onChange={e => updateSalaryOverride(monthKey, emp.id, e.target.value)}
                         />
@@ -816,17 +822,17 @@ const SchedulePage = () => {
                     {canViewFull && visibleCols.razvozka && (
                       <td className="p-0 bg-emerald-500/5 border-r border-[var(--border)]">
                         <input
-                          type="number"
+                          type="text"
                           disabled={!canViewFull}
                           className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-emerald-400 outline-none"
-                          value={stats.razvozkaOverride || ''}
+                          value={stats.razvozkaOverride ?? ''}
                           placeholder={stats.calculatedRazvozka || ''}
                           onChange={e => updateRazvozkaOverride(monthKey, emp.id, e.target.value)}
                         />
                       </td>
                     )}
-                    {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance || ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
-                    {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction || ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
+                    {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance ?? ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
+                    {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction ?? ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
@@ -922,9 +928,9 @@ const SchedulePage = () => {
                     return (
                       <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="p-0 text-center">
                         <input
-                          type="number"
+                          type="text"
                           className="w-full h-[38px] bg-transparent text-center text-[10px] font-black text-[var(--accent-purple)] outline-none border-none placeholder-purple-300/50"
-                          value={displayValue}
+                          value={displayValue ?? ''}
                           placeholder={placeholderVal}
                           onChange={e => updateDailyRazvozka(monthKey, selectedClub, dayNum, e.target.value)}
                         />
