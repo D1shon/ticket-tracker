@@ -410,6 +410,13 @@ const SchedulePage = () => {
     });
   };
 
+  const getShiftRazvozkaAmount = (val) => {
+    if (!isWorkingShift(val)) return 0;
+    const clean = String(val).trim().replace(/\s+/g, '').replace(/\./g, ':');
+    if (clean === '6:30-22:30') return 3000;
+    return 1500;
+  };
+
   const employeeStats = useMemo(() => {
     const stats = {};
     const rate = settings?.hourlyRate || 1500;
@@ -461,16 +468,27 @@ const SchedulePage = () => {
           const workingEmps = workingCountsByDayAndClub[dayNum]?.[empClub] || [];
           const W = workingEmps.length;
           
+          let totalWeight = 0;
+          workingEmps.forEach(tempEmpId => {
+            const tempEmpData = scheduleData[`${monthKey}_${tempEmpId}`] || {};
+            const tempVal = tempEmpData.days?.[dayNum] || '';
+            totalWeight += getShiftRazvozkaAmount(tempVal);
+          });
+
           const overrideVal = clubDailyRazvozka[dayNum];
           const hasOverride = overrideVal !== undefined && overrideVal !== null && overrideVal !== '';
           if (hasOverride) {
-            if (W > 0) {
+            if (totalWeight > 0) {
+              const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
+              const myWeight = getShiftRazvozkaAmount(val);
+              razvozka += (dailyAmount * myWeight) / totalWeight;
+            } else if (W > 0) {
               const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
               razvozka += dailyAmount / W;
             }
           } else {
             if (!isWeekendDay && !isHolidayDay) {
-              razvozka += 1500;
+              razvozka += getShiftRazvozkaAmount(val);
             }
           }
         }
@@ -555,20 +573,20 @@ const SchedulePage = () => {
       const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
       const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
 
-      // Count working employees in selectedClub
-      let workingCount = 0;
-      clubEmployees.forEach(emp => {
-        const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
-        if (isWorkingShift(val)) workingCount++;
-      });
-
       const overrideVal = clubDailyRazvozka[dayNum];
       const hasOverride = overrideVal !== undefined && overrideVal !== null && overrideVal !== '';
       if (hasOverride) {
         const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
         total += dailyAmount;
       } else {
-        total += (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
+        if (!isWeekendDay && !isHolidayDay) {
+          let daySum = 0;
+          clubEmployees.forEach(emp => {
+            const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+            daySum += getShiftRazvozkaAmount(val);
+          });
+          total += daySum;
+        }
       }
     });
     return total;
@@ -912,12 +930,13 @@ const SchedulePage = () => {
                     const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
                     const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
 
-                    let workingCount = 0;
-                    clubEmployees.forEach(emp => {
-                      const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
-                      if (isWorkingShift(val)) workingCount++;
-                    });
-                    const dailyAmount = (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
+                    let dailyAmount = 0;
+                    if (!isWeekendDay && !isHolidayDay) {
+                      clubEmployees.forEach(emp => {
+                        const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+                        dailyAmount += getShiftRazvozkaAmount(val);
+                      });
+                    }
                     
                     const clubDocId = `${monthKey}_${selectedClub}`;
                     const overrideVal = dailyRazvozka?.[clubDocId]?.days?.[dayNum];
@@ -984,7 +1003,7 @@ const SchedulePage = () => {
               <span style={{ fontSize: 24 }}>🚗</span>
               <div>
                 <p style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Развозка за месяц</p>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>1 500 ₸ за смену на каждого сотрудника (кроме выходных и праздников)</p>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>1 500 ₸ за смену (3 000 ₸ за смену 6:30-22:30) на каждого сотрудника (кроме выходных и праздников)</p>
               </div>
             </div>
             <p style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent-purple)', letterSpacing: '-0.03em' }}>
