@@ -19,7 +19,8 @@ export const useSchedule = () => useContext(ScheduleContext);
 const STORAGE_KEYS = {
   DATA: 'schedule_data_v3',
   EMPLOYEES: 'employees_v3',
-  SETTINGS: 'schedule_settings_v3'
+  SETTINGS: 'schedule_settings_v3',
+  DAILY_RAZVOZKA: 'daily_razvozka_v3'
 };
 
 export const ScheduleProvider = ({ children }) => {
@@ -69,10 +70,20 @@ export const ScheduleProvider = ({ children }) => {
     }
   });
 
+  const [dailyRazvozka, setDailyRazvozka] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.DAILY_RAZVOZKA);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   // ─── Persist to localStorage whenever state changes ───────────────────────
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEYS.DAILY_RAZVOZKA, JSON.stringify(dailyRazvozka)); } catch {}
+  }, [dailyRazvozka]);
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEYS.DATA, JSON.stringify(scheduleData)); } catch {}
   }, [scheduleData]);
@@ -84,10 +95,10 @@ export const ScheduleProvider = ({ children }) => {
   }, [settings]);
 
   // ─── Track state updates for safe cloud sync ─────────────────────────────
-  const stateRef = useRef({ employees, scheduleData, settings });
+  const stateRef = useRef({ employees, scheduleData, settings, dailyRazvozka });
   useEffect(() => {
-    stateRef.current = { employees, scheduleData, settings };
-  }, [employees, scheduleData, settings]);
+    stateRef.current = { employees, scheduleData, settings, dailyRazvozka };
+  }, [employees, scheduleData, settings, dailyRazvozka]);
 
   // ─── Sync local offline data to cloud & load database listeners when authenticated ─────────────────
   const hasSyncedRef = useRef(false);
@@ -95,6 +106,7 @@ export const ScheduleProvider = ({ children }) => {
     let unsubSchedules = null;
     let unsubSettings = null;
     let unsubEmployees = null;
+    let unsubDailyRazvozka = null;
 
     const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
@@ -102,7 +114,7 @@ export const ScheduleProvider = ({ children }) => {
         if (!hasSyncedRef.current) {
           hasSyncedRef.current = true;
           try {
-            const { scheduleData: currentSched, settings: currentSettings } = stateRef.current;
+            const { scheduleData: currentSched, settings: currentSettings, dailyRazvozka: currentDailyRazvozka } = stateRef.current;
             console.log("[ScheduleContext] Authenticated, starting sync of local data to cloud...");
             
             // Sync Schedules
@@ -119,6 +131,17 @@ export const ScheduleProvider = ({ children }) => {
             // Sync Settings
             if (currentSettings) {
               await setDoc(doc(db, 'settings', 'schedule'), currentSettings, { merge: true });
+            }
+            // Sync Daily Razvozka
+            const dailyRazvEntries = Object.entries(currentDailyRazvozka || {});
+            if (dailyRazvEntries.length > 0) {
+              for (const [docId, data] of dailyRazvEntries) {
+                if (!data || !data.days) continue;
+                await setDoc(doc(db, 'daily_razvozka', docId), {
+                  ...data,
+                  updatedAt: serverTimestamp()
+                });
+              }
             }
             console.log("[ScheduleContext] Sync completed successfully");
           } catch (err) {
@@ -169,11 +192,22 @@ export const ScheduleProvider = ({ children }) => {
             console.error('[ScheduleContext] employees load error:', error);
           });
         }
+
+        if (!unsubDailyRazvozka) {
+          unsubDailyRazvozka = onSnapshot(query(collection(db, 'daily_razvozka')), (snapshot) => {
+            const remoteDaily = {};
+            snapshot.docs.forEach(d => { remoteDaily[d.id] = d.data(); });
+            setDailyRazvozka(remoteDaily);
+          }, (error) => {
+            console.error('[ScheduleContext] daily_razvozka load error:', error);
+          });
+        }
       } else {
         // Clean up listeners on sign-out
         if (unsubSchedules) { unsubSchedules(); unsubSchedules = null; }
         if (unsubSettings) { unsubSettings(); unsubSettings = null; }
         if (unsubEmployees) { unsubEmployees(); unsubEmployees = null; }
+        if (unsubDailyRazvozka) { unsubDailyRazvozka(); unsubDailyRazvozka = null; }
       }
     });
 
@@ -182,6 +216,7 @@ export const ScheduleProvider = ({ children }) => {
       if (unsubSchedules) unsubSchedules();
       if (unsubSettings) unsubSettings();
       if (unsubEmployees) unsubEmployees();
+      if (unsubDailyRazvozka) unsubDailyRazvozka();
     };
   }, []);
 
@@ -290,6 +325,47 @@ export const ScheduleProvider = ({ children }) => {
     } finally { setIsSaving(false); }
   };
 
+  // ─── updateDailyRazvozka ──────────────────────────────────────────────────
+  const updateDailyRazvozka = async (monthKey, club, day, value) => {
+    const docId = `${monthKey}_${club}`;
+    const parsedVal = value === '' ? null : (parseFloat(value) || 0);
+
+    let updatedDays = {};
+    setDailyRazvozka(prev => {
+      const currentDoc = prev[docId] || { monthKey, club, days: {} };
+      const newDays = { ...currentDoc.days };
+      if (parsedVal === null) {
+        delete newDays[day];
+      } else {
+        newDays[day] = parsedVal;
+      }
+      updatedDays = newDays;
+      return {
+        ...prev,
+        [docId]: {
+          ...currentDoc,
+          days: newDays
+        }
+      };
+    });
+
+    try {
+      setIsSaving(true);
+      const docRef = doc(db, 'daily_razvozka', docId);
+      await setDoc(docRef, {
+        monthKey,
+        club,
+        days: updatedDays,
+        updatedAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.error('Error updating daily razvozka:', e);
+      toast.error('Ошибка сохранения развозки');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // ─── addEmployee ──────────────────────────────────────────────────────────
   const addEmployee = async (name, club = '4YOU') => {
     try {
@@ -375,7 +451,8 @@ export const ScheduleProvider = ({ children }) => {
       scheduleData, employees, loading, isSaving,
       updateCell, addEmployee, removeEmployee, updateEmployee,
       updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees,
-      settings, updateSettings
+      settings, updateSettings,
+      dailyRazvozka, updateDailyRazvozka
     }}>
       {children}
     </ScheduleContext.Provider>

@@ -271,7 +271,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
+  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
   const { user } = useTickets();
 
   // Identify CHEF role — only these two emails have full chef access
@@ -414,9 +414,34 @@ const SchedulePage = () => {
     const stats = {};
     const rate = settings?.hourlyRate || 1500;
     
+    // Group working employees by day and club to easily calculate W
+    const workingCountsByDayAndClub = {};
+    daysInMonth.forEach(day => {
+      const dayNum = format(day, 'd');
+      workingCountsByDayAndClub[dayNum] = {};
+      CLUBS.forEach(club => {
+        workingCountsByDayAndClub[dayNum][club] = [];
+      });
+      employees.forEach(emp => {
+        const docId = `${monthKey}_${emp.id}`;
+        const data = scheduleData[docId] || {};
+        const val = data.days?.[dayNum] || '';
+        if (isWorkingShift(val)) {
+          const club = emp.club || '4YOU';
+          if (!workingCountsByDayAndClub[dayNum][club]) {
+            workingCountsByDayAndClub[dayNum][club] = [];
+          }
+          workingCountsByDayAndClub[dayNum][club].push(emp.id);
+        }
+      });
+    });
+    
     employees.forEach(emp => {
       const docId = `${monthKey}_${emp.id}`;
       const data = scheduleData[docId] || {};
+      const empClub = emp.club || '4YOU';
+      const clubDocId = `${monthKey}_${empClub}`;
+      const clubDailyRazvozka = dailyRazvozka?.[clubDocId]?.days || {};
       
       let totalHours = 0;
       let razvozka = 0;
@@ -427,12 +452,25 @@ const SchedulePage = () => {
         const hrs = calculateHours(val);
         totalHours += hrs;
         
-        const dayOfWeek = day.getDay();
-        const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
-        const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
-
-        if (isWorkingShift(val) && !isWeekendDay && !isHolidayDay) {
-          razvozka += 1500;
+        const isWorking = isWorkingShift(val);
+        if (isWorking) {
+          const dayOfWeek = day.getDay();
+          const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
+          const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
+          
+          const workingEmps = workingCountsByDayAndClub[dayNum]?.[empClub] || [];
+          const W = workingEmps.length;
+          
+          const overrideVal = clubDailyRazvozka[dayNum];
+          if (overrideVal !== undefined && overrideVal !== null && overrideVal !== '') {
+            if (W > 0) {
+              razvozka += Number(overrideVal) / W;
+            }
+          } else {
+            if (!isWeekendDay && !isHolidayDay) {
+              razvozka += 1500;
+            }
+          }
         }
       });
       
@@ -462,7 +500,7 @@ const SchedulePage = () => {
       };
     });
     return stats;
-  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate]);
+  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate, dailyRazvozka]);
 
   const getEmployeeStats = (empId) => employeeStats[empId] || { 
     totalHours: 0, 
@@ -501,12 +539,34 @@ const SchedulePage = () => {
   }, [employees, selectedClub]);
 
   // Total transport (Razvozka) cost for the month — 1500 per day per working employee (excluding weekends and holidays)
+  // Total transport (Razvozka) cost for the month — overridden daily sum or headcount-based sum
   const razvozkaTotal = useMemo(() => {
-    return clubEmployees.reduce((sum, emp) => {
-      const stats = employeeStats[emp.id] || { razvozka: 0 };
-      return sum + stats.razvozka;
-    }, 0);
-  }, [clubEmployees, employeeStats]);
+    const clubDocId = `${monthKey}_${selectedClub}`;
+    const clubDailyRazvozka = dailyRazvozka?.[clubDocId]?.days || {};
+    
+    let total = 0;
+    daysInMonth.forEach(day => {
+      const dayNum = format(day, 'd');
+      const dayOfWeek = day.getDay();
+      const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
+      const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
+
+      // Count working employees in selectedClub
+      let workingCount = 0;
+      clubEmployees.forEach(emp => {
+        const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+        if (isWorkingShift(val)) workingCount++;
+      });
+
+      const overrideVal = clubDailyRazvozka[dayNum];
+      if (overrideVal !== undefined && overrideVal !== null && overrideVal !== '') {
+        total += Number(overrideVal);
+      } else {
+        total += (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
+      }
+    });
+    return total;
+  }, [clubEmployees, scheduleData, daysInMonth, monthKey, selectedClub, dailyRazvozka]);
 
 
   const handleKeyDown = (e, row, col) => {
@@ -835,41 +895,52 @@ const SchedulePage = () => {
               </tr>
 
               {/* ── Развозка row — sticky at bottom:0 ── */}
-              <tr>
-                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 0, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-razvozka-sticky)', borderTop: '2px solid var(--accent-purple)', borderRight: '2px solid var(--border)', whiteSpace: 'nowrap' }} className="px-6 py-3 font-black text-[10px] text-[var(--accent-purple)] uppercase tracking-widest">
-                  🚗 Развозка
-                </td>
-                {daysInMonth.map(day => {
-                  const dayNum = format(day, 'd');
-                  const dayOfWeek = day.getDay();
-                  const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
-                  const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
+              {canViewFull && (
+                <tr>
+                  <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 0, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-razvozka-sticky)', borderTop: '2px solid var(--accent-purple)', borderRight: '2px solid var(--border)', whiteSpace: 'nowrap' }} className="px-6 py-3 font-black text-[10px] text-[var(--accent-purple)] uppercase tracking-widest">
+                    🚗 Развозка
+                  </td>
+                  {daysInMonth.map(day => {
+                    const dayNum = format(day, 'd');
+                    const dayOfWeek = day.getDay();
+                    const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
+                    const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
 
-                  let workingCount = 0;
-                  clubEmployees.forEach(emp => {
-                    const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
-                    if (isWorkingShift(val)) workingCount++;
-                  });
-                  const dailyAmount = (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
-                  return (
-                    <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="px-1 py-2 text-center">
-                      {dailyAmount > 0 ? (
-                        <span style={{ fontSize: 9, fontWeight: 900, color: 'var(--accent-purple)', whiteSpace: 'nowrap' }}>
-                          {dailyAmount.toLocaleString()}₸
-                        </span>
-                      ) : <span style={{ color: 'var(--text-muted)', fontSize: 9 }}>—</span>}
-                    </td>
-                  );
-                })}
-                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
-                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
-                {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{razvozkaTotal.toLocaleString()} ₸</td>}
-                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
-                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
-                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-razvozka-sticky)', borderTop: '2px solid var(--accent-purple)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">
-                  {razvozkaTotal.toLocaleString()} ₸
-                </td>}
-              </tr>
+                    let workingCount = 0;
+                    clubEmployees.forEach(emp => {
+                      const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+                      if (isWorkingShift(val)) workingCount++;
+                    });
+                    const dailyAmount = (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
+                    
+                    const clubDocId = `${monthKey}_${selectedClub}`;
+                    const overrideVal = dailyRazvozka?.[clubDocId]?.days?.[dayNum];
+                    const hasOverride = overrideVal !== undefined && overrideVal !== null && overrideVal !== '';
+                    const displayValue = hasOverride ? overrideVal : '';
+                    const placeholderVal = dailyAmount > 0 ? `${dailyAmount}` : '—';
+                    
+                    return (
+                      <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="p-0 text-center">
+                        <input
+                          type="number"
+                          className="w-full h-[38px] bg-transparent text-center text-[10px] font-black text-[var(--accent-purple)] outline-none border-none placeholder-purple-300/50"
+                          value={displayValue}
+                          placeholder={placeholderVal}
+                          onChange={e => updateDailyRazvozka(monthKey, selectedClub, dayNum, e.target.value)}
+                        />
+                      </td>
+                    );
+                  })}
+                  {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
+                  {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
+                  {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{razvozkaTotal.toLocaleString()} ₸</td>}
+                  {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
+                  {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
+                  {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-razvozka-sticky)', borderTop: '2px solid var(--accent-purple)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">
+                    {razvozkaTotal.toLocaleString()} ₸
+                  </td>}
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>
