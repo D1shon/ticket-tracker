@@ -132,24 +132,7 @@ export const ScheduleProvider = ({ children }) => {
           unsubSchedules = onSnapshot(query(collection(db, 'schedules')), (snapshot) => {
             const remoteData = {};
             snapshot.docs.forEach(d => { remoteData[d.id] = d.data(); });
-            setScheduleData(prev => {
-              const merged = { ...prev };
-              for (const [id, remoteDoc] of Object.entries(remoteData)) {
-                if (!merged[id]) {
-                  merged[id] = remoteDoc;
-                } else {
-                  const localDays = merged[id].days || {};
-                  const remoteDays = remoteDoc.days || {};
-                  const mergedDays = { ...remoteDays, ...localDays };
-                  merged[id] = {
-                    ...remoteDoc,
-                    ...merged[id],
-                    days: mergedDays
-                  };
-                }
-              }
-              return merged;
-            });
+            setScheduleData(remoteData);
             setLoading(false);
           }, (error) => {
             console.error('[ScheduleContext] schedules load error:', error);
