@@ -516,8 +516,10 @@ const SchedulePage = () => {
         razvozka: finalRazvozka, 
         calculatedRazvozka, 
         razvozkaOverride: data.razvozkaOverride, 
-        advance: data.advance, 
-        correction: data.correction, 
+        advance, 
+        advanceRaw: data.advance, 
+        correction, 
+        correctionRaw: data.correction, 
         toPay 
       };
     });
@@ -849,8 +851,8 @@ const SchedulePage = () => {
                         />
                       </td>
                     )}
-                    {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance ?? ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
-                    {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction ?? ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
+                    {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advanceRaw ?? ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
+                    {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correctionRaw ?? ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
