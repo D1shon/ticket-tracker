@@ -271,7 +271,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
 const SchedulePage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
+  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
   const { user } = useTickets();
 
   // Identify CHEF role — only these two emails have full chef access
@@ -436,12 +436,14 @@ const SchedulePage = () => {
         }
       });
       
-      const salary = totalHours * rate;
+      const calculatedSalary = totalHours * rate;
+      const salaryOverride = data.salaryOverride || 0;
+      const salary = salaryOverride > 0 ? salaryOverride : calculatedSalary;
       const advance = data.advance || 0;
       const correction = data.correction || 0;
       const toPay = salary + razvozka - advance + correction;
       
-      stats[emp.id] = { totalHours, salary, razvozka, advance, correction, toPay };
+      stats[emp.id] = { totalHours, salary, calculatedSalary, salaryOverride, razvozka, advance, correction, toPay };
     });
     return stats;
   }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate]);
@@ -684,7 +686,7 @@ const SchedulePage = () => {
                 
                 {daysInMonth.map(day => (
                   <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className={`px-1 py-4 text-center min-w-[80px] ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
-                    <div className="flex flex-col items-center gap-0.5"><span className="opacity-50">{format(day, 'eeeee', { locale: ru })}</span><span className="text-xs">{format(day, 'd')}</span></div>
+                    <div className="flex flex-col items-center gap-0.5"><span className="opacity-50">{format(day, 'eeeeee', { locale: ru }) + '.'}</span><span className="text-xs">{format(day, 'd')}</span></div>
                   </th>
                 ))}
                 
@@ -723,7 +725,18 @@ const SchedulePage = () => {
                       <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[`${monthKey}_${emp.id}`]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} canEdit={canEditSchedule} />
                     ))}
                     {visibleCols.totalHours && <td className="px-4 py-4 text-center text-xs text-[var(--accent-purple)] bg-purple-500/5 font-bold border-r border-[var(--border)]">{stats.totalHours.toFixed(1)} ч</td>}
-                    {canViewFull && visibleCols.salary && <td className="px-4 py-4 text-center text-xs text-blue-400 bg-blue-500/5 font-bold border-r border-[var(--border)]">{stats.salary.toLocaleString()}</td>}
+                    {canViewFull && visibleCols.salary && (
+                      <td className="p-0 bg-blue-500/5 border-r border-[var(--border)]">
+                        <input
+                          type="number"
+                          disabled={!canViewFull}
+                          className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-blue-400 outline-none"
+                          value={stats.salaryOverride || ''}
+                          placeholder={stats.calculatedSalary || ''}
+                          onChange={e => updateSalaryOverride(monthKey, emp.id, e.target.value)}
+                        />
+                      </td>
+                    )}
                     {canViewFull && visibleCols.razvozka && <td className="px-4 py-4 text-center text-xs text-emerald-400 bg-emerald-500/5 font-bold border-r border-[var(--border)]">{stats.razvozka.toLocaleString()}</td>}
                     {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advance || ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="number" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correction || ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
