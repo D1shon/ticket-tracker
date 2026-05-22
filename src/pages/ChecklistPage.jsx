@@ -86,16 +86,16 @@ const ChecklistPage = () => {
       </div>
 
       {/* Filters Row */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
         {!isManager && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Клуб</span>
-            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] overflow-x-auto max-w-full no-scrollbar flex-nowrap">
               {availableClubs.map(club => (
                 <button
                   key={club}
                   onClick={() => setActiveClub(club)}
-                  className={`px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                  className={`px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all flex-shrink-0 ${
                     activeClub === club 
                       ? 'bg-[var(--bg-hover)] text-[var(--accent-blue)] border border-[var(--accent-blue)]/20' 
                       : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -108,9 +108,9 @@ const ChecklistPage = () => {
           </div>
         )}
 
-        <div className="flex flex-col gap-3 items-end">
+        <div className="flex flex-col gap-2 items-start md:items-end">
           <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Дата смен</span>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
               <button
                 onClick={() => setActiveDate(prev => subDays(prev, 1))}
@@ -120,7 +120,7 @@ const ChecklistPage = () => {
               </button>
               <button
                 onClick={() => setActiveDate(startOfToday())}
-                className={`px-5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                className={`px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
                   dateKey === format(startOfToday(), 'yyyy-MM-dd') 
                     ? 'bg-[var(--accent-purple)] text-white' 
                     : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -135,7 +135,7 @@ const ChecklistPage = () => {
                 →
               </button>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-[11px] font-bold text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-[11px] font-bold text-[var(--text-secondary)]">
               <Calendar size={14} className="text-[var(--accent-purple)]" />
               {format(activeDate, 'dd.MM.yyyy')}
             </div>

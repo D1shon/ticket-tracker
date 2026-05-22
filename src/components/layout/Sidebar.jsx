@@ -60,11 +60,6 @@ const Sidebar = () => {
       <button 
         className="mobile-nav-toggle"
         onClick={() => setIsOpen(!isOpen)}
-        style={{
-          position: 'fixed', top: 16, left: 16, zIndex: 1001,
-          background: 'var(--accent-purple)', color: '#fff', border: 'none',
-          padding: 10, borderRadius: 12, display: 'none'
-        }}
       >
         {isOpen ? <X size={20} /> : <Menu size={20} />}
       </button>

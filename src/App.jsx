@@ -26,12 +26,7 @@ import MobileScanner from './pages/MobileScanner';
 
 // Notification bell is fixed top-right on every authenticated page
 const NotificationCorner = () => (
-  <div style={{
-    position: 'fixed',
-    top: 12,
-    right: 16,
-    zIndex: 1000,
-  }}>
+  <div className="notification-corner">
     <NotificationBell />
   </div>
 );
@@ -54,6 +49,9 @@ const ProtectedLayout = ({ children }) => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex' }}>
       <Sidebar />
+      <div className="mobile-header">
+        <span className="mobile-logo-text">HJTRACK</span>
+      </div>
       <NotificationCorner />
       <div className="main-content-wrapper" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }}>
         <main style={{ flex: 1, padding: '24px 28px', overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}>

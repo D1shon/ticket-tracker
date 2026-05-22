@@ -77,6 +77,14 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
   const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
   const [customValue, setCustomValue] = useState('');
   const cellRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const getShiftColor = (val) => {
     if (!val) return 'bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]';
@@ -131,122 +139,126 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
       onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
       onMouseUp={e => e.stopPropagation()}
-      style={{
+      className={isMobile ? "fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4" : ""}
+      style={!isMobile ? {
         position: 'fixed',
         top: pickerPos.top,
         left: pickerPos.left,
         transform: 'translateX(-50%)',
         zIndex: 9999,
-        minWidth: 320,
-        borderRadius: 16,
-        overflow: 'hidden',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-        border: '1px solid var(--border)',
-        background: 'var(--bg-card)',
-      }}
+      } : undefined}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-        {SHIFT_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            onMouseDown={e => { e.stopPropagation(); handleSelect(opt.value); }}
-            style={{
-              background: initialValue === opt.value ? opt.bg : 'transparent',
-              color: initialValue === opt.value ? opt.text : opt.bg,
-              border: 'none',
-              borderBottom: `1px solid var(--border)`,
-              padding: '14px 8px',
-              fontSize: 13,
-              fontWeight: 800,
-              cursor: 'pointer',
-              transition: 'all 0.12s',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              outline: 'none',
-            }}
-            onMouseEnter={e => { if (initialValue !== opt.value) e.currentTarget.style.background = opt.bg + '1a'; }}
-            onMouseLeave={e => { if (initialValue !== opt.value) e.currentTarget.style.background = 'transparent'; }}
-          >
-            {initialValue === opt.value && <Check size={12} />}
-            {opt.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Custom manual input field */}
-      <div style={{ padding: 14, borderTop: '1px solid var(--border)', background: 'rgba(255,255,255,0.01)' }}>
-        <div style={{ fontSize: 9, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.08em' }}>
-          Свой вариант / время:
+      {isMobile && <div className="absolute inset-0 -z-10" onMouseDown={() => setOpen(false)} />}
+      
+      <div
+        className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl border border-[var(--border)] bg-[var(--bg-card)] animate-fade"
+        style={!isMobile ? {
+          minWidth: 320,
+        } : undefined}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+          {SHIFT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onMouseDown={e => { e.stopPropagation(); handleSelect(opt.value); }}
+              style={{
+                background: initialValue === opt.value ? opt.bg : 'transparent',
+                color: initialValue === opt.value ? opt.text : opt.bg,
+                border: 'none',
+                borderBottom: `1px solid var(--border)`,
+                padding: '16px 8px',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: 'pointer',
+                transition: 'all 0.12s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                outline: 'none',
+              }}
+              onMouseEnter={e => { if (initialValue !== opt.value) e.currentTarget.style.background = opt.bg + '1a'; }}
+              onMouseLeave={e => { if (initialValue !== opt.value) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {initialValue === opt.value && <Check size={12} />}
+              {opt.label}
+            </button>
+          ))}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="text"
-            value={customValue}
-            placeholder="например: 10:00-19:00 или 8"
-            onChange={e => setCustomValue(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
+
+        {/* Custom manual input field */}
+        <div style={{ padding: 16, borderTop: '1px solid var(--border)', background: 'rgba(255,255,255,0.01)' }}>
+          <div style={{ fontSize: 9, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.08em' }}>
+            Свой вариант / время:
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              value={customValue}
+              placeholder="например: 10:00-19:00 или 8"
+              onChange={e => setCustomValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleSelect(customValue);
+                }
+              }}
+              style={{
+                flex: 1,
+                background: 'var(--bg-hover)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '10px 12px',
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                outline: 'none',
+                transition: 'border-color 0.2s',
+              }}
+              onFocus={e => e.target.style.borderColor = 'var(--accent-purple)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+            />
+            <button
+              onMouseDown={e => {
                 e.stopPropagation();
                 handleSelect(customValue);
-              }
-            }}
-            style={{
-              flex: 1,
-              background: 'var(--bg-hover)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              padding: '8px 12px',
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'var(--text-primary)',
-              outline: 'none',
-              transition: 'border-color 0.2s',
-            }}
-            onFocus={e => e.target.style.borderColor = 'var(--accent-purple)'}
-            onBlur={e => e.target.style.borderColor = 'var(--border)'}
-          />
-          <button
-            onMouseDown={e => {
-              e.stopPropagation();
-              handleSelect(customValue);
-            }}
-            style={{
-              background: 'var(--accent-purple)',
-              color: 'white',
-              border: 'none',
-              borderRadius: 10,
-              padding: '8px 16px',
-              fontSize: 11,
-              fontWeight: 900,
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            ОК
-          </button>
+              }}
+              style={{
+                background: 'var(--accent-purple)',
+                color: 'white',
+                border: 'none',
+                borderRadius: 10,
+                padding: '10px 20px',
+                fontSize: 11,
+                fontWeight: 900,
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              ОК
+            </button>
+          </div>
         </div>
-      </div>
 
-      {initialValue && (
-        <button
-          onMouseDown={e => { e.stopPropagation(); handleSelect(''); }}
-          style={{
-            width: '100%', padding: '10px', fontSize: 10, fontWeight: 800,
-            color: '#ef4444', background: 'transparent', border: 'none',
-            borderTop: '1px solid var(--border)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            textTransform: 'uppercase', letterSpacing: '0.05em'
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          <X size={11} /> Очистить смену
-        </button>
-      )}
+        {initialValue && (
+          <button
+            onMouseDown={e => { e.stopPropagation(); handleSelect(''); }}
+            style={{
+              width: '100%', padding: '12px', fontSize: 10, fontWeight: 800,
+              color: '#ef4444', background: 'transparent', border: 'none',
+              borderTop: '1px solid var(--border)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              textTransform: 'uppercase', letterSpacing: '0.05em'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <X size={11} /> Очистить смену
+          </button>
+        )}
+      </div>
     </div>,
     document.body
   );
@@ -254,12 +266,12 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
   return (
     <td
       ref={cellRef}
-      className={`p-1 border-r border-[var(--border)] relative select-none ${isHoliday ? 'bg-red-500/5' : ''} ${isToday ? 'bg-purple-500/10' : ''} min-w-[90px]`}
+      className={`p-1 border-r border-[var(--border)] relative select-none ${isHoliday ? 'bg-red-500/5' : ''} ${isToday ? 'bg-purple-500/10' : ''} min-w-[60px] md:min-w-[90px]`}
       onClick={handleOpen}
     >
       <div
         id={`cell-${rowIdx}-${colIdx}`}
-        className={`w-full min-h-[38px] rounded-lg text-[10px] text-center font-bold border flex items-center justify-center transition-all ${getShiftColor(initialValue)} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default opacity-75'}`}
+        className={`w-full min-h-[38px] rounded-lg text-[9px] md:text-[10px] text-center font-bold border flex items-center justify-center transition-all ${getShiftColor(initialValue)} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default opacity-75'}`}
       >
         {initialValue || (canEdit ? <span className="opacity-20 text-[16px]">+</span> : <span className="opacity-10">—</span>)}
       </div>
@@ -270,8 +282,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
 
 const SchedulePage = () => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
+  const { currentMonth, setCurrentMonth, monthKey, employeesLoading, scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
   const { user } = useTickets();
 
   // Identify CHEF role — only these two emails have full chef access
@@ -355,8 +366,6 @@ const SchedulePage = () => {
 
   const daysInMonth = useMemo(() => eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }), [currentMonth]);
 
-  const monthKey = format(currentMonth, 'yyyy-MM');
-
   const visibleCols = useMemo(() => {
     const cols = settings?.visibleCols || { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true };
     return {
@@ -430,7 +439,7 @@ const SchedulePage = () => {
         workingCountsByDayAndClub[dayNum][club] = [];
       });
       employees.forEach(emp => {
-        const docId = `${monthKey}_${emp.id}`;
+        const docId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
         const data = scheduleData[docId] || {};
         const val = data.days?.[dayNum] || '';
         if (isWorkingShift(val)) {
@@ -444,7 +453,7 @@ const SchedulePage = () => {
     });
     
     employees.forEach(emp => {
-      const docId = `${monthKey}_${emp.id}`;
+      const docId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
       const data = scheduleData[docId] || {};
       const empClub = emp.club || '4YOU';
       const clubDocId = `${monthKey}_${empClub}`;
@@ -470,7 +479,8 @@ const SchedulePage = () => {
           
           let totalWeight = 0;
           workingEmps.forEach(tempEmpId => {
-            const tempEmpData = scheduleData[`${monthKey}_${tempEmpId}`] || {};
+            const tempDocId = tempEmpId.includes('_') ? tempEmpId : `${monthKey}_${tempEmpId}`;
+            const tempEmpData = scheduleData[tempDocId] || {};
             const tempVal = tempEmpData.days?.[dayNum] || '';
             totalWeight += getShiftRazvozkaAmount(tempVal);
           });
@@ -584,7 +594,8 @@ const SchedulePage = () => {
         if (!isWeekendDay && !isHolidayDay) {
           let daySum = 0;
           clubEmployees.forEach(emp => {
-            const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+            const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+            const val = scheduleData[empDocId]?.days?.[dayNum] || '';
             daySum += getShiftRazvozkaAmount(val);
           });
           total += daySum;
@@ -682,8 +693,8 @@ const SchedulePage = () => {
 
   return (
     <div className="space-y-6 animate-fade w-full max-w-full overflow-hidden">
-      <div className="flex items-center justify-between bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-xl">
-        <div className="flex items-center gap-5">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-[var(--bg-card)] p-4 md:p-5 rounded-3xl border border-[var(--border)] shadow-xl">
+        <div className="flex flex-wrap items-center gap-3 md:gap-5">
           {isChef && (
             <button 
               onClick={() => setView('selection')}
@@ -697,7 +708,7 @@ const SchedulePage = () => {
               <ChevronLeft size={16} /> Назад
             </button>
           )}
-          <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-[var(--accent-purple)] border border-purple-500/10">
+          <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-[var(--accent-purple)] border border-purple-500/10 flex-shrink-0">
             <Users size={24} />
           </div>
           <div>
@@ -710,15 +721,15 @@ const SchedulePage = () => {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 md:gap-4 w-full lg:w-auto justify-between lg:justify-end">
           {/* Indicators */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
             {isSaving && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20 text-[10px] font-black animate-pulse">
                 <CloudLightning size={10} /> СИНХРОНИЗАЦИЯ
               </div>
             )}
-            {loading && (
+            {(loading || employeesLoading) && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-500/10 text-purple-400 rounded-full border border-purple-500/20 text-[10px] font-black">
                 <RefreshCw size={10} /> ЗАГРУЗКА
               </div>
@@ -756,10 +767,10 @@ const SchedulePage = () => {
             {stickyNames ? 'Закреплено' : 'Свободный скролл'}
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }} className="flex-shrink-0">
             <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronLeft size={20} /></button>
-            <div className="text-center min-w-[140px]">
-              <h2 className="text-lg font-bold text-[var(--text-primary)] capitalize">{format(currentMonth, 'LLLL yyyy', { locale: ru })}</h2>
+            <div className="text-center min-w-[120px] md:min-w-[140px]">
+              <h2 className="text-sm md:text-lg font-bold text-[var(--text-primary)] capitalize">{format(currentMonth, 'LLLL yyyy', { locale: ru })}</h2>
             </div>
             <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronRight size={20} /></button>
           </div>
@@ -782,12 +793,12 @@ const SchedulePage = () => {
             <thead>
               <tr className="text-[9px] uppercase tracking-widest font-black text-[var(--text-muted)]">
                 {/* Visual "Two-Part" Split using Sticky & Thick Border */}
-                <th style={{ position: stickyNames ? 'sticky' : 'relative', top: 0, left: 0, zIndex: stickyNames ? 50 : 10, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-5 min-w-[280px]">
+                <th style={{ position: stickyNames ? 'sticky' : 'relative', top: 0, left: 0, zIndex: stickyNames ? 50 : 10, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-5 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
                   Сотрудник
                 </th>
                 
                 {daysInMonth.map(day => (
-                  <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className={`px-1 py-4 text-center min-w-[80px] ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
+                  <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className={`px-1 py-4 text-center min-w-[60px] md:min-w-[90px] ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
                     <div className="flex flex-col items-center gap-0.5"><span className="opacity-50">{format(day, 'eeeeee', { locale: ru }) + '.'}</span><span className="text-xs">{format(day, 'd')}</span></div>
                   </th>
                 ))}
@@ -798,7 +809,7 @@ const SchedulePage = () => {
                 {canViewFull && visibleCols.advance && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Аванс</th>}
                 {canViewFull && visibleCols.correction && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">ФИКС</th>}
                 
-                {canViewFull && visibleCols.toPay && <th style={{ position: 'sticky', top: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-5 text-center min-w-[130px]">К выдаче</th>}
+                {canViewFull && visibleCols.toPay && <th style={{ position: 'sticky', top: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-5 text-center min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">К выдаче</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
@@ -806,16 +817,16 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 return (
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
-                    <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <Users size={14} className="text-[var(--text-muted)]" />
-                        <div className="flex-1 flex items-center justify-between">
+                    <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
+                      <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
+                        <Users size={14} className="text-[var(--text-muted)] flex-shrink-0" />
+                        <div className="flex-1 flex items-center justify-between min-w-0">
                           {editingEmpId === emp.id ? (
-                            <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
+                            <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-xs md:text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
                           ) : (
-                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} className="text-sm font-bold text-[var(--text-primary)] cursor-pointer">{emp.name}</span>
+                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} title={emp.name} className="text-xs md:text-sm font-bold text-[var(--text-primary)] cursor-pointer truncate block">{emp.name}</span>
                           )}
-                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 flex-shrink-0">
                             <button onClick={() => moveEmployee(emp.id, 'up')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={12}/></button>
                             <button onClick={() => moveEmployee(emp.id, 'down')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={12}/></button>
                             <button onClick={() => removeEmployee(emp.id)} className="p-1 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={12}/></button>
@@ -823,9 +834,12 @@ const SchedulePage = () => {
                         </div>
                       </div>
                     </td>
-                    {daysInMonth.map((day, dIdx) => (
-                      <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[`${monthKey}_${emp.id}`]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} canEdit={canEditSchedule} />
-                    ))}
+                    {daysInMonth.map((day, dIdx) => {
+                      const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+                      return (
+                        <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[empDocId]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} canEdit={canEditSchedule} />
+                      );
+                    })}
                     {visibleCols.totalHours && <td className="px-4 py-4 text-center text-xs text-[var(--accent-purple)] bg-purple-500/5 font-bold border-r border-[var(--border)]">{stats.totalHours.toFixed(1)} ч</td>}
                     {canViewFull && visibleCols.salary && (
                       <td className="p-0 bg-blue-500/5 border-r border-[var(--border)]">
@@ -853,41 +867,42 @@ const SchedulePage = () => {
                     )}
                     {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advanceRaw ?? ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
                     {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correctionRaw ?? ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
-                    {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center text-sm text-[var(--accent-purple)] font-black">{stats.toPay.toLocaleString()}</td>}
+                    {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center text-xs md:text-sm text-[var(--accent-purple)] font-black min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
               })}
               {pendingRows.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
-                    <div className="flex items-center gap-4"><Users size={14} className="text-[var(--text-muted)]" /><input value={row.name} autoFocus onChange={e => setPendingRows(prev => prev.map(r => r.id === row.id ? { ...r, name: e.target.value } : r))} onKeyDown={e => e.key === 'Enter' && savePendingRow(row.id)} placeholder="ФИО..." className="bg-transparent text-sm text-[var(--text-primary)] outline-none w-full" /><button onClick={() => savePendingRow(row.id)} className="text-green-500"><Check size={16}/></button></div>
+                  <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
+                    <div className="flex items-center gap-2 md:gap-4"><Users size={14} className="text-[var(--text-muted)]" /><input value={row.name} autoFocus onChange={e => setPendingRows(prev => prev.map(r => r.id === row.id ? { ...r, name: e.target.value } : r))} onKeyDown={e => e.key === 'Enter' && savePendingRow(row.id)} placeholder="ФИО..." className="bg-transparent text-xs md:text-sm text-[var(--text-primary)] outline-none w-full" /><button onClick={() => savePendingRow(row.id)} className="text-green-500"><Check size={16}/></button></div>
                   </td>
                   {daysInMonth.map(d => <td key={d.toString()} style={{ borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="text-[10px] text-[var(--text-muted)] text-center italic">—</td>)}
                   {Object.keys(visibleCols).map(k => {
                     const isFin = ['salary', 'razvozka', 'advance', 'correction', 'toPay'].includes(k);
                     if (isFin && !canViewFull) return null;
                     if (!visibleCols[k]) return null;
+                    if (k === 'toPay') return <td key={k} style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]"></td>;
                     return <td key={k} style={{ borderTop: '1px solid var(--border)' }}></td>;
                   })}
                 </tr>
               ))}
               <tr>
-                <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4">
-                  <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
+                <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
+                  <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
                 </td>
                 <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
               </tr>
             </tbody>
             <tfoot>
               <tr>
-                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 44, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
+                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 44, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">Итого:</td>
                 
                 {daysInMonth.map(day => {
                   const dayNum = format(day, 'd');
                   const dayOfWeek = day.getDay(); // 0=Sun, 6=Sat
                   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
                   const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
-
+ 
                   let dayTotalHours = 0;
                   let workingCount = 0;
                   clubEmployees.forEach(emp => {
@@ -898,11 +913,11 @@ const SchedulePage = () => {
                       workingCount++;
                     }
                   });
-
+ 
                   const dailyAmount = (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
-
+ 
                   return (
-                    <td key={day.toString()} style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="px-1 py-2 text-center font-black text-[10px] text-[var(--text-secondary)]">
+                    <td key={day.toString()} style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-1 py-2 text-center font-black text-[10px] text-[var(--text-secondary)] min-w-[60px] md:min-w-[90px]">
                       {dayTotalHours > 0 ? `${dayTotalHours.toFixed(1)}ч` : '—'}
                     </td>
                   );
@@ -912,18 +927,18 @@ const SchedulePage = () => {
                 {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{razvozkaTotal.toLocaleString()}</td>}
                 {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 44, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">
+                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 44, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <span>{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {razvozkaTotal.toLocaleString()}₸ развозка</span>
+                    <span className="hidden md:inline" style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {razvozkaTotal.toLocaleString()}₸ развозка</span>
                   </div>
                 </td>}
               </tr>
-
+ 
               {/* ── Развозка row — sticky at bottom:0 ── */}
               {canViewFull && (
                 <tr>
-                  <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 0, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-razvozka-sticky)', borderTop: '2px solid var(--accent-purple)', borderRight: '2px solid var(--border)', whiteSpace: 'nowrap' }} className="px-6 py-3 font-black text-[10px] text-[var(--accent-purple)] uppercase tracking-widest">
+                  <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 0, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-razvozka-sticky)', borderTop: '2px solid var(--accent-purple)', borderRight: '2px solid var(--border)', whiteSpace: 'nowrap' }} className="px-2 md:px-6 py-3 font-black text-[10px] text-[var(--accent-purple)] uppercase tracking-widest min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
                     🚗 Развозка
                   </td>
                   {daysInMonth.map(day => {
@@ -931,11 +946,12 @@ const SchedulePage = () => {
                     const dayOfWeek = day.getDay();
                     const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
                     const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
-
+ 
                     let dailyAmount = 0;
                     if (!isWeekendDay && !isHolidayDay) {
                       clubEmployees.forEach(emp => {
-                        const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+                        const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+                        const val = scheduleData[empDocId]?.days?.[dayNum] || '';
                         dailyAmount += getShiftRazvozkaAmount(val);
                       });
                     }
@@ -947,7 +963,7 @@ const SchedulePage = () => {
                     const placeholderVal = dailyAmount > 0 ? `${dailyAmount}` : '—';
                     
                     return (
-                      <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="p-0 text-center">
+                      <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="p-0 text-center min-w-[60px] md:min-w-[90px]">
                         <input
                           type="text"
                           className="w-full h-[38px] bg-transparent text-center text-[10px] font-black text-[var(--accent-purple)] outline-none border-none placeholder-purple-300/50"
@@ -963,9 +979,22 @@ const SchedulePage = () => {
                   {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{razvozkaTotal.toLocaleString()} ₸</td>}
                   {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
-                  {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-razvozka-sticky)', borderTop: '2px solid var(--accent-purple)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">
-                    {razvozkaTotal.toLocaleString()} ₸
-                  </td>}
+                  {canViewFull && visibleCols.toPay && (
+                    <td 
+                      style={{ 
+                        position: stickyNames ? 'sticky' : 'relative', 
+                        bottom: 0, 
+                        right: stickyNames ? 0 : undefined, 
+                        zIndex: stickyNames ? 50 : 40, 
+                        backgroundColor: 'var(--bg-razvozka-sticky)', 
+                        borderTop: '2px solid var(--accent-purple)', 
+                        borderLeft: stickyNames ? '2px solid var(--border)' : undefined 
+                      }} 
+                      className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]"
+                    >
+                      {razvozkaTotal.toLocaleString()} ₸
+                    </td>
+                  )}
                 </tr>
               )}
             </tfoot>
@@ -974,7 +1003,7 @@ const SchedulePage = () => {
       </div>
 
       {canViewFull && (
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
           {[ 
             { l: 'Всего ч', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
             { l: 'Зарплата', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary, 0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
@@ -983,7 +1012,10 @@ const SchedulePage = () => {
             { l: 'ФИКС', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
             { l: 'К выдаче', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
           ].map((s, i) => (
-            <div key={i} className="bg-[var(--bg-card)] p-6 rounded-3xl border border-[var(--border)] shadow-xl"><p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">{s.l}</p><p className={`text-2xl font-black ${s.c}`}>{s.v}</p></div>
+            <div key={i} className="bg-[var(--bg-card)] p-4 md:p-6 rounded-3xl border border-[var(--border)] shadow-xl">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">{s.l}</p>
+              <p className={`text-lg md:text-2xl font-black ${s.c} mt-1`}>{s.v}</p>
+            </div>
           ))}
         </div>
       )}
@@ -991,24 +1023,23 @@ const SchedulePage = () => {
       {/* ── Развозка summary card ── */}
       {(() => {
         return (
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)',
-            border: '1.5px solid var(--accent-purple)',
-            borderRadius: 24,
-            padding: '20px 32px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            boxShadow: '0 4px 24px rgba(139,92,246,0.15)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 24 }}>🚗</span>
+          <div 
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:px-8 sm:py-6 border-[1.5px] border-[var(--accent-purple)] rounded-3xl shadow-xl"
+            style={{
+              background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)',
+              boxShadow: '0 4px 24px rgba(139,92,246,0.15)'
+            }}
+          >
+            <div className="flex items-start sm:items-center gap-3">
+              <span className="text-2xl flex-shrink-0">🚗</span>
               <div>
-                <p style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Развозка за месяц</p>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>1 500 ₸ за смену (3 000 ₸ за смену 6:30-22:30) на каждого сотрудника (кроме выходных и праздников)</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-1">Развозка за месяц</p>
+                <p className="text-[11px] text-[var(--text-muted)] font-semibold leading-relaxed">
+                  1 500 ₸ за смену (3 000 ₸ за смену 6:30-22:30) на каждого сотрудника (кроме выходных и праздников)
+                </p>
               </div>
             </div>
-            <p style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent-purple)', letterSpacing: '-0.03em' }}>
+            <p className="text-2xl sm:text-3xl font-black text-[var(--accent-purple)] tracking-tight flex-shrink-0">
               {razvozkaTotal.toLocaleString()} ₸
             </p>
           </div>
@@ -1017,10 +1048,18 @@ const SchedulePage = () => {
 
       {showSettingsModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl">
-            <div className="px-8 py-6 border-b border-[var(--border)] flex items-center justify-between"><h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2"><Settings size={18} className="text-[var(--accent-purple)]" /> Настройки</h2><button onClick={() => setShowSettingsModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={20} /></button></div>
-            <div className="p-8 grid grid-cols-2 gap-8">
-              <div className="space-y-4"><h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Смены</h3>
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 md:px-8 md:py-6 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
+              <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Settings size={18} className="text-[var(--accent-purple)]" /> Настройки
+              </h2>
+              <button onClick={() => setShowSettingsModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 overflow-y-auto">
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Смены</h3>
                 <div className="space-y-2">
                   <input type="text" value={settings?.shift1} onChange={e => updateSettings({ ...settings, shift1: e.target.value })} className="w-full bg-[var(--bg-hover)] border border-[var(--border)] rounded-xl p-3 text-[var(--text-primary)] text-sm" />
                   <input type="text" value={settings?.shift2} onChange={e => updateSettings({ ...settings, shift2: e.target.value })} className="w-full bg-[var(--bg-hover)] border border-[var(--border)] rounded-xl p-3 text-[var(--text-primary)] text-sm" />
@@ -1052,7 +1091,11 @@ const SchedulePage = () => {
                 </div>
               </div>
             </div>
-            <div className="p-6 bg-[var(--bg-hover)] text-right"><button onClick={() => setShowSettingsModal(false)} className="px-8 py-3 bg-[var(--accent-purple)] text-white font-bold rounded-xl text-xs uppercase tracking-widest">Закрыть</button></div>
+            <div className="p-4 md:p-6 bg-[var(--bg-hover)] text-right flex-shrink-0">
+              <button onClick={() => setShowSettingsModal(false)} className="px-8 py-3 bg-[var(--accent-purple)] text-white font-bold rounded-xl text-xs uppercase tracking-widest">
+                Закрыть
+              </button>
+            </div>
           </div>
         </div>
       )}

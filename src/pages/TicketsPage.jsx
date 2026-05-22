@@ -225,16 +225,8 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
   };
 
   return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000,
-    }} onClick={onClose}>
-      <div style={{
-        width: 480, background: 'var(--bg-card)', border: '1px solid var(--border)',
-        borderRadius: 24, padding: 32, boxShadow: 'var(--shadow-card)',
-        position: 'relative'
-      }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-container" onClick={e => e.stopPropagation()}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 24, letterSpacing: '-0.02em' }}>
           НОВАЯ ЗАЯВКА
         </h2>
@@ -486,37 +478,33 @@ const TicketsPage = () => {
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, paddingRight: 56 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, fontStyle: 'italic', color: 'var(--text-primary)', marginBottom: 4, textTransform: 'uppercase' }}>
+      <div className="page-header-container">
+        <div className="page-title-section">
+          <h1 className="page-title">
             {userClub ? `Клуб ${userClub}` : `Все клубы: ${activeClub === 'ВСЕ' ? 'ALL' : activeClub}`}
           </h1>
-          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+          <p className="page-subtitle">
             {userClub ? `📍 ЛОКАЛЬНЫЙ МОНИТОРИНГ: ${userClub}` : '📍 ГЛОБАЛЬНЫЙ МОНИТОРИНГ'}
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className="header-actions">
           {/* Club tabs (Only for Admins) */}
           {!userClub && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 4, borderRadius: 999, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div className="club-tabs-wrapper">
               {CLUBS_TABS.map(c => (
-                <button key={c} onClick={() => setActiveClub(c)} style={{
-                  padding: '6px 16px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-                  background: activeClub === c ? 'var(--accent-purple)' : 'transparent',
-                  color: activeClub === c ? '#fff' : 'var(--text-secondary)',
-                  border: 'none', cursor: 'pointer', transition: 'all 0.15s', letterSpacing: '0.02em',
-                }}>{c}</button>
+                <button 
+                  key={c} 
+                  onClick={() => setActiveClub(c)} 
+                  className={`club-tab-btn ${activeClub === c ? 'active' : ''}`}
+                >
+                  {c}
+                </button>
               ))}
             </div>
           )}
           <button
             onClick={() => setIsCreateOpen(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px',
-              borderRadius: 12, background: '#b275ff', color: '#fff', fontWeight: 700,
-              fontSize: 12, border: 'none', cursor: 'pointer', letterSpacing: '0.02em',
-              boxShadow: '0 4px 12px rgba(178,117,255,0.35)', transition: 'transform 0.15s',
-            }}
+            className="btn-create-ticket"
             onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
             onMouseLeave={e => e.currentTarget.style.transform = 'none'}
           >
@@ -526,29 +514,29 @@ const TicketsPage = () => {
       </div>
 
       {/* Search + filters + view mode */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-        <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
-          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+      <div className="tickets-toolbar-container">
+        <div className="search-box-wrapper">
+          <Search size={15} className="search-icon" />
           <input
-            className="input-app"
-            style={{ paddingLeft: 36, borderRadius: 12, width: '100%' }}
+            className="input-app search-input"
             placeholder="Поиск заявки..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div className="filter-tabs-container">
           {FILTERS.map(f => (
             <button key={f} onClick={() => setActiveFilter(f)} className={`filter-tab ${activeFilter === f ? 'active' : ''}`}>{f}</button>
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', paddingLeft: 16, borderLeft: '1px solid var(--border)' }}>
+        <div className="view-mode-container">
           {[['kanban', Columns, 'Доска'], ['list', List, 'Список'], ['grid', LayoutGrid, 'Сетка']].map(([mode, Icon, title]) => (
-            <button key={mode} onClick={() => setViewMode(mode)} title={title} style={{
-              padding: 6, borderRadius: 8, background: viewMode === mode ? 'var(--accent-purple)' : 'transparent',
-              color: viewMode === mode ? '#fff' : 'var(--text-muted)', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center',
-            }}>
+            <button 
+              key={mode} 
+              onClick={() => setViewMode(mode)} 
+              title={title} 
+              className={`view-mode-btn ${viewMode === mode ? 'active' : ''}`}
+            >
               <Icon size={16} />
             </button>
           ))}

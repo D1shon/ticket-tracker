@@ -7,11 +7,15 @@ import {
   doc, 
   serverTimestamp,
   deleteDoc,
-  updateDoc
+  updateDoc,
+  where,
+  getDocs,
+  getDoc
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
+import { format, subMonths } from 'date-fns';
 
 const ScheduleContext = createContext();
 export const useSchedule = () => useContext(ScheduleContext);
@@ -24,6 +28,13 @@ const STORAGE_KEYS = {
 };
 
 export const ScheduleProvider = ({ children }) => {
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const monthKey = format(currentMonth, 'yyyy-MM');
+  const [employeesLoading, setEmployeesLoading] = useState(true);
+  const clonedMonthsRef = useRef(new Set());
+  const clonedSettingsMonthsRef = useRef(new Set());
+  const settingsMonthKeyRef = useRef(monthKey);
+
   const [scheduleData, setScheduleData] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.DATA);
@@ -90,9 +101,42 @@ export const ScheduleProvider = ({ children }) => {
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees)); } catch {}
   }, [employees]);
+  // Load initial settings from localStorage for the active monthKey
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings)); } catch {}
-  }, [settings]);
+    const defaultSettings = {
+      shift1: '8:30-14:30',
+      shift2: '14:30-21:30',
+      hourlyRate: 1500,
+      visibleCols: { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true }
+    };
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEYS.SETTINGS}_${monthKey}`);
+      if (saved) {
+        setSettings(JSON.parse(saved));
+      } else {
+        // Fallback to global saved settings if available
+        const globalSaved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+        if (globalSaved) {
+          setSettings(JSON.parse(globalSaved));
+        } else {
+          setSettings(defaultSettings);
+        }
+      }
+    } catch {
+      setSettings(defaultSettings);
+    }
+    // Mark that the settings state now belongs to this monthKey
+    settingsMonthKeyRef.current = monthKey;
+  }, [monthKey]);
+
+  // Persist settings to localStorage for the active monthKey
+  useEffect(() => {
+    // Only save if the settings state actually belongs to the currently active monthKey
+    if (settingsMonthKeyRef.current !== monthKey) return;
+    try { 
+      localStorage.setItem(`${STORAGE_KEYS.SETTINGS}_${monthKey}`, JSON.stringify(settings)); 
+    } catch {}
+  }, [settings, monthKey]);
 
   // ─── Track state updates for safe cloud sync ─────────────────────────────
   const stateRef = useRef({ employees, scheduleData, settings, dailyRazvozka });
@@ -103,8 +147,6 @@ export const ScheduleProvider = ({ children }) => {
   // ─── Load database listeners when authenticated ─────────────────
   useEffect(() => {
     let unsubSchedules = null;
-    let unsubSettings = null;
-    let unsubEmployees = null;
     let unsubDailyRazvozka = null;
 
     const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
@@ -123,35 +165,6 @@ export const ScheduleProvider = ({ children }) => {
           });
         }
 
-        if (!unsubSettings) {
-          unsubSettings = onSnapshot(doc(db, 'settings', 'schedule'), (snapshot) => {
-            if (snapshot.exists()) {
-              const remote = snapshot.data();
-              setSettings(prev => {
-                const defaultVisibleCols = { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true };
-                return {
-                  ...defaultVisibleCols,
-                  ...remote,
-                  visibleCols: {
-                    ...defaultVisibleCols,
-                    ...(remote.visibleCols || {}),
-                    ...(prev?.visibleCols || {})
-                  }
-                };
-              });
-            }
-          });
-        }
-
-        if (!unsubEmployees) {
-          unsubEmployees = onSnapshot(query(collection(db, 'employees')), (snapshot) => {
-            const remoteEmployees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            setEmployees(remoteEmployees.sort((a, b) => (a.order || 0) - (b.order || 0)));
-          }, (error) => {
-            console.error('[ScheduleContext] employees load error:', error);
-          });
-        }
-
         if (!unsubDailyRazvozka) {
           unsubDailyRazvozka = onSnapshot(query(collection(db, 'daily_razvozka')), (snapshot) => {
             const remoteDaily = {};
@@ -164,8 +177,6 @@ export const ScheduleProvider = ({ children }) => {
       } else {
         // Clean up listeners on sign-out
         if (unsubSchedules) { unsubSchedules(); unsubSchedules = null; }
-        if (unsubSettings) { unsubSettings(); unsubSettings = null; }
-        if (unsubEmployees) { unsubEmployees(); unsubEmployees = null; }
         if (unsubDailyRazvozka) { unsubDailyRazvozka(); unsubDailyRazvozka = null; }
       }
     });
@@ -173,15 +184,182 @@ export const ScheduleProvider = ({ children }) => {
     return () => {
       unsubscribeAuth();
       if (unsubSchedules) unsubSchedules();
-      if (unsubSettings) unsubSettings();
-      if (unsubEmployees) unsubEmployees();
       if (unsubDailyRazvozka) unsubDailyRazvozka();
     };
   }, []);
 
+  // ─── Load employee list listener scoped to active monthKey ──────────
+  useEffect(() => {
+    let unsubEmployees = null;
+    setEmployeesLoading(true);
+
+    const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        if (unsubEmployees) unsubEmployees();
+        const q = query(
+          collection(db, 'employees'),
+          where('monthKey', '==', monthKey)
+        );
+        unsubEmployees = onSnapshot(q, (snapshot) => {
+          const remoteEmployees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          setEmployees(remoteEmployees.sort((a, b) => (a.order || 0) - (b.order || 0)));
+          setEmployeesLoading(false);
+        }, (error) => {
+          console.error('[ScheduleContext] employees load error:', error);
+          setEmployeesLoading(false);
+        });
+      } else {
+        if (unsubEmployees) {
+          unsubEmployees();
+          unsubEmployees = null;
+        }
+        setEmployeesLoading(false);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubEmployees) unsubEmployees();
+    };
+  }, [monthKey]);
+
+  // ─── Load settings listener scoped to active monthKey ──────────
+  useEffect(() => {
+    let unsubSettings = null;
+
+    const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        if (unsubSettings) unsubSettings();
+        
+        const docRef = doc(db, 'settings', `schedule_${monthKey}`);
+        unsubSettings = onSnapshot(docRef, async (snapshot) => {
+          if (snapshot.exists()) {
+            const remote = snapshot.data();
+            const defaultVisibleCols = { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true };
+            const merged = {
+              shift1: remote.shift1 || '8:30-14:30',
+              shift2: remote.shift2 || '14:30-21:30',
+              hourlyRate: remote.hourlyRate !== undefined ? remote.hourlyRate : 1500,
+              visibleCols: {
+                ...defaultVisibleCols,
+                ...(remote.visibleCols || {})
+              }
+            };
+            setSettings(merged);
+            settingsMonthKeyRef.current = monthKey;
+          } else {
+            // Document does not exist. Let's inherit or initialize it.
+            if (clonedSettingsMonthsRef.current.has(monthKey)) return;
+            clonedSettingsMonthsRef.current.add(monthKey);
+            
+            try {
+              const prevMonth = subMonths(currentMonth, 1);
+              const prevMonthKey = format(prevMonth, 'yyyy-MM');
+              
+              const prevDocRef = doc(db, 'settings', `schedule_${prevMonthKey}`);
+              const prevSnap = await getDoc(prevDocRef);
+              
+              let initialSettings = null;
+              if (prevSnap.exists()) {
+                initialSettings = prevSnap.data();
+                console.log(`Cloned settings from previous month (${prevMonthKey}) to ${monthKey}`);
+              } else {
+                // Fallback to the old global settings
+                const globalDocRef = doc(db, 'settings', 'schedule');
+                const globalSnap = await getDoc(globalDocRef);
+                if (globalSnap.exists()) {
+                  initialSettings = globalSnap.data();
+                  console.log(`Cloned settings from global settings to ${monthKey}`);
+                } else {
+                  initialSettings = {
+                    shift1: '8:30-14:30',
+                    shift2: '14:30-21:30',
+                    hourlyRate: 1500,
+                    visibleCols: { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true }
+                  };
+                  console.log(`Initialized settings with default settings for ${monthKey}`);
+                }
+              }
+              
+              await setDoc(doc(db, 'settings', `schedule_${monthKey}`), initialSettings);
+            } catch (err) {
+              console.error('Error initializing settings:', err);
+            }
+          }
+        });
+      } else {
+        if (unsubSettings) {
+          unsubSettings();
+          unsubSettings = null;
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubSettings) unsubSettings();
+    };
+  }, [monthKey, currentMonth]);
+
+  // ─── Auto-inherit (clone) employees from previous month if empty ───────
+  useEffect(() => {
+    if (employeesLoading || loading) return;
+    if (employees.length > 0) return;
+    if (clonedMonthsRef.current.has(monthKey)) return;
+
+    clonedMonthsRef.current.add(monthKey);
+
+    const cloneFromPrevious = async () => {
+      try {
+        setIsSaving(true);
+        const prevMonth = subMonths(currentMonth, 1);
+        const prevMonthKey = format(prevMonth, 'yyyy-MM');
+        
+        const q = query(collection(db, 'employees'), where('monthKey', '==', prevMonthKey));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+          console.log(`No employees to clone from previous month: ${prevMonthKey}`);
+          return;
+        }
+        
+        console.log(`Cloning ${snapshot.size} employees from ${prevMonthKey} to ${monthKey}`);
+        
+        const batch = [];
+        snapshot.docs.forEach(d => {
+          const data = d.data();
+          const oldId = d.id;
+          const baseId = oldId.includes('_') ? oldId.split('_').slice(1).join('_') : oldId;
+          const newId = `${monthKey}_${baseId}`;
+          
+          batch.push(
+            setDoc(doc(db, 'employees', newId), {
+              ...data,
+              id: newId,
+              monthKey: monthKey,
+              createdAt: new Date()
+            })
+          );
+        });
+        
+        await Promise.all(batch);
+        toast.success(`Перенесены сотрудники из прошлого месяца (${prevMonthKey})`);
+      } catch (err) {
+        console.error('Error cloning employees:', err);
+        toast.error('Не удалось скопировать список сотрудников с прошлого месяца');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    cloneFromPrevious();
+  }, [employees, employeesLoading, loading, monthKey, currentMonth]);
+
+  const getScheduleDocId = (mKey, empId) => empId.includes('_') ? empId : `${mKey}_${empId}`;
+
   // ─── updateCell ───────────────────────────────────────────────────────────
   const updateCell = async (monthKey, employeeId, day, value) => {
-    const docId = `${monthKey}_${employeeId}`;
+    const docId = getScheduleDocId(monthKey, employeeId);
 
     // 1. Instant local save FIRST — Local Storage is source of truth
     setScheduleData(prev => ({
@@ -226,7 +404,7 @@ export const ScheduleProvider = ({ children }) => {
 
   // ─── updateAdvance ────────────────────────────────────────────────────────
   const updateAdvance = async (monthKey, employeeId, val) => {
-    const docId = `${monthKey}_${employeeId}`;
+    const docId = getScheduleDocId(monthKey, employeeId);
     setScheduleData(prev => ({
       ...prev,
       [docId]: { ...prev[docId], employeeId, monthKey, advance: val }
@@ -241,7 +419,7 @@ export const ScheduleProvider = ({ children }) => {
 
   // ─── updateCorrection ─────────────────────────────────────────────────────
   const updateCorrection = async (monthKey, employeeId, val) => {
-    const docId = `${monthKey}_${employeeId}`;
+    const docId = getScheduleDocId(monthKey, employeeId);
     setScheduleData(prev => ({
       ...prev,
       [docId]: { ...prev[docId], employeeId, monthKey, correction: val }
@@ -256,7 +434,7 @@ export const ScheduleProvider = ({ children }) => {
 
   // ─── updateSalaryOverride ─────────────────────────────────────────────────
   const updateSalaryOverride = async (monthKey, employeeId, val) => {
-    const docId = `${monthKey}_${employeeId}`;
+    const docId = getScheduleDocId(monthKey, employeeId);
     setScheduleData(prev => ({
       ...prev,
       [docId]: { ...prev[docId], employeeId, monthKey, salaryOverride: val }
@@ -271,7 +449,7 @@ export const ScheduleProvider = ({ children }) => {
 
   // ─── updateRazvozkaOverride ───────────────────────────────────────────────
   const updateRazvozkaOverride = async (monthKey, employeeId, val) => {
-    const docId = `${monthKey}_${employeeId}`;
+    const docId = getScheduleDocId(monthKey, employeeId);
     setScheduleData(prev => ({
       ...prev,
       [docId]: { ...prev[docId], employeeId, monthKey, razvozkaOverride: val }
@@ -329,8 +507,9 @@ export const ScheduleProvider = ({ children }) => {
   const addEmployee = async (name, club = '4YOU') => {
     try {
       setIsSaving(true);
-      const id = Date.now().toString();
-      const newEmp = { id, name: name.trim(), club, order: employees.length, createdAt: new Date() };
+      const baseId = Date.now().toString();
+      const id = `${monthKey}_${baseId}`;
+      const newEmp = { id, name: name.trim(), club, order: employees.length, monthKey, createdAt: new Date() };
       
       setEmployees(prev => [...prev, newEmp]);
       await setDoc(doc(db, 'employees', id), newEmp);
@@ -401,13 +580,15 @@ export const ScheduleProvider = ({ children }) => {
 
   // ─── updateSettings ───────────────────────────────────────────────────────
   const updateSettings = async (s) => {
+    settingsMonthKeyRef.current = monthKey;
     setSettings(s);
-    try { await setDoc(doc(db, 'settings', 'schedule'), s, { merge: true }); } catch {}
+    try { await setDoc(doc(db, 'settings', `schedule_${monthKey}`), s, { merge: true }); } catch {}
   };
 
   return (
     <ScheduleContext.Provider value={{
       scheduleData, employees, loading, isSaving,
+      currentMonth, setCurrentMonth, monthKey, employeesLoading,
       updateCell, addEmployee, removeEmployee, updateEmployee,
       updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees,
       settings, updateSettings,
