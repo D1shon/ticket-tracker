@@ -621,3 +621,15 @@ select.input-app {
 .table-scroll-container::-webkit-scrollbar-track { background: var(--bg-primary); border-top: 1px solid var(--border); }
 .table-scroll-container::-webkit-scrollbar-thumb { background: var(--accent-purple); border-radius: 10px; border: 3px solid var(--bg-primary); transition: background-color 0.2s; }
 .table-scroll-container::-webkit-scrollbar-thumb:hover { background: #7c3aed; }
+
+/* Modal popup animation */
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.93) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);     }
+}
+
+/* Ticket card drop-in animation */
+@keyframes card-drop-in {
+  from { opacity: 0; transform: scale(0.92) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}

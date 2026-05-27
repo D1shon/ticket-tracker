@@ -226,8 +226,36 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container" onClick={e => e.stopPropagation()}>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        background: 'rgba(0,0,0,0.65)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px'
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 520,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 28,
+          padding: '32px',
+          boxShadow: '0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
+          maxHeight: '92vh',
+          overflowY: 'auto',
+          animation: 'modal-pop 0.22s cubic-bezier(0.34,1.56,0.64,1)'
+        }}
+      >
         <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 24, letterSpacing: '-0.02em' }}>
           НОВАЯ ЗАЯВКА
         </h2>
@@ -326,14 +354,17 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
               value={assignee.split(' (')[0]}
               onChange={e => setAssignee(`${e.target.value} (${club || '?'})`)}
             >
-              {/* Build manager list from USER_ROLES filtered by the currently selected club */}
-              {Object.values(USER_ROLES)
-                .filter(u => u.role === 'manager' && (!club || u.club === club))
+              {/* All registered users from USER_ROLES, filtered by selected club.
+                  Chefs (club=null) always appear as they can handle any club. */}
+              {Object.entries(USER_ROLES)
+                .filter(([, u]) => !club || u.club === club || u.club === null)
                 // deduplicate by displayName
-                .filter((u, i, arr) => arr.findIndex(x => x.displayName === u.displayName) === i)
-                .sort((a, b) => a.displayName.localeCompare(b.displayName, 'ru'))
-                .map(u => (
-                  <option key={u.displayName} value={u.displayName}>{u.displayName}</option>
+                .filter(([, u], i, arr) => arr.findIndex(([, x]) => x.displayName === u.displayName) === i)
+                .sort(([, a], [, b]) => a.displayName.localeCompare(b.displayName, 'ru'))
+                .map(([email, u]) => (
+                  <option key={email} value={u.displayName}>
+                    {u.displayName}{u.club ? ` (${u.club})` : ' (Админ)'}
+                  </option>
                 ))
               }
             </select>
