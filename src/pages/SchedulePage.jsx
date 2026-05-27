@@ -887,9 +887,11 @@ const SchedulePage = () => {
                           type="text"
                           disabled={!canViewFull}
                           className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-blue-400 outline-none"
-                          value={stats.salaryOverride ?? ''}
-                          placeholder={stats.calculatedSalary || ''}
-                          onChange={e => updateSalaryOverride(monthKey, emp.id, e.target.value)}
+                          defaultValue={stats.salaryOverride ?? ''}
+                          placeholder={String(stats.calculatedSalary || '')}
+                          key={`sal-${emp.id}-${stats.salaryOverride}`}
+                          onBlur={e => updateSalaryOverride(monthKey, emp.id, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { updateSalaryOverride(monthKey, emp.id, e.target.value); e.target.blur(); } }}
                         />
                       </td>
                     )}
@@ -899,14 +901,16 @@ const SchedulePage = () => {
                           type="text"
                           disabled={!canViewFull}
                           className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-emerald-400 outline-none"
-                          value={stats.razvozkaOverride ?? ''}
-                          placeholder={stats.calculatedRazvozka || ''}
-                          onChange={e => updateRazvozkaOverride(monthKey, emp.id, e.target.value)}
+                          defaultValue={stats.razvozkaOverride ?? ''}
+                          placeholder={String(stats.calculatedRazvozka || '')}
+                          key={`raz-${emp.id}-${stats.razvozkaOverride}`}
+                          onBlur={e => updateRazvozkaOverride(monthKey, emp.id, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { updateRazvozkaOverride(monthKey, emp.id, e.target.value); e.target.blur(); } }}
                         />
                       </td>
                     )}
-                    {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" value={stats.advanceRaw ?? ''} onChange={e => updateAdvance(monthKey, emp.id, e.target.value)} /></td>}
-                    {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" value={stats.correctionRaw ?? ''} onChange={e => updateCorrection(monthKey, emp.id, e.target.value)} /></td>}
+                    {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" defaultValue={stats.advanceRaw ?? ''} placeholder="" key={`adv-${emp.id}-${stats.advanceRaw}`} onBlur={e => updateAdvance(monthKey, emp.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { updateAdvance(monthKey, emp.id, e.target.value); e.target.blur(); } }} /></td>}
+                    {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" defaultValue={stats.correctionRaw ?? ''} placeholder="" key={`cor-${emp.id}-${stats.correctionRaw}`} onBlur={e => updateCorrection(monthKey, emp.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { updateCorrection(monthKey, emp.id, e.target.value); e.target.blur(); } }} /></td>}
                     {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center text-xs md:text-sm text-[var(--accent-purple)] font-black min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
