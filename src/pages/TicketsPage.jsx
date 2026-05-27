@@ -363,7 +363,7 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
                 .sort(([, a], [, b]) => a.displayName.localeCompare(b.displayName, 'ru'))
                 .map(([email, u]) => (
                   <option key={email} value={u.displayName}>
-                    {u.displayName}{u.club ? ` (${u.club})` : ' (Админ)'}
+                    {u.displayName}{u.club ? ` (${u.club})` : u.role === 'chef' ? ' (CHEF)' : ''}
                   </option>
                 ))
               }
