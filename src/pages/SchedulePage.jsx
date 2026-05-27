@@ -984,13 +984,13 @@ const SchedulePage = () => {
                 })}
                 {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
                 {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{razvozkaTotal.toLocaleString()}</td>}
+                {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 44, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <span>{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
-                    <span className="hidden md:inline" style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {razvozkaTotal.toLocaleString()}₸ развозка</span>
+                    <span className="hidden md:inline" style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}₸ развозка</span>
                   </div>
                 </td>}
               </tr>
@@ -1065,12 +1065,12 @@ const SchedulePage = () => {
       {canViewFull && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
           {[ 
-            { l: 'Всего ч', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
-            { l: 'Зарплата', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary, 0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
-            { l: 'Развозка', v: razvozkaTotal.toLocaleString() + ' ₸', c: 'text-emerald-400' },
-            { l: 'Аванс', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance, 0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
-            { l: 'ФИКС', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
-            { l: 'К выдаче', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
+            { l: 'Всего ч',  v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
+            { l: 'Зарплата', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary,     0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
+            { l: 'Развозка', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).razvozka,   0).toLocaleString() + ' ₸', c: 'text-emerald-400' },
+            { l: 'Аванс',    v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance,    0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
+            { l: 'ФИКС',     v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
+            { l: 'К выдаче', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay,      0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
           ].map((s, i) => (
             <div key={i} className="bg-[var(--bg-card)] p-4 md:p-6 rounded-3xl border border-[var(--border)] shadow-xl">
               <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">{s.l}</p>
