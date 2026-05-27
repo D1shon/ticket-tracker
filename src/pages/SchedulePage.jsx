@@ -575,8 +575,18 @@ const SchedulePage = () => {
   };
 
   const getClubTotal = (clubName) => {
-    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
-    return clubEmps.reduce((sum, emp) => sum + getEmployeeStats(emp.id).toPay, 0);
+    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName && !e.isService);
+    return clubEmps.reduce((sum, emp) => {
+      const s = getEmployeeStats(emp.id);
+      // toPay already = salary + razvozka - advance + correction
+      return sum + s.toPay;
+    }, 0);
+  };
+
+  // Returns advance total for a club (for display hint)
+  const getClubAdvanceTotal = (clubName) => {
+    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName && !e.isService);
+    return clubEmps.reduce((sum, emp) => sum + getEmployeeStats(emp.id).advance, 0);
   };
 
   const formatCurrency = (val) => {
@@ -698,11 +708,16 @@ const SchedulePage = () => {
               <h3 style={{ fontSize: 20, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', marginBottom: 4 }}>{club}</h3>
               
               {canViewFull && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>К выплате итого:</div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>К выплате на руки:</div>
                   <div style={{ fontSize: 28, fontWeight: 950, color: 'var(--accent-purple)', letterSpacing: '-0.03em' }}>
                     {formatCurrency(getClubTotal(club))}
                   </div>
+                  {getClubAdvanceTotal(club) > 0 && (
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.03em' }}>
+                      аванс вычтен: −{formatCurrency(getClubAdvanceTotal(club))}
+                    </div>
+                  )}
                 </div>
               )}
 
