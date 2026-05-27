@@ -538,6 +538,14 @@ export const ScheduleProvider = ({ children }) => {
     try { await updateDoc(doc(db, 'employees', id), { name }); } catch {}
   };
 
+  // ─── setEmployeeService ───────────────────────────────────────────────────
+  // Marks/unmarks an employee as a service worker (сервисник).
+  // Service workers appear in the schedule but are excluded from hours/salary totals.
+  const setEmployeeService = async (id, isService) => {
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, isService } : e));
+    try { await updateDoc(doc(db, 'employees', id), { isService }); } catch {}
+  };
+
   // ─── moveEmployee ─────────────────────────────────────────────────────────
   const moveEmployee = async (id, direction) => {
     try {
@@ -589,7 +597,7 @@ export const ScheduleProvider = ({ children }) => {
     <ScheduleContext.Provider value={{
       scheduleData, employees, loading, isSaving,
       currentMonth, setCurrentMonth, monthKey, employeesLoading,
-      updateCell, addEmployee, removeEmployee, updateEmployee,
+      updateCell, addEmployee, removeEmployee, updateEmployee, setEmployeeService,
       updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees,
       settings, updateSettings,
       dailyRazvozka, updateDailyRazvozka

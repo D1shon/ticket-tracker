@@ -1,0 +1,215 @@
+diff --git a/src/pages/SchedulePage.jsx b/src/pages/SchedulePage.jsx
+index 9a456ce..12aebac 100644
+--- a/src/pages/SchedulePage.jsx
++++ b/src/pages/SchedulePage.jsx
+@@ -41,8 +41,10 @@ const MANAGER_CLUB_MAP = {
+   'anastasia': 'COLIBRI',
+   'dias': 'VILLA',
+   'saltanat': 'NURLY ORDA',
+-  'ainur': '4YOU',
+-  'aziz': 'COLIBRI'
++  'ainur': 'NURLY ORDA',
++  'aziz': 'NURLY ORDA',
++  'timur': '4YOU',
++  'alina': 'VILLA'
+ };
+ 
+ 
+@@ -372,15 +374,40 @@ const SchedulePage = () => {
+     return 0;
+   };
+ 
+-  const getEmployeeStats = (empId) => {
+-    const docId = `${monthKey}_${empId}`;
+-    const data = scheduleData[docId] || {};
++  const employeeStats = useMemo(() => {
++    const stats = {};
+     const rate = settings?.hourlyRate || 1500;
+-    const totalHours = Object.values(data.days || {}).reduce((s, v) => s + calculateHours(v), 0);
+-    const salary = totalHours * rate;
+-    const toPay = salary - (data.advance || 0) + (data.correction || 0);
+-    return { totalHours, salary, advance: data.advance || 0, correction: data.correction || 0, toPay };
+-  };
++    
++    employees.forEach(emp => {
++      const docId = `${monthKey}_${emp.id}`;
++      const data = scheduleData[docId] || {};
++      
++      let totalHours = 0;
++      let razvozka = 0;
++      
++      daysInMonth.forEach(day => {
++        const dayNum = format(day, 'd');
++        const val = data.days?.[dayNum] || '';
++        const hrs = calculateHours(val);
++        totalHours += hrs;
++        
++        const dayOfWeek = day.getDay();
++        if (hrs > 0 && dayOfWeek !== 0 && dayOfWeek !== 6 && !HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))) {
++          razvozka += 1500;
++        }
++      });
++      
++      const salary = totalHours * rate;
++      const advance = data.advance || 0;
++      const correction = data.correction || 0;
++      const toPay = salary + razvozka - advance + correction;
++      
++      stats[emp.id] = { totalHours, salary, razvozka, advance, correction, toPay };
++    });
++    return stats;
++  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate]);
++
++  const getEmployeeStats = (empId) => employeeStats[empId] || { totalHours: 0, salary: 0, razvozka: 0, advance: 0, correction: 0, toPay: 0 };
+ 
+   const getClubTotal = (clubName) => {
+     const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
+@@ -405,6 +432,23 @@ const SchedulePage = () => {
+     return employees.filter(e => (e.club || '4YOU') === selectedClub);
+   }, [employees, selectedClub]);
+ 
++  // Total transport (Razvozka) cost for the month — weekdays only, count × 1500
++  const razvozkaTotal = useMemo(() => {
++    return daysInMonth.reduce((total, day) => {
++      const dayOfWeek = day.getDay();
++      if (dayOfWeek === 0 || dayOfWeek === 6) return total;
++      if (HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))) return total;
++      const dayNum = format(day, 'd');
++      let count = 0;
++      clubEmployees.forEach(emp => {
++        const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
++        if (calculateHours(val) > 0) count++;
++      });
++      return total + count * 1500;
++    }, 0);
++  }, [daysInMonth, clubEmployees, scheduleData, monthKey]);
++
++
+   const handleKeyDown = (e, row, col) => {
+     let tr = row, tc = col;
+     if (e.key === 'ArrowRight' || e.key === 'Tab') { e.preventDefault(); tc++; }
+@@ -661,21 +705,80 @@ const SchedulePage = () => {
+             </tbody>
+             <tfoot>
+               <tr>
+-                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 0, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
++                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 44, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest">Итого:</td>
+                 
+                 {daysInMonth.map(day => {
+                   const dayNum = format(day, 'd');
+-                  const dayTotal = clubEmployees.reduce((sum, emp) => {
++                  const dayOfWeek = day.getDay(); // 0=Sun, 6=Sat
++                  const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
++                  const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
++
++                  let dayTotalHours = 0;
++                  let workingCount = 0;
++                  clubEmployees.forEach(emp => {
+                     const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+-                    return sum + calculateHours(val);
+-                  }, 0);
+-                  return <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-1 py-4 text-center font-black text-[10px] text-[var(--text-secondary)]">{dayTotal > 0 ? `${dayTotal.toFixed(1)}ч` : '—'}</td>;
++                    const hrs = calculateHours(val);
++                    if (hrs > 0) {
++                      dayTotalHours += hrs;
++                      workingCount++;
++                    }
++                  });
++
++                  const dailyAmount = (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
++
++                  return (
++                    <td key={day.toString()} style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="px-1 py-2 text-center font-black text-[10px] text-[var(--text-secondary)]">
++                      {dayTotalHours > 0 ? `${dayTotalHours.toFixed(1)}ч` : '—'}
++                    </td>
++                  );
+                 })}
+-                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
+-                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
+-                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
+-                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
+-                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</td>}
++                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
++                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
++                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
++                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
++                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 44, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">
++                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
++                    <span>{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
++                    <span style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {razvozkaTotal.toLocaleString()}₸ развозка</span>
++                  </div>
++                </td>}
++              </tr>
++
++              {/* ── Развозка row — sticky at bottom:0 ── */}
++              <tr>
++                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 0, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'rgba(139,92,246,0.08)', borderTop: '2px solid var(--accent-purple)', borderRight: '2px solid var(--border)', whiteSpace: 'nowrap' }} className="px-6 py-3 font-black text-[10px] text-[var(--accent-purple)] uppercase tracking-widest">
++                  🚗 Развозка
++                </td>
++                {daysInMonth.map(day => {
++                  const dayNum = format(day, 'd');
++                  const dayOfWeek = day.getDay();
++                  const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
++                  const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
++                  let workingCount = 0;
++                  if (!isWeekendDay && !isHolidayDay) {
++                    clubEmployees.forEach(emp => {
++                      const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
++                      if (calculateHours(val) > 0) workingCount++;
++                    });
++                  }
++                  const dailyAmount = workingCount * 1500;
++                  return (
++                    <td key={day.toString()} style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'rgba(139,92,246,0.06)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)', minWidth: 90 }} className="px-1 py-2 text-center">
++                      {(!isWeekendDay && !isHolidayDay && dailyAmount > 0) ? (
++                        <span style={{ fontSize: 9, fontWeight: 900, color: 'var(--accent-purple)', whiteSpace: 'nowrap' }}>
++                          {dailyAmount.toLocaleString()}₸
++                        </span>
++                      ) : <span style={{ color: 'var(--text-muted)', fontSize: 9 }}>—</span>}
++                    </td>
++                  );
++                })}
++                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'rgba(139,92,246,0.06)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
++                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'rgba(139,92,246,0.06)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
++                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'rgba(139,92,246,0.06)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
++                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'rgba(139,92,246,0.06)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
++                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 0, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'rgba(139,92,246,0.08)', borderTop: '2px solid var(--accent-purple)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-4 py-4 text-center font-black text-sm text-[var(--accent-purple)]">
++                  {razvozkaTotal.toLocaleString()} ₸
++                </td>}
+               </tr>
+             </tfoot>
+           </table>
+@@ -696,6 +799,33 @@ const SchedulePage = () => {
+         </div>
+       )}
+ 
++      {/* ── Развозка summary card ── */}
++      {(() => {
++        return (
++          <div style={{
++            background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)',
++            border: '1.5px solid var(--accent-purple)',
++            borderRadius: 24,
++            padding: '20px 32px',
++            display: 'flex',
++            alignItems: 'center',
++            justifyContent: 'space-between',
++            boxShadow: '0 4px 24px rgba(139,92,246,0.15)'
++          }}>
++            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
++              <span style={{ fontSize: 24 }}>🚗</span>
++              <div>
++                <p style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Развозка за месяц</p>
++                <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Сумма по будням (чел × 1 500 ₸/день)</p>
++              </div>
++            </div>
++            <p style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent-purple)', letterSpacing: '-0.03em' }}>
++              {razvozkaTotal.toLocaleString()} ₸
++            </p>
++          </div>
++        );
++      })()}
++
+       {showSettingsModal && (
+         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl">

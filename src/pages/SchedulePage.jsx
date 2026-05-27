@@ -26,7 +26,8 @@ import {
   Database,
   Pin,
   PinOff,
-  GripVertical
+  GripVertical,
+  Wrench
 } from 'lucide-react';
 import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
@@ -282,7 +283,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
 
 const SchedulePage = () => {
-  const { currentMonth, setCurrentMonth, monthKey, employeesLoading, scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
+  const { currentMonth, setCurrentMonth, monthKey, employeesLoading, scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, setEmployeeService, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
   const { user } = useTickets();
 
   // Identify CHEF role — only these two emails have full chef access
@@ -419,11 +420,34 @@ const SchedulePage = () => {
     });
   };
 
+  // Returns the razvozka amount for a shift based on start/end times:
+  // +1500 if starts at or before 6:30 (morning pickup needed)
+  // +1500 if ends at or after 21:30 (evening dropoff needed)
+  // 0 if neither (e.g. 8:30-20:30)
   const getShiftRazvozkaAmount = (val) => {
     if (!isWorkingShift(val)) return 0;
     const clean = String(val).trim().replace(/\s+/g, '').replace(/\./g, ':');
-    if (clean === '6:30-22:30') return 3000;
-    return 1500;
+
+    // Plain numeric value (e.g. "8") — no time info, treat as mid-day, no razvozka
+    if (!clean.includes('-')) return 0;
+
+    const parts = clean.split('-');
+    if (parts.length !== 2) return 0;
+
+    const toMin = (s) => {
+      const c = s.trim();
+      if (!c.includes(':')) return (parseInt(c) || 0) * 60;
+      const [h, m] = c.split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+
+    const startMin = toMin(parts[0]);
+    const endMin   = toMin(parts[1]);
+
+    const EARLY_START = 6 * 60 + 30;  // 6:30
+    const LATE_END    = 21 * 60 + 30; // 21:30
+
+    return (startMin <= EARLY_START ? 1500 : 0) + (endMin >= LATE_END ? 1500 : 0);
   };
 
   const employeeStats = useMemo(() => {
@@ -571,6 +595,11 @@ const SchedulePage = () => {
   const clubEmployees = useMemo(() => {
     return employees.filter(e => (e.club || '4YOU') === selectedClub);
   }, [employees, selectedClub]);
+
+  // Regular (non-service) employees — used for hours/salary totals
+  const regularClubEmployees = useMemo(() => {
+    return clubEmployees.filter(e => !e.isService);
+  }, [clubEmployees]);
 
   // Total transport (Razvozka) cost for the month — 1500 per day per working employee (excluding weekends and holidays)
   // Total transport (Razvozka) cost for the month — overridden daily sum or headcount-based sum
@@ -824,11 +853,21 @@ const SchedulePage = () => {
                           {editingEmpId === emp.id ? (
                             <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-xs md:text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
                           ) : (
-                            <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} title={emp.name} className="text-xs md:text-sm font-bold text-[var(--text-primary)] cursor-pointer truncate block">{emp.name}</span>
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} title={emp.name} className="text-xs md:text-sm font-bold text-[var(--text-primary)] cursor-pointer truncate">{emp.name}</span>
+                              {emp.isService && (
+                                <span className="text-[7px] font-black px-1 py-0.5 rounded flex-shrink-0 hidden md:inline" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>СЕР</span>
+                              )}
+                            </div>
                           )}
                           <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 flex-shrink-0">
                             <button onClick={() => moveEmployee(emp.id, 'up')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={12}/></button>
                             <button onClick={() => moveEmployee(emp.id, 'down')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={12}/></button>
+                            <button
+                              onClick={() => setEmployeeService(emp.id, !emp.isService)}
+                              className={`p-1 transition-colors ${emp.isService ? 'text-amber-500' : 'text-[var(--text-muted)] hover:text-amber-400'}`}
+                              title={emp.isService ? 'Снять статус сервисника' : 'Отметить как сервисника'}
+                            ><Wrench size={12}/></button>
                             <button onClick={() => removeEmployee(emp.id)} className="p-1 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={12}/></button>
                           </div>
                         </div>
@@ -905,8 +944,9 @@ const SchedulePage = () => {
  
                   let dayTotalHours = 0;
                   let workingCount = 0;
-                  clubEmployees.forEach(emp => {
-                    const val = scheduleData[`${monthKey}_${emp.id}`]?.days?.[dayNum] || '';
+                  regularClubEmployees.forEach(emp => {
+                    const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+                    const val = scheduleData[empDocId]?.days?.[dayNum] || '';
                     const hrs = calculateHours(val);
                     if (hrs > 0) {
                       dayTotalHours += hrs;
@@ -922,14 +962,14 @@ const SchedulePage = () => {
                     </td>
                   );
                 })}
-                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
-                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
+                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
+                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{razvozkaTotal.toLocaleString()}</td>}
-                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 44, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                    <span>{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
+                    <span>{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
                     <span className="hidden md:inline" style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {razvozkaTotal.toLocaleString()}₸ развозка</span>
                   </div>
                 </td>}
@@ -1005,12 +1045,12 @@ const SchedulePage = () => {
       {canViewFull && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
           {[ 
-            { l: 'Всего ч', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
-            { l: 'Зарплата', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary, 0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
+            { l: 'Всего ч', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
+            { l: 'Зарплата', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary, 0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
             { l: 'Развозка', v: razvozkaTotal.toLocaleString() + ' ₸', c: 'text-emerald-400' },
-            { l: 'Аванс', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance, 0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
-            { l: 'ФИКС', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
-            { l: 'К выдаче', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
+            { l: 'Аванс', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance, 0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
+            { l: 'ФИКС', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
+            { l: 'К выдаче', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
           ].map((s, i) => (
             <div key={i} className="bg-[var(--bg-card)] p-4 md:p-6 rounded-3xl border border-[var(--border)] shadow-xl">
               <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">{s.l}</p>

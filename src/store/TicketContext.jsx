@@ -4,24 +4,29 @@ import { signInAnonymously, signOut, onAuthStateChanged } from 'firebase/auth';
 // ─── Strict Whitelist and Role Mapping ─────────────────────────────────────────
 // Only these exact email addresses are allowed to access the application.
 // You can easily manage who gets what role and club in this single place!
-const USER_ROLES = {
-  // Chefs (Full Administration rights)
+export const USER_ROLES = {
+  // ── Chefs (full admin) ────────────────────────────────────────────────────
   'dilshat.r@hj.fit': { role: 'chef', club: null, displayName: 'Дильшат' },
-  'magzhan@hj.fit': { role: 'chef', club: null, displayName: 'Магжан' },
-  
-  // Managers (Club-specific management rights)
-  'daewure@mail.ru': { role: 'manager', club: 'COLIBRI', displayName: 'Менеджер Колибри' },
-  'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнур' },
-  'diassd9806@gmail.com': { role: 'manager', club: 'VILLA', displayName: 'Диас' },
+  'magzhan@hj.fit':   { role: 'chef', club: null, displayName: 'Магжан' },
+
+  // ── 4YOU ─────────────────────────────────────────────────────────────────
+  'saniya@hj.fit':              { role: 'manager', club: '4YOU', displayName: 'Сания' },
   'kurbanovtimur585@gmail.com': { role: 'manager', club: '4YOU', displayName: 'Тимур' },
+  'nurly@hj.fit':               { role: 'manager', club: '4YOU', displayName: 'Нурлы' },
+
+  // ── COLIBRI ───────────────────────────────────────────────────────────────
+  'anastasia@hj.fit':     { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
+  'daewure@mail.ru':      { role: 'manager', club: 'COLIBRI', displayName: 'Аружан' },
+  'dias.colibri@hj.fit':  { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
+
+  // ── VILLA ─────────────────────────────────────────────────────────────────
+  'diassd9806@gmail.com':  { role: 'manager', club: 'VILLA', displayName: 'Диас' },
   'kelessovaan@gmail.com': { role: 'manager', club: 'VILLA', displayName: 'Алина' },
-  'azimuus@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Азиз' },
-  
-  // Placeholders for other known managers (change to their real emails if needed)
-  'anastasia@hj.fit': { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
-  'saniya@hj.fit': { role: 'manager', club: '4YOU', displayName: 'Сания' },
-  'aziz@hj.fit': { role: 'manager', club: 'COLIBRI', displayName: 'Азиз' },
-  'saltanat@hj.fit': { role: 'manager', club: 'NURLY ORDA', displayName: 'Салтанат' },
+  'saltanat@hj.fit':       { role: 'manager', club: 'VILLA', displayName: 'Салтанат' },
+
+  // ── NURLY ORDA ────────────────────────────────────────────────────────────
+  'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнур' },
+  'azimuus@gmail.com':      { role: 'manager', club: 'NURLY ORDA', displayName: 'Азиз' },
 };
 
 function isEmailAllowed(email) {

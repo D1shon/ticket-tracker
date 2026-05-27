@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight } from 'lucide-react';
-import { useTickets } from '../store/TicketContext';
+import { useTickets, USER_ROLES } from '../store/TicketContext';
 
 const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 const FILTERS    = ['ВСЕ', 'НОВЫЕ', 'В РАБОТЕ', 'ПАУЗА', 'ОЖИДАНИЕ', 'ЗАКРЫТО'];
@@ -14,7 +14,8 @@ const PRIORITIES = [
   { id: 'low',      label: 'Низкий',      color: '#00cc88' },
 ];
 
-const MANAGERS = ['Сания', 'Анастасия', 'Диас', 'Салтанат', 'Дилшат', 'Айнур', 'Азиз'];
+// Manager list is derived from USER_ROLES — no static list needed here.
+// Managers are filtered by club inside CreateTicketModal.
 
 const COLUMNS = [
   { id: 'new',         label: 'НОВЫЕ',    color: '#4f8ef7' },
@@ -325,9 +326,16 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
               value={assignee.split(' (')[0]}
               onChange={e => setAssignee(`${e.target.value} (${club || '?'})`)}
             >
-              {MANAGERS.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
+              {/* Build manager list from USER_ROLES filtered by the currently selected club */}
+              {Object.values(USER_ROLES)
+                .filter(u => u.role === 'manager' && (!club || u.club === club))
+                // deduplicate by displayName
+                .filter((u, i, arr) => arr.findIndex(x => x.displayName === u.displayName) === i)
+                .sort((a, b) => a.displayName.localeCompare(b.displayName, 'ru'))
+                .map(u => (
+                  <option key={u.displayName} value={u.displayName}>{u.displayName}</option>
+                ))
+              }
             </select>
           </div>
 
