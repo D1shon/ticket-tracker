@@ -131,30 +131,41 @@ function getSubnetPrefix(gatewayIp) {
   return parts.slice(0, 3).join('.');
 }
 
-// ── Ping sweep: пингуем всю подсеть чтобы телефоны появились в ARP ───
+// ── ARP sweep: находим iPhone которые блокируют ping ──────────
 async function pingSubnet(subnetPrefix) {
   if (!subnetPrefix) return;
   const platform = os.platform();
-  const pingCmd  = platform === 'win32'
-    ? (ip) => `ping -n 1 -w 300 ${ip}`
-    : (ip) => `ping -c 1 -W 1 ${ip}`;
 
-  console.log(`[agent] 📡 Ping sweep ${subnetPrefix}.1–254 ...`);
+  console.log(`[agent] 📡 ARP sweep ${subnetPrefix}.1–254 ...`);
+
   const promises = [];
   for (let i = 1; i <= 254; i++) {
     const ip = `${subnetPrefix}.${i}`;
-    promises.push(
-      new Promise(resolve => {
-        try { execSync(pingCmd(ip), { timeout: 400, stdio: 'ignore' }); } catch {}
-        resolve();
-      })
-    );
+    promises.push(new Promise(resolve => {
+      try {
+        // 2 попытки, 1500мс таймаут — iPhone отвечает на ARP даже в сне
+        const cmd = platform === 'win32'
+          ? `ping -n 2 -w 1500 ${ip}`
+          : `ping -c 2 -W 2 ${ip}`;
+        execSync(cmd, { timeout: 5000, stdio: 'ignore' });
+      } catch {}
+      resolve();
+    }));
   }
-  // Запускаем параллельно пачками по 30
-  for (let i = 0; i < promises.length; i += 30) {
-    await Promise.all(promises.slice(i, i + 30));
+
+  // Пачками по 50
+  for (let i = 0; i < promises.length; i += 50) {
+    await Promise.all(promises.slice(i, i + 50));
   }
-  console.log(`[agent] 📡 Ping sweep завершён`);
+
+  // Windows: принудительно обновить таблицу соседей (ARP кэш)
+  if (platform === 'win32') {
+    try {
+      execSync('powershell -Command "Get-NetNeighbor -AddressFamily IPv4 | Out-Null"', { timeout: 5000, stdio: 'ignore' });
+    } catch {}
+  }
+
+  console.log(`[agent] 📡 ARP sweep завершён`);
 }
 
 // ── Получить ARP-таблицу + собственные MAC ────────────────────────────
