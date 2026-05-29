@@ -126,12 +126,12 @@ const AttendancePage = () => {
     });
   }, [employees, sessions]);
 
-  const onlineCount = enrichedEmployees.filter(e => e.session?.isOnline && agentAlive).length;
-
   // Agent last seen: was it within last 3 minutes?
   const agentAlive = agentStatus?.lastSeen
     ? (Date.now() - new Date(agentStatus.lastSeen.seconds ? agentStatus.lastSeen.seconds * 1000 : agentStatus.lastSeen).getTime()) < 3 * 60 * 1000
     : false;
+
+  const onlineCount = enrichedEmployees.filter(e => e.session?.isOnline && agentAlive).length;
 
   // ── Save employee ─────────────────────────────────────────────────
   const handleSave = async () => {
