@@ -13,12 +13,25 @@
  *
  * Затем:
  *   node wifi-agent.mjs
+ *
+ * АВТООБНОВЛЕНИЕ: агент проверяет обновления в Firestore каждые 5 минут
+ * и перезапускается сам если найдена новая версия.
  */
 
 import { initializeApp }        from 'firebase/app';
-import { getFirestore, collection, getDocs, setDoc, doc, query, where } from 'firebase/firestore';
-import { execSync }             from 'child_process';
+import { getFirestore, collection, getDocs, getDoc, setDoc, doc, query, where } from 'firebase/firestore';
+import { execSync, spawn }      from 'child_process';
 import os                       from 'os';
+import https                    from 'https';
+import http                     from 'http';
+import fs                       from 'fs';
+import { fileURLToPath }        from 'url';
+import path                     from 'path';
+
+// ── Версия агента (менять при каждом обновлении) ──────────────────────
+const AGENT_VERSION = '3.2';
+const AGENT_FILE    = fileURLToPath(import.meta.url);
+const UPDATE_URL    = 'https://ticket-tracker-inky.vercel.app/wifi-agent.mjs';
 
 // ── Firebase config ───────────────────────────────────────────────────
 const firebaseConfig = {
@@ -41,6 +54,83 @@ const missCount = {};  // { mac: число_пропусков }
 let CLUB_ID = null;   // определится автоматически
 let SUBNET_PREFIX = null; // например "192.168.88"
 
+// ── АВТООБНОВЛЕНИЕ ────────────────────────────────────────────────────
+async function checkForUpdate() {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'agent'));
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    const latestVersion = data.version;
+    const updateUrl = data.updateUrl || UPDATE_URL;
+
+    if (!latestVersion || latestVersion === AGENT_VERSION) return;
+
+    console.log(`\n[agent] 🔄 Найдена новая версия: v${latestVersion} (текущая: v${AGENT_VERSION})`);
+    console.log(`[agent] 📥 Скачиваю обновление с ${updateUrl}...`);
+
+    // Скачать новый агент
+    await downloadFile(updateUrl, AGENT_FILE + '.new');
+
+    // Проверить что файл не пустой
+    const stat = fs.statSync(AGENT_FILE + '.new');
+    if (stat.size < 1000) {
+      console.error('[agent] ❌ Скачанный файл слишком мал, отмена обновления');
+      fs.unlinkSync(AGENT_FILE + '.new');
+      return;
+    }
+
+    // Заменить старый файл
+    fs.renameSync(AGENT_FILE + '.new', AGENT_FILE);
+    console.log(`[agent] ✅ Обновление установлено. Перезапускаюсь...`);
+
+    // Перезапуститься (PM2 подхватит или запустить напрямую)
+    const child = spawn(process.execPath, [AGENT_FILE], {
+      detached: true,
+      stdio: 'inherit',
+    });
+    child.unref();
+    process.exit(0);
+
+  } catch (err) {
+    console.error('[agent] Ошибка при проверке обновлений:', err.message);
+  }
+}
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const proto = url.startsWith('https') ? https : http;
+    const file = fs.createWriteStream(dest);
+
+    const request = proto.get(url, { timeout: 15000 }, (response) => {
+      if (response.statusCode === 301 || response.statusCode === 302) {
+        // Follow redirect
+        file.close();
+        fs.unlinkSync(dest);
+        downloadFile(response.headers.location, dest).then(resolve).catch(reject);
+        return;
+      }
+      if (response.statusCode !== 200) {
+        reject(new Error(`HTTP ${response.statusCode}`));
+        return;
+      }
+      response.pipe(file);
+      file.on('finish', () => { file.close(); resolve(); });
+    });
+
+    request.on('error', (err) => {
+      file.close();
+      if (fs.existsSync(dest)) fs.unlinkSync(dest);
+      reject(err);
+    });
+
+    request.on('timeout', () => {
+      request.destroy();
+      reject(new Error('Timeout'));
+    });
+  });
+}
+
 // ── Определить IP шлюза (роутера) текущей сети ───────────────────────
 function getGatewayIp() {
   try {
@@ -50,7 +140,6 @@ function getGatewayIp() {
       // Метод 1: route print — самый надёжный
       try {
         const out = execSync('route print 0.0.0.0', { timeout: 8000 }).toString();
-        // Ищем строку: 0.0.0.0   0.0.0.0   192.168.x.x
         const lines = out.split('\n');
         for (const line of lines) {
           const m = line.match(/^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+([\d.]+)/);
@@ -95,7 +184,6 @@ async function detectClub() {
 
   console.log(`[agent] Шлюз сети: ${gatewayIp}`);
 
-  // Читаем все клубы из Firestore
   const snap = await getDocs(collection(db, 'wifi_clubs'));
   for (const d of snap.docs) {
     const data = d.data();
@@ -240,7 +328,6 @@ async function scan() {
       console.log(`  ✅ ${emp.name} — в сети`);
 
       try {
-        // Сначала пробуем создать сессию без перезаписи arrivedAt
         const existing = await getDocs(
           query(collection(db, 'wifi_sessions'),
             where('macAddress', '==', mac),
@@ -248,7 +335,6 @@ async function scan() {
         );
 
         if (existing.empty) {
-          // Первый раз сегодня — пишем arrivedAt
           await setDoc(sessionRef, {
             clubId: CLUB_ID, employeeId: emp.id, name: emp.name,
             macAddress: mac, date: today,
@@ -256,7 +342,6 @@ async function scan() {
           });
           console.log(`  📍 Зафиксирован приход: ${emp.name} в ${now.toLocaleTimeString('ru-RU')}`);
         } else {
-          // Уже был сегодня — обновляем lastSeen и isOnline, НЕ трогаем arrivedAt
           await setDoc(sessionRef, { isOnline: true, lastSeen: nowIso }, { merge: true });
         }
       } catch (err) {
@@ -267,13 +352,16 @@ async function scan() {
       missCount[mac] = (missCount[mac] || 0) + 1;
 
       if (missCount[mac] >= MISS_LIMIT) {
-        // Проверяем: только что ушёл (первый раз переходим в offline) или уже был offline
-        const wasOnline = existing && !existing.empty && existing.docs[0]?.data()?.isOnline === true;
         console.log(`  ❌ ${emp.name} — ушёл (${missCount[mac]} пропуска)`);
         try {
+          const existing = await getDocs(
+            query(collection(db, 'wifi_sessions'),
+              where('macAddress', '==', mac),
+              where('date', '==', today))
+          );
+          const wasOnline = !existing.empty && existing.docs[0]?.data()?.isOnline === true;
           const update = { isOnline: false, lastSeen: nowIso };
           if (wasOnline) {
-            // Фиксируем точное время ухода
             update.leftAt = nowIso;
             console.log(`  🚪 Зафиксирован уход: ${emp.name} в ${now.toLocaleTimeString('ru-RU')}`);
           }
@@ -293,7 +381,10 @@ async function sendHeartbeat() {
   if (!CLUB_ID) return;
   try {
     await setDoc(doc(db, 'wifi_agents', CLUB_ID), {
-      clubId: CLUB_ID, lastSeen: new Date().toISOString(), host: os.hostname(),
+      clubId: CLUB_ID,
+      lastSeen: new Date().toISOString(),
+      host: os.hostname(),
+      version: AGENT_VERSION,
     }, { merge: true });
   } catch (err) {
     console.error('[agent] Heartbeat error:', err.message);
@@ -316,9 +407,8 @@ async function markAllOffline() {
       setDoc(d.ref, { isOnline: false, lastSeen: nowIso, leftAt: nowIso }, { merge: true })
     );
     await Promise.all(updates);
-    // Сбросить heartbeat агента
     await setDoc(doc(db, 'wifi_agents', CLUB_ID), {
-      clubId: CLUB_ID, lastSeen: new Date(0).toISOString(), host: os.hostname(),
+      clubId: CLUB_ID, lastSeen: new Date(0).toISOString(), host: os.hostname(), version: AGENT_VERSION,
     }, { merge: true });
     console.log(`[agent] ✅ ${snap.docs.length} сотрудников помечено оффлайн`);
   } catch (err) {
@@ -329,9 +419,12 @@ async function markAllOffline() {
 // ── Старт ─────────────────────────────────────────────────────────────
 async function main() {
   console.log('\n╔══════════════════════════════════════╗');
-  console.log('║   HJTRACK WiFi Agent v3.0            ║');
-  console.log('║   Телефоны: Ping Sweep Mode          ║');
+  console.log(`║   HJTRACK WiFi Agent v${AGENT_VERSION}            ║`);
+  console.log('║   Авто-обновление включено           ║');
   console.log('╚══════════════════════════════════════╝\n');
+
+  // Проверить обновления перед стартом
+  await checkForUpdate();
 
   // Определяем клуб
   CLUB_ID = await detectClub();
@@ -348,7 +441,7 @@ async function main() {
   console.log(`\n[agent] Запущен для клуба: ${CLUB_ID}`);
   console.log(`[agent] Интервал сканирования: ${INTERVAL / 1000} сек\n`);
 
-  // Graceful shutdown — при Ctrl+C или закрытии окна
+  // Graceful shutdown
   const shutdown = async (signal) => {
     console.log(`\n[agent] Получен сигнал ${signal}`);
     await markAllOffline();
@@ -361,8 +454,9 @@ async function main() {
   await scan();
   await sendHeartbeat();
 
-  setInterval(scan,          INTERVAL);
-  setInterval(sendHeartbeat, 60_000);
+  setInterval(scan,            INTERVAL);
+  setInterval(sendHeartbeat,   60_000);
+  setInterval(checkForUpdate,  5 * 60_000); // Проверять обновления каждые 5 минут
 }
 
 main().catch(console.error);
