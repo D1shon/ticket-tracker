@@ -30,8 +30,8 @@ const firebaseConfig = {
   appId:             "1:236581443884:web:a9ce84dcbf0efc59267489",
 };
 
-const INTERVAL   = 60_000;   // сканировать каждые 60 сек
-const MISS_LIMIT = 5;        // пропусков до offline (~5 мин) — телефоны засыпают
+const INTERVAL   = 20_000;   // сканировать каждые 20 сек
+const MISS_LIMIT = 2;        // пропусков до offline (~40 сек)
 // ──────────────────────────────────────────────────────────────────────
 
 const app = initializeApp(firebaseConfig);
