@@ -4,7 +4,29 @@ import { format } from 'date-fns';
 
 const DemoDayBanner = () => {
   const [isVisible, setIsVisible] = useState(false);
-  const MEET_LINK = "https://meet.google.com/zur-yyin-zdm";
+  const MEET_LINK = "https://meet.google.com/zur-yyin-zdm?time=18:00";
+
+  // Helper to extract time from link (e.g. ?time=18:00 or ?t=18:30 or hash #19:00)
+  const getMeetingTime = (link) => {
+    try {
+      const url = new URL(link);
+      const t = url.searchParams.get('time') || url.searchParams.get('t') || url.searchParams.get('start');
+      if (t) return t;
+      if (url.hash) {
+        const hashVal = url.hash.substring(1);
+        if (/^\d{2}[:.-]\d{2}$/.test(hashVal)) {
+          return hashVal.replace(/[-.]/g, ':');
+        }
+      }
+    } catch (e) {
+      // Regex fallback if URL parsing fails
+      const match = link.match(/[?&](?:time|t|start)=([^&]+)/i);
+      if (match) return decodeURIComponent(match[1]);
+    }
+    return null;
+  };
+
+  const meetingTime = getMeetingTime(MEET_LINK);
 
   useEffect(() => {
     const checkStatus = () => {
@@ -79,9 +101,15 @@ const DemoDayBanner = () => {
            <span style={{ fontSize: 10, fontWeight: 900, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Weekly Event</span>
            <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
            <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Friday</span>
+           {meetingTime && (
+             <>
+               <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
+               <span style={{ fontSize: 10, fontWeight: 900, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{meetingTime}</span>
+             </>
+           )}
         </div>
         <h3 style={{ fontSize: 16, fontWeight: 900, color: 'white', letterSpacing: '-0.01em' }}>
-          СЕГОДНЯ <span style={{ color: '#b275ff' }}>DEMO DAY</span>
+          СЕГОДНЯ <span style={{ color: '#b275ff' }}>DEMO DAY</span> {meetingTime && <span style={{ color: '#b275ff', marginLeft: 4 }}>в {meetingTime}</span>}
         </h3>
       </div>
 
