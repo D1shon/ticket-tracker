@@ -317,11 +317,17 @@ async function scan() {
   const connectedMacs = getArpMacs();
   console.log(`[agent] Устройств в сети: ${connectedMacs.length}`);
 
+  // Диагностика — что нашли vs что ожидали
+  const diagEmployees = [];
+
   for (const emp of employees) {
     const mac       = (emp.macAddress || '').toUpperCase();
     const sessionId = `${today}_${mac.replace(/:/g, '')}`;
     const sessionRef = doc(db, 'wifi_sessions', sessionId);
     const isPresent  = connectedMacs.includes(mac);
+
+    // Для диагностики
+    diagEmployees.push({ name: emp.name, mac, found: isPresent });
 
     if (isPresent) {
       missCount[mac] = 0;
@@ -374,6 +380,18 @@ async function scan() {
       }
     }
   }
+
+  // 📊 Отправить диагностику в Firestore (видна в веб-интерфейсе)
+  try {
+    await setDoc(doc(db, 'wifi_agents', CLUB_ID), {
+      lastScanAt: nowIso,
+      lastScanMacs: connectedMacs.slice(0, 100), // все найденные MAC в сети
+      lastScanDevicesTotal: connectedMacs.length,
+      lastScanEmployees: diagEmployees,           // { name, mac, found } для каждого сотрудника
+    }, { merge: true });
+  } catch (err) {
+    console.error('[agent] Диагностика error:', err.message);
+  }
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────
@@ -385,6 +403,7 @@ async function sendHeartbeat() {
       lastSeen: new Date().toISOString(),
       host: os.hostname(),
       version: AGENT_VERSION,
+      subnet: SUBNET_PREFIX ? `${SUBNET_PREFIX}.0/24` : null,
     }, { merge: true });
   } catch (err) {
     console.error('[agent] Heartbeat error:', err.message);

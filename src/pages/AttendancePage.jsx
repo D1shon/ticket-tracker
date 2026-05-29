@@ -312,7 +312,107 @@ const AttendancePage = () => {
         </div>
       )}
 
+      {/* ── Remote Diagnostics Panel ── (только для chef) */}
+      {isChef && agentStatus?.lastScanAt && (
+        <div style={{
+          marginBottom: 16,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 20, overflow: 'hidden',
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '12px 18px', borderBottom: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Activity size={14} color="var(--accent-purple)" />
+              <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Диагностика · Последнее сканирование
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {agentStatus.version && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: 6 }}>
+                  v{agentStatus.version}
+                </span>
+              )}
+              {agentStatus.subnet && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  {agentStatus.subnet}
+                </span>
+              )}
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                {agentStatus.lastScanAt
+                  ? format(new Date(agentStatus.lastScanAt), 'HH:mm:ss')
+                  : '—'
+                }
+              </span>
+              <span style={{
+                fontSize: 10, fontWeight: 700,
+                color: agentStatus.lastScanDevicesTotal > 0 ? '#22c55e' : '#f59e0b',
+                background: agentStatus.lastScanDevicesTotal > 0 ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                padding: '2px 8px', borderRadius: 6,
+              }}>
+                {agentStatus.lastScanDevicesTotal ?? 0} устройств в сети
+              </span>
+            </div>
+          </div>
+
+          {/* Per-employee match status */}
+          {agentStatus.lastScanEmployees?.length > 0 && (
+            <div style={{ padding: '10px 18px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {agentStatus.lastScanEmployees.map((emp, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 10px', borderRadius: 10,
+                  background: emp.found ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)',
+                  border: `1px solid ${emp.found ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.15)'}`,
+                }}>
+                  <div style={{
+                    width: 7, height: 7, borderRadius: '50%',
+                    background: emp.found ? '#22c55e' : '#ef4444',
+                    boxShadow: emp.found ? '0 0 6px #22c55e' : 'none',
+                  }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: emp.found ? '#22c55e' : '#ef4444' }}>
+                    {emp.name}
+                  </span>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    {emp.mac}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Raw MACs found in network */}
+          {agentStatus.lastScanMacs?.length > 0 && (
+            <details style={{ padding: '0 18px 10px' }}>
+              <summary style={{ fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 700, userSelect: 'none', marginBottom: 6 }}>
+                Все MAC-адреса в сети ({agentStatus.lastScanMacs.length})
+              </summary>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 100, overflowY: 'auto' }}>
+                {agentStatus.lastScanMacs.map((mac, i) => {
+                  const isEmployeeMac = employees.some(e => (e.macAddress || '').toUpperCase() === mac);
+                  return (
+                    <span key={i} style={{
+                      fontSize: 9, fontFamily: 'monospace', fontWeight: 600,
+                      padding: '2px 6px', borderRadius: 4,
+                      background: isEmployeeMac ? 'rgba(123,61,255,0.15)' : 'var(--bg-hover)',
+                      color: isEmployeeMac ? 'var(--accent-purple)' : 'var(--text-muted)',
+                      border: isEmployeeMac ? '1px solid rgba(123,61,255,0.3)' : '1px solid var(--border)',
+                    }}>
+                      {mac}
+                    </span>
+                  );
+                })}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+
       {/* ── Employee list + Add button ── */}
+
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 24, overflow: 'hidden' }}>
         {/* List header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
