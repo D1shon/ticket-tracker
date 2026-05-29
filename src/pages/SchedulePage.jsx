@@ -51,7 +51,7 @@ const MANAGER_CLUB_MAP = {
 
 const HOLIDAYS_2026 = [
   '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08',
-  '2026-02-23', '2026-03-08', '2026-03-21', '2026-03-22', '2026-03-23', '2026-05-01', '2026-05-07', '2026-05-09',
+  '2026-02-23', '2026-03-08', '2026-03-21', '2026-03-22', '2026-03-23', '2026-05-07', '2026-05-09',
   '2026-05-11', // Выходной день (добавлен вручную)
   '2026-07-06', '2026-08-30', '2026-10-25', '2026-12-16', '2026-12-17'
 ];
@@ -328,6 +328,21 @@ const SchedulePage = () => {
   const [savingIds, setSavingIds] = useState(new Set());
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [stickyNames, setStickyNames] = useState(true);
+  // financialEdits: tracks in-progress edits for salary/razvozka/advance/correction
+  // key: `${empId}-${field}`, value: current string being edited
+  const [financialEdits, setFinancialEdits] = useState({});
+  // pendingAdvanceConfirm: { empId, value, rect } — shows inline confirm popover
+  const [pendingAdvanceConfirm, setPendingAdvanceConfirm] = useState(null);
+  const advanceCellRefs = useRef({});
+
+  const getFinEdit = (empId, field, fallback) => {
+    const k = `${empId}-${field}`;
+    return k in financialEdits ? financialEdits[k] : (fallback ?? '');
+  };
+  const setFinEdit = (empId, field, val) =>
+    setFinancialEdits(prev => ({ ...prev, [`${empId}-${field}`]: val }));
+  const clearFinEdit = (empId, field) =>
+    setFinancialEdits(prev => { const n = { ...prev }; delete n[`${empId}-${field}`]; return n; });
 
   const tableContainerRef = useRef(null);
   const [isDraggingTable, setIsDraggingTable] = useState(false);
@@ -446,7 +461,7 @@ const SchedulePage = () => {
     const endMin   = toMin(parts[1]);
 
     const EARLY_START = 6 * 60 + 30;  // 6:30
-    const LATE_END    = 21 * 60 + 30; // 21:30
+    const LATE_END    = 22 * 60 + 30; // 22:30
 
     return (startMin <= EARLY_START ? 1500 : 0) + (endMin >= LATE_END ? 1500 : 0);
   };
@@ -902,10 +917,11 @@ const SchedulePage = () => {
                           type="text"
                           disabled={!canViewFull}
                           className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-blue-400 outline-none"
-                          defaultValue={stats.salaryOverride ?? ''}
+                          value={getFinEdit(emp.id, 'salary', stats.salaryOverride ?? '')}
                           placeholder={String(stats.calculatedSalary || '')}
-                          key={`sal-${emp.id}-${stats.salaryOverride}`}
-                          onBlur={e => updateSalaryOverride(monthKey, emp.id, e.target.value)}
+                          onChange={e => setFinEdit(emp.id, 'salary', e.target.value)}
+                          onFocus={() => setFinEdit(emp.id, 'salary', stats.salaryOverride ?? '')}
+                          onBlur={e => { updateSalaryOverride(monthKey, emp.id, e.target.value); clearFinEdit(emp.id, 'salary'); }}
                           onKeyDown={e => { if (e.key === 'Enter') { updateSalaryOverride(monthKey, emp.id, e.target.value); e.target.blur(); } }}
                         />
                       </td>
@@ -916,16 +932,57 @@ const SchedulePage = () => {
                           type="text"
                           disabled={!canViewFull}
                           className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-emerald-400 outline-none"
-                          defaultValue={stats.razvozkaOverride ?? ''}
+                          value={getFinEdit(emp.id, 'razvozka', stats.razvozkaOverride ?? '')}
                           placeholder={String(stats.calculatedRazvozka || '')}
-                          key={`raz-${emp.id}-${stats.razvozkaOverride}`}
-                          onBlur={e => updateRazvozkaOverride(monthKey, emp.id, e.target.value)}
+                          onChange={e => setFinEdit(emp.id, 'razvozka', e.target.value)}
+                          onFocus={() => setFinEdit(emp.id, 'razvozka', stats.razvozkaOverride ?? '')}
+                          onBlur={e => { updateRazvozkaOverride(monthKey, emp.id, e.target.value); clearFinEdit(emp.id, 'razvozka'); }}
                           onKeyDown={e => { if (e.key === 'Enter') { updateRazvozkaOverride(monthKey, emp.id, e.target.value); e.target.blur(); } }}
                         />
                       </td>
                     )}
-                    {canViewFull && visibleCols.advance && <td className="p-0 bg-orange-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none" defaultValue={stats.advanceRaw ?? ''} placeholder="" key={`adv-${emp.id}-${stats.advanceRaw}`} onBlur={e => updateAdvance(monthKey, emp.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { updateAdvance(monthKey, emp.id, e.target.value); e.target.blur(); } }} /></td>}
-                    {canViewFull && visibleCols.correction && <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]"><input type="text" disabled={!canViewFull} className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none" defaultValue={stats.correctionRaw ?? ''} placeholder="" key={`cor-${emp.id}-${stats.correctionRaw}`} onBlur={e => updateCorrection(monthKey, emp.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { updateCorrection(monthKey, emp.id, e.target.value); e.target.blur(); } }} /></td>}
+                    {canViewFull && visibleCols.advance && (
+                      <td
+                        ref={el => { advanceCellRefs.current[emp.id] = el; }}
+                        className="p-0 bg-orange-500/5 border-r border-[var(--border)] relative"
+                      >
+                        <input
+                          type="text"
+                          disabled={!canViewFull}
+                          className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-orange-400 outline-none"
+                          value={getFinEdit(emp.id, 'advance', stats.advanceRaw ?? '')}
+                          onChange={e => setFinEdit(emp.id, 'advance', e.target.value)}
+                          onFocus={() => setFinEdit(emp.id, 'advance', stats.advanceRaw ?? '')}
+                          onBlur={e => {
+                            const raw = e.target.value.trim();
+                            const num = parseFloat(raw.replace(/\s/g, '').replace(',', '.'));
+                            if (raw !== '' && !isNaN(num) && num > 0 && num < 500) {
+                              // Show inline popover instead of window.confirm
+                              const rect = advanceCellRefs.current[emp.id]?.getBoundingClientRect();
+                              setPendingAdvanceConfirm({ empId: emp.id, value: raw, num, rect });
+                              return; // don't save yet
+                            }
+                            updateAdvance(monthKey, emp.id, raw);
+                            clearFinEdit(emp.id, 'advance');
+                          }}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.target.blur(); } }}
+                        />
+                      </td>
+                    )}
+                    {canViewFull && visibleCols.correction && (
+                      <td className="p-0 bg-purple-500/5 border-r border-[var(--border)]">
+                        <input
+                          type="text"
+                          disabled={!canViewFull}
+                          className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-[var(--accent-purple)] outline-none"
+                          value={getFinEdit(emp.id, 'correction', stats.correctionRaw ?? '')}
+                          onChange={e => setFinEdit(emp.id, 'correction', e.target.value)}
+                          onFocus={() => setFinEdit(emp.id, 'correction', stats.correctionRaw ?? '')}
+                          onBlur={e => { updateCorrection(monthKey, emp.id, e.target.value.trim()); clearFinEdit(emp.id, 'correction'); }}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.target.blur(); } }}
+                        />
+                      </td>
+                    )}
                     {canViewFull && visibleCols.toPay && <td style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center text-xs md:text-sm text-[var(--accent-purple)] font-black min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">{stats.toPay.toLocaleString()}</td>}
                   </tr>
                 );
@@ -982,15 +1039,15 @@ const SchedulePage = () => {
                     </td>
                   );
                 })}
-                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
-                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
+                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
+                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 44, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                    <span>{regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
-                    <span className="hidden md:inline" style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {regularClubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}₸ развозка</span>
+                    <span>{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
+                    <span className="hidden md:inline" style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}₸ развозка</span>
                   </div>
                 </td>}
               </tr>
@@ -1036,7 +1093,7 @@ const SchedulePage = () => {
                   })}
                   {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
-                  {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{razvozkaTotal.toLocaleString()} ₸</td>}
+                  {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()} ₸</td>}
                   {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.toPay && (
@@ -1052,7 +1109,7 @@ const SchedulePage = () => {
                       }} 
                       className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]"
                     >
-                      {razvozkaTotal.toLocaleString()} ₸
+                      {clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()} ₸
                     </td>
                   )}
                 </tr>
@@ -1065,12 +1122,12 @@ const SchedulePage = () => {
       {canViewFull && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
           {[ 
-            { l: 'Всего ч',  v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
-            { l: 'Зарплата', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary,     0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
-            { l: 'Развозка', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).razvozka,   0).toLocaleString() + ' ₸', c: 'text-emerald-400' },
-            { l: 'Аванс',    v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance,    0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
-            { l: 'ФИКС',     v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
-            { l: 'К выдаче', v: regularClubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay,      0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
+            { l: 'Всего ч',  v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
+            { l: 'Зарплата', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary,     0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
+            { l: 'Развозка', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).razvozka,   0).toLocaleString() + ' ₸', c: 'text-emerald-400' },
+            { l: 'Аванс',    v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance,    0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
+            { l: 'ФИКС',     v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
+            { l: 'К выдаче', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay,      0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
           ].map((s, i) => (
             <div key={i} className="bg-[var(--bg-card)] p-4 md:p-6 rounded-3xl border border-[var(--border)] shadow-xl">
               <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">{s.l}</p>
@@ -1095,12 +1152,12 @@ const SchedulePage = () => {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-1">Развозка за месяц</p>
                 <p className="text-[11px] text-[var(--text-muted)] font-semibold leading-relaxed">
-                  1 500 ₸ за смену (3 000 ₸ за смену 6:30-22:30) на каждого сотрудника (кроме выходных и праздников)
+                  1 500 ₸ за смену с началом в 6:30 или окончанием в 22:30 (3 000 ₸ за смену 6:30–22:30)
                 </p>
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-black text-[var(--accent-purple)] tracking-tight flex-shrink-0">
-              {razvozkaTotal.toLocaleString()} ₸
+              {clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()} ₸
             </p>
           </div>
         );
@@ -1158,6 +1215,79 @@ const SchedulePage = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Inline advance confirmation popover ── */}
+      {pendingAdvanceConfirm && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: (pendingAdvanceConfirm.rect?.bottom ?? 0) + 6,
+            left: (pendingAdvanceConfirm.rect?.left ?? 0) + (pendingAdvanceConfirm.rect?.width ?? 0) / 2,
+            transform: 'translateX(-50%)',
+            zIndex: 99999,
+          }}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1.5px solid #f97316',
+            borderRadius: 14,
+            padding: '12px 16px',
+            boxShadow: '0 8px 32px rgba(249,115,22,0.25)',
+            minWidth: 200,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            animation: 'fadeIn .15s ease',
+          }}>
+            {/* Arrow up */}
+            <div style={{
+              position: 'absolute', top: -7, left: '50%', transform: 'translateX(-50%)',
+              width: 12, height: 12, background: 'var(--bg-card)',
+              border: '1.5px solid #f97316', borderBottom: 'none', borderRight: 'none',
+              transform: 'translateX(-50%) rotate(45deg)',
+            }} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.4 }}>
+              ⚠️ Аванс <span style={{ color: '#f97316', fontWeight: 900 }}>{pendingAdvanceConfirm.num} ₸</span> — похоже на ошибку
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onMouseDown={e => {
+                  e.stopPropagation();
+                  updateAdvance(monthKey, pendingAdvanceConfirm.empId, pendingAdvanceConfirm.value);
+                  clearFinEdit(pendingAdvanceConfirm.empId, 'advance');
+                  setPendingAdvanceConfirm(null);
+                }}
+                style={{
+                  flex: 1, padding: '8px 0', borderRadius: 9, border: 'none',
+                  background: '#f97316', color: '#fff',
+                  fontSize: 11, fontWeight: 900, cursor: 'pointer',
+                  textTransform: 'uppercase', letterSpacing: '0.05em'
+                }}
+              >
+                Подтвердить
+              </button>
+              <button
+                onMouseDown={e => {
+                  e.stopPropagation();
+                  clearFinEdit(pendingAdvanceConfirm.empId, 'advance');
+                  setPendingAdvanceConfirm(null);
+                }}
+                style={{
+                  flex: 1, padding: '8px 0', borderRadius: 9,
+                  border: '1px solid var(--border)', background: 'var(--bg-hover)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: 900, cursor: 'pointer',
+                  textTransform: 'uppercase', letterSpacing: '0.05em'
+                }}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

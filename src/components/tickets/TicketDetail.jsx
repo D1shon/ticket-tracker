@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Star, Home, Edit2, Play, Pause, Clock, CheckCircle, 
   Smile, Paperclip, Send, MessageSquare, User, Calendar, BookOpen,
-  Package, X, RefreshCw
+  Package, X, RefreshCw, Trash2
 } from 'lucide-react';
 import { useTickets } from '../../store/TicketContext';
 import { formatAuthor } from '../../utils/formatters';
@@ -202,7 +202,7 @@ const ReasonPanel = ({ action, onConfirm, onCancel }) => {
 const TicketDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { tickets, user, loading, updateTicket, addComment, uploadFile } = useTickets();
+  const { tickets, user, loading, updateTicket, addComment, uploadFile, deleteTicket } = useTickets();
 
   // Find real ticket from context (id from URL is always a string)
   const ticket = tickets?.find(t => String(t.id) === String(id));
@@ -283,8 +283,9 @@ const TicketDetail = () => {
   }, [ticket?.id, updateTicket, localStatus, localStatusChangedAt, accumulatedTime]);
 
 
-  const [pendingAction, setPendingAction] = useState(null);
-  const [statusReport, setStatusReport]   = useState(null);
+  const [pendingAction,   setPendingAction]   = useState(null);
+  const [statusReport,    setStatusReport]    = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [messages,     setMessages]       = useState(ticket?.comments || []);
   const [msgInput,     setMsgInput]       = useState('');
   const [starred,      setStarred]        = useState(false);
@@ -436,6 +437,23 @@ const TicketDetail = () => {
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: sColor, background: `${sColor}18`, border: `1px solid ${sColor}40`, padding: '3px 10px', borderRadius: 6 }}>● {sLabel}</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', padding: '3px 10px', borderRadius: 6 }}>{ticket.priority}</span>
+          <button
+            id="btn-delete-ticket"
+            onClick={() => setShowDeleteModal(true)}
+            title="Удалить заявку"
+            style={{
+              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: 8, padding: '4px 10px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              color: '#ef4444', fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; e.currentTarget.style.borderColor = '#ef4444'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'; }}
+          >
+            <Trash2 size={13} />
+            УДАЛИТЬ
+          </button>
         </div>
       </div>
 
@@ -651,13 +669,79 @@ const TicketDetail = () => {
         </div>
       </div>
 
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div
+          onClick={() => setShowDeleteModal(false)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.75)', zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fadeIn 0.15s ease',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)', border: '1px solid rgba(239,68,68,0.4)',
+              borderRadius: 20, padding: 32, maxWidth: 400, width: '90%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              animation: 'slideUp 0.2s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Trash2 size={20} color="#ef4444" />
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Удалить заявку?</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Это действие необратимо</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24, padding: '12px 16px', background: 'var(--bg-hover)', borderRadius: 12, border: '1px solid var(--border)' }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{ticket.title}</strong>
+              <br />
+              <span style={{ color: '#4f8ef7', fontSize: 11, fontWeight: 700 }}>{ticket.club}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 12, background: 'var(--bg-hover)',
+                  border: '1px solid var(--border)', color: 'var(--text-primary)',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.04em',
+                }}
+              >
+                ОТМЕНА
+              </button>
+              <button
+                id="btn-confirm-delete-ticket"
+                onClick={async () => {
+                  setShowDeleteModal(false);
+                  await deleteTicket(ticket.id);
+                  navigate('/tickets');
+                }}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 12,
+                  background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+                  border: 'none', color: '#fff',
+                  fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em',
+                  boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
+                }}
+              >
+                ДА, УДАЛИТЬ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Image Preview Modal */}
       {previewImage && (
         <div 
           onClick={() => setPreviewImage(null)} 
           style={{ 
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-            background: 'rgba(0,0,0,0.85)', zIndex: 99999, 
+            background: 'rgba(0,0,0,0.85)', zIndex: 99998, 
             display: 'flex', alignItems: 'center', justifyContent: 'center', 
             padding: 40, cursor: 'zoom-out'
           }}

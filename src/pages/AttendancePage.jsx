@@ -1,377 +1,536 @@
-import React, { useState, useEffect } from 'react';
-import { QrCode, Smartphone, MapPin, ShieldCheck, History, X, RefreshCcw, CheckCircle2, Globe, Wifi } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Wifi, WifiOff, Plus, Trash2, Edit3, Check, X,
+  Clock, Users, Shield, Activity, ChevronDown, Settings2
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-
-import { doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
+import {
+  collection, onSnapshot, setDoc, deleteDoc, doc, query, where
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useTickets } from '../store/TicketContext';
 
-const STAFF_LIST = ['Анастасия', 'Сания', 'Диас', 'Салтанат', 'Айнур', 'Азиз', 'Владимир'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'ТЕСТ'];
+
+// Format MAC nicely: aabbccddeeff -> AA:BB:CC:DD:EE:FF
+const formatMac = (mac) => {
+  if (!mac) return '';
+  return mac.replace(/[^a-fA-F0-9]/g, '').toUpperCase().match(/.{1,2}/g)?.join(':') || mac;
+};
+
+
 
 const LiveClock = () => {
   const [time, setTime] = useState(new Date());
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
+    const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
   }, []);
-
   return (
-    <div style={{ padding: '12px 24px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, textAlign: 'right' }}>
-      <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--accent-purple)', fontVariantNumeric: 'tabular-nums' }}>
+    <div style={{ textAlign: 'right' }}>
+      <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--accent-purple)', fontVariantNumeric: 'tabular-nums' }}>
         {format(time, 'HH:mm:ss')}
       </div>
-      <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
         {format(time, 'dd MMMM yyyy', { locale: ru })}
       </div>
     </div>
   );
 };
 
+const StatusDot = ({ online }) => (
+  <div style={{
+    width: 10, height: 10, borderRadius: '50%',
+    background: online ? '#22c55e' : 'var(--text-muted)',
+    boxShadow: online ? '0 0 8px #22c55e' : 'none',
+    animation: online ? 'pulse 2s infinite' : 'none',
+    flexShrink: 0,
+  }} />
+);
+
 const AttendancePage = () => {
-  const [admin1, setAdmin1] = useState({ name: '', status: 'offline', time: '' });
-  const [admin2, setAdmin2] = useState({ name: '', status: 'offline', time: '' });
-  
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [activeSlot, setActiveSlot] = useState(null);
-  const [qrProgress, setQrProgress] = useState(100);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const { user } = useTickets();
+  const isChef = user?.role === 'chef';
+  const userClub = user?.club?.toUpperCase();
 
-  // Real-time Firebase Sync for QR Scan
+  const [selectedClub, setSelectedClub] = useState(userClub || CLUBS[0]);
+  const [employees, setEmployees] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [agentStatus, setAgentStatus] = useState(null);
+  const [clubConfig, setClubConfig] = useState({}); // { routerIp: '192.168.1.1' }
+
+  // Modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingEmp, setEditingEmp] = useState(null);
+  const [formName, setFormName] = useState('');
+  const [formMac, setFormMac] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editingIp, setEditingIp] = useState(false);
+  const [formIp, setFormIp] = useState('');
+
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // ── Load employees for selected club ──────────────────────────────
   useEffect(() => {
-    let unsubscribe = () => {};
-
-    if (showQrModal && activeSlot) {
-      // Listen for mobile verification
-      const adminName = activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name;
-      if (adminName) {
-        unsubscribe = onSnapshot(doc(db, 'attendance_sync', adminName), (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            if (data.status === 'verified') {
-              setIsVerifying(true);
-              setTimeout(async () => {
-                confirmCheckIn();
-                setShowQrModal(false);
-                setIsVerifying(false);
-                // Cleanup sync doc
-                await deleteDoc(doc(db, 'attendance_sync', adminName));
-              }, 1500);
-            }
-          }
-        });
-      }
-    }
-
-    return () => unsubscribe();
-  }, [showQrModal, activeSlot, admin1.name, admin2.name]);
-
-  const [history, setHistory] = useState([
-    { id: 1, user: 'Диас', action: 'QR-SCAN', time: '06:28:44', club: 'VILLA', slot: 'Админ 1', geo: 'Verified' },
-    { id: 2, user: 'Анастасия', action: 'QR-SCAN', time: '06:29:12', club: 'VILLA', slot: 'Админ 2', geo: 'Verified' },
-  ]);
-
-  // QR Timer logic
-  useEffect(() => {
-    if (!showQrModal || isVerifying) return;
-    
-    const interval = setInterval(() => {
-      setQrProgress(prev => {
-        if (prev <= 0) return 100;
-        return prev - 1;
-      });
-    }, 200);
-
-    return () => clearInterval(interval);
-  }, [showQrModal, isVerifying]);
-
-  const startQrCheckIn = async (slotNum, data) => {
-    if (!data.name) return;
-    setActiveSlot({ slot: slotNum, name: data.name });
-    setShowQrModal(true);
-    setIsVerifying(false);
-    setQrProgress(100);
-
-    // Initialize sync state in Firebase
-    await setDoc(doc(db, 'attendance_sync', data.name), {
-      status: 'waiting',
-      timestamp: Date.now()
+    if (!selectedClub) return;
+    const q = query(collection(db, 'wifi_employees'), where('clubId', '==', selectedClub));
+    return onSnapshot(q, (snap) => {
+      setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     });
+  }, [selectedClub]);
+
+  // ── Load club config (router IP) ──────────────────────────────────
+  useEffect(() => {
+    if (!selectedClub) return;
+    return onSnapshot(doc(db, 'wifi_clubs', selectedClub), (snap) => {
+      if (snap.exists()) setClubConfig(snap.data());
+      else setClubConfig({});
+    });
+  }, [selectedClub]);
+
+  // ── Load today's sessions ─────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedClub) return;
+    const q = query(collection(db, 'wifi_sessions'), where('clubId', '==', selectedClub), where('date', '==', today));
+    return onSnapshot(q, (snap) => {
+      setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  }, [selectedClub, today]);
+
+  // ── Load agent heartbeat ──────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedClub) return;
+    return onSnapshot(doc(db, 'wifi_agents', selectedClub), (snap) => {
+      if (snap.exists()) setAgentStatus(snap.data());
+      else setAgentStatus(null);
+    });
+  }, [selectedClub]);
+
+  // ── Save router IP ────────────────────────────────────────────────
+  const saveRouterIp = async () => {
+    if (!formIp.trim()) return;
+    await setDoc(doc(db, 'wifi_clubs', selectedClub), {
+      clubId: selectedClub,
+      routerIp: formIp.trim(),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    setEditingIp(false);
   };
 
-  const simulateMobileScan = () => {
-    setIsVerifying(true);
-    setTimeout(() => {
-      confirmCheckIn();
-    }, 2500);
+  // Merge employees with their session data
+  const enrichedEmployees = useMemo(() => {
+    return employees.map(emp => {
+      const session = sessions.find(s => s.macAddress === emp.macAddress);
+      return { ...emp, session };
+    });
+  }, [employees, sessions]);
+
+  const onlineCount = enrichedEmployees.filter(e => e.session?.isOnline && agentAlive).length;
+
+  // Agent last seen: was it within last 3 minutes?
+  const agentAlive = agentStatus?.lastSeen
+    ? (Date.now() - new Date(agentStatus.lastSeen.seconds ? agentStatus.lastSeen.seconds * 1000 : agentStatus.lastSeen).getTime()) < 3 * 60 * 1000
+    : false;
+
+  // ── Save employee ─────────────────────────────────────────────────
+  const handleSave = async () => {
+    if (!formName.trim() || !formMac.trim()) return;
+    setSaving(true);
+    const mac = formatMac(formMac.trim());
+    const id = editingEmp ? editingEmp.id : `${selectedClub}_${mac.replace(/:/g, '')}`;
+    try {
+      await setDoc(doc(db, 'wifi_employees', id), {
+        clubId: selectedClub,
+        name: formName.trim(),
+        macAddress: mac,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      setShowAddModal(false);
+      setEditingEmp(null);
+      setFormName('');
+      setFormMac('');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const confirmCheckIn = () => {
-    if (!activeSlot) return;
-    const { slot, name } = activeSlot;
-    const setter = slot === 1 ? setAdmin1 : setAdmin2;
-    
-    const now = new Date();
-    const timeStr = format(now, 'HH:mm:ss');
-    setter({ name, status: 'online', time: timeStr });
-    
-    const newEntry = {
-      id: Date.now(),
-      user: name,
-      action: 'QR-SCAN',
-      time: timeStr,
-      club: 'VILLA',
-      slot: slot === 1 ? 'Админ 1' : 'Админ 2',
-      geo: 'Verified'
-    };
-    setHistory(prev => [newEntry, ...prev]);
-    setShowQrModal(false);
-    setIsVerifying(false);
+  const handleEdit = (emp) => {
+    setEditingEmp(emp);
+    setFormName(emp.name);
+    setFormMac(emp.macAddress);
+    setShowAddModal(true);
   };
 
-  const AdminSlot = ({ slotNum, data, setter }) => {
-    const isOnline = data.status === 'online';
+  const handleDelete = async (emp) => {
+    if (!window.confirm(`Удалить ${emp.name}?`)) return;
+    try {
+      console.log('[delete] Удаляю:', emp.id, emp);
+      await deleteDoc(doc(db, 'wifi_employees', emp.id));
+      console.log('[delete] Успешно удалён:', emp.id);
+    } catch (err) {
+      console.error('[delete] Ошибка:', err);
+      alert(`Ошибка удаления: ${err.message}`);
+    }
+  };
 
-    return (
-      <div style={{ 
-        flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 32,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'all 0.3s',
-        boxShadow: isOnline ? '0 20px 40px rgba(124, 58, 237, 0.05)' : 'none',
-        border: isOnline ? '1px solid rgba(124, 58, 237, 0.3)' : '1px solid var(--border)'
-      }}>
-        <div style={{ 
-          fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', 
-          letterSpacing: '0.15em', marginBottom: 24, background: 'var(--bg-hover)', padding: '4px 12px', borderRadius: 8
-        }}>
-          Слот: Администратор {slotNum}
-        </div>
-
-        {!isOnline && (
-          <>
-            <div style={{ width: '100%', marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Выбор сотрудника</label>
-              <select 
-                className="input-app" 
-                style={{ width: '100%', borderRadius: 16 }}
-                value={data.name}
-                onChange={(e) => setter(prev => ({ ...prev, name: e.target.value }))}
-              >
-                <option value="">— Нажмите для выбора —</option>
-                {STAFF_LIST.map(s => (
-                  <option key={s} value={s} disabled={(slotNum === 1 ? admin2.name : admin1.name) === s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <button 
-              onClick={() => startQrCheckIn(slotNum, data)}
-              disabled={!data.name}
-              style={{ 
-                width: '100%', padding: '18px', borderRadius: 20, 
-                background: data.name ? 'var(--accent-purple)' : 'var(--bg-hover)', 
-                color: data.name ? '#fff' : 'var(--text-muted)',
-                fontSize: 13, fontWeight: 900, border: 'none', cursor: data.name ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                boxShadow: data.name ? '0 8px 20px rgba(139, 92, 246, 0.3)' : 'none',
-                transition: 'all 0.2s'
-              }}
-            >
-              <QrCode size={18} />
-              АВТОРИЗАЦИЯ ПО QR
-            </button>
-          </>
-        )}
-
-        {isOnline && (
-          <div style={{ textAlign: 'center', animation: 'fadeIn 0.4s ease' }}>
-            <div style={{ 
-              width: 80, height: 80, borderRadius: 24, background: 'rgba(124, 58, 237, 0.1)', 
-              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px',
-              color: 'var(--accent-purple)', border: '1px solid rgba(124, 58, 237, 0.2)'
-            }}>
-              <Smartphone size={40} />
-            </div>
-            <h3 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 4 }}>{data.name}</h3>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              ВЕРИФИЦИРОВАН · {data.time}
-            </div>
-            <button 
-              onClick={() => setter({ name: '', status: 'offline', time: '' })}
-              style={{ marginTop: 24, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 10, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase', textDecoration: 'underline' }}
-            >
-              Завершить смену
-            </button>
-          </div>
-        )}
-      </div>
-    );
+  const handleCloseModal = () => {
+    setShowAddModal(false);
+    setEditingEmp(null);
+    setFormName('');
+    setFormMac('');
   };
 
   return (
-    <div className="animate-fade" style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div className="flex items-center justify-between mb-8">
+    <div className="animate-fade" style={{ maxWidth: 1100, margin: '0 auto' }}>
+
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            HJTRACK SECURITY: QR-TERMINAL
+          <h1 style={{ fontSize: 22, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', marginBottom: 4 }}>
+            WiFi Чекин
           </h1>
-          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            Верификация присутствия через персональное устройство
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            Авто-фиксация прихода по MAC-адресу
           </p>
         </div>
         <LiveClock />
       </div>
 
-      <div className="attendance-main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div className="admin-slots-container" style={{ display: 'flex', gap: 24 }}>
-            <AdminSlot slotNum={1} data={admin1} setter={setAdmin1} />
-            <AdminSlot slotNum={2} data={admin2} setter={setAdmin2} />
+      {/* ── Router IP config ── */}
+      <div style={{
+        marginBottom: 20, padding: '16px 20px',
+        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20,
+        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+      }}>
+        <Wifi size={18} color="var(--accent-purple)" style={{ flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+            IP-адрес роутера клуба {selectedClub}
           </div>
-
-          {/* Security Features Info */}
-          <div className="security-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
-               <div style={{ width: 48, height: 48, borderRadius: 16, background: 'rgba(34, 197, 94, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e' }}>
-                 <MapPin size={24} />
-               </div>
-               <div>
-                 <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>GPS-Геолокация</div>
-                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Проверка координат в радиусе 50м от клуба</div>
-               </div>
+          {editingIp ? (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+              <input
+                value={formIp}
+                onChange={e => setFormIp(e.target.value)}
+                placeholder="192.168.1.1"
+                autoFocus
+                style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid var(--accent-purple)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, outline: 'none', fontFamily: 'monospace', width: 160 }}
+                onKeyDown={e => { if (e.key === 'Enter') saveRouterIp(); if (e.key === 'Escape') setEditingIp(false); }}
+              />
+              <button onClick={saveRouterIp} style={{ padding: '7px 14px', borderRadius: 10, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontWeight: 900, fontSize: 11, cursor: 'pointer' }}>Сохранить</button>
+              <button onClick={() => setEditingIp(false)} style={{ padding: '7px 10px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer' }}>Отмена</button>
             </div>
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
-               <div style={{ width: 48, height: 48, borderRadius: 16, background: 'rgba(124, 58, 237, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-purple)' }}>
-                 <ShieldCheck size={24} />
-               </div>
-               <div>
-                 <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>Dynamic QR Code</div>
-                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Обновление каждые 20 секунд</div>
-               </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 900, color: clubConfig.routerIp ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: 'monospace' }}>
+                {clubConfig.routerIp || 'Не задан'}
+              </span>
+              <button
+                onClick={() => { setFormIp(clubConfig.routerIp || ''); setEditingIp(true); }}
+                style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-muted)', fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <Edit3 size={11} /> Изменить
+              </button>
             </div>
-          </div>
+          )}
         </div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, maxWidth: 260, lineHeight: 1.5 }}>
+          Агент автоматически определит свой клуб по IP шлюза сети. Обычно это адрес роутера: <code style={{ background: 'var(--bg-hover)', padding: '1px 5px', borderRadius: 4 }}>192.168.x.1</code>
+        </div>
+      </div>
+      {isChef && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          {CLUBS.map(club => (
+            <button
+              key={club}
+              onClick={() => setSelectedClub(club)}
+              style={{
+                padding: '8px 18px', borderRadius: 12, border: 'none', cursor: 'pointer',
+                fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em',
+                background: selectedClub === club ? 'var(--accent-purple)' : 'var(--bg-card)',
+                color: selectedClub === club ? '#fff' : 'var(--text-secondary)',
+                border: `1px solid ${selectedClub === club ? 'var(--accent-purple)' : 'var(--border)'}`,
+                transition: 'all 0.2s',
+              }}
+            >
+              {club}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {/* History Sidebar */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-            <History size={16} color="var(--text-muted)" />
-            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Журнал верификации</span>
+      {/* ── Stats row ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Сотрудников', value: employees.length, icon: Users, color: '#7B3DFF' },
+          { label: 'Онлайн сейчас', value: onlineCount, icon: Wifi, color: '#22c55e' },
+          { label: 'Клуб', value: selectedClub, icon: Shield, color: '#f59e0b' },
+        ].map((s, i) => (
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: `${s.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <s.icon size={18} color={s.color} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-primary)' }}>{s.value}</div>
+            </div>
           </div>
+        ))}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {history.map((h) => (
-              <div key={h.id} style={{ 
-                padding: '16px', background: 'var(--bg-hover)', borderRadius: 20, border: '1px solid var(--border)',
-                display: 'flex', alignItems: 'center', gap: 12
-              }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                     <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{h.user}</span>
-                     <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--accent-purple)' }}>{h.time}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                     <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>{h.slot}</span>
-                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(34,197,94,0.1)', padding: '2px 6px', borderRadius: 6 }}>
-                        <Globe size={10} color="#22c55e" />
-                        <span style={{ fontSize: 9, fontWeight: 900, color: '#22c55e' }}>GPS OK</span>
-                     </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+        {/* Agent status */}
+        <div style={{
+          background: 'var(--bg-card)', border: `1px solid ${agentAlive ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
+          borderRadius: 20, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14
+        }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: agentAlive ? 'rgba(34,197,94,0.1)' : 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Activity size={18} color={agentAlive ? '#22c55e' : 'var(--text-muted)'} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Агент</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: agentAlive ? '#22c55e' : 'var(--text-muted)' }}>
+              {agentAlive ? 'АКТИВЕН' : 'OFFLINE'}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* QR Code Modal Overlay */}
-      {showQrModal && (
-        <div style={{ 
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', 
-          zIndex: 1000, animation: 'fadeIn 0.3s ease'
+      {/* ── Agent offline warning ── */}
+      {!agentAlive && employees.length > 0 && (
+        <div style={{
+          marginBottom: 16, padding: '12px 18px',
+          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+          borderRadius: 16, display: 'flex', alignItems: 'center', gap: 10,
         }}>
-          <div style={{ 
-            position: 'fixed', top: '180px', left: '50%', transform: 'translateX(-50%)',
-            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 48, 
-            padding: '40px', width: '100%', maxWidth: 420, textAlign: 'center',
-            boxShadow: '0 40px 100px rgba(0,0,0,0.4)', animation: 'modalSmoothEntry 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
-          }}>
-            <button onClick={() => setShowQrModal(false)} style={{ position: 'absolute', top: 24, right: 24, background: 'var(--bg-hover)', border: 'none', color: 'var(--text-muted)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <X size={18} />
-            </button>
+          <WifiOff size={16} color="#ef4444" style={{ flexShrink: 0 }} />
+          <div>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#ef4444' }}>Агент не активен</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+              Запустите wifi-agent.mjs на компьютере в клубе, чтобы отслеживать присутствие
+            </span>
+          </div>
+        </div>
+      )}
 
-            <div style={{ marginBottom: 32 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 8, letterSpacing: '-0.02em' }}>
-                {isVerifying ? 'ВЕРИФИКАЦИЯ' : 'СКАНИРУЙТЕ QR'}
+      {/* ── Employee list + Add button ── */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 24, overflow: 'hidden' }}>
+        {/* List header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            Сотрудники · {selectedClub}
+          </span>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 12, border: 'none',
+              background: 'var(--accent-purple)', color: '#fff',
+              fontWeight: 800, fontSize: 11, cursor: 'pointer',
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}
+          >
+            <Plus size={14} /> Добавить
+          </button>
+        </div>
+
+        {/* Employee rows */}
+        {enrichedEmployees.length === 0 ? (
+          <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <Wifi size={40} style={{ margin: '0 auto 12px', opacity: 0.2, display: 'block' }} />
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Нет сотрудников</div>
+            <div style={{ fontSize: 11, marginTop: 4 }}>Добавьте сотрудника с MAC-адресом его телефона</div>
+          </div>
+        ) : (
+          enrichedEmployees.map((emp, idx) => {
+            // If agent is dead → nobody can be truly online (data is stale)
+            const isOnline = emp.session?.isOnline && agentAlive;
+            const arrivedAt = emp.session?.arrivedAt;
+            const leftAt = emp.session?.leftAt;
+            const arrivedStr = arrivedAt
+              ? format(new Date(arrivedAt.seconds ? arrivedAt.seconds * 1000 : arrivedAt), 'HH:mm')
+              : null;
+            const leftStr = leftAt
+              ? format(new Date(leftAt.seconds ? leftAt.seconds * 1000 : leftAt), 'HH:mm')
+              : null;
+
+            return (
+              <div
+                key={emp.id}
+                style={{
+                  padding: '14px 20px',
+                  borderBottom: idx < enrichedEmployees.length - 1 ? '1px solid var(--border)' : 'none',
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  background: isOnline ? 'rgba(34,197,94,0.03)' : 'transparent',
+                  transition: 'background 0.2s',
+                }}
+              >
+                <StatusDot online={isOnline} />
+
+                {/* Avatar */}
+                <div style={{
+                  width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                  background: isOnline ? 'rgba(34,197,94,0.12)' : 'var(--bg-hover)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 900, fontSize: 14,
+                  color: isOnline ? '#22c55e' : 'var(--text-muted)',
+                  border: `1px solid ${isOnline ? 'rgba(34,197,94,0.2)' : 'var(--border)'}`,
+                }}>
+                  {(emp.name || '?')[0].toUpperCase()}
+                </div>
+
+                {/* Name + MAC */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>{emp.name}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    {formatMac(emp.macAddress)}
+                  </div>
+                </div>
+
+                {/* Status / time */}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  {isOnline ? (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 900, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ОНЛАЙН</div>
+                      {arrivedStr && (
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
+                          <Clock size={10} /> Пришёл в {arrivedStr}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>ОФЛАЙН</div>
+                      {arrivedStr && (
+                        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
+                          <Clock size={10} /> Пришёл в {arrivedStr}
+                        </div>
+                      )}
+                      {leftStr && (
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#f97316', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
+                          <Clock size={10} /> Ушёл в {leftStr}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => handleEdit(emp)} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-hover)', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+                    <Edit3 size={13} />
+                  </button>
+                  <button onClick={() => handleDelete(emp)} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-hover)', cursor: 'pointer', color: '#ef4444', display: 'flex' }}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ── Download agent card ── */}
+      <div style={{
+        marginTop: 20, padding: '20px 24px',
+        background: 'linear-gradient(135deg, rgba(123,61,255,0.1), rgba(123,61,255,0.03))',
+        border: '1px solid rgba(123,61,255,0.25)', borderRadius: 20,
+        display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap',
+      }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            🖥️ Агент для сканирования сети
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.8, fontWeight: 500, marginBottom: 12 }}>
+            Скачайте агент и запустите его на компьютере в клубе:<br />
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>1.</span> Скачать файл ниже<br />
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>2.</span> Установить Node.js с <strong>nodejs.org</strong><br />
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>3.</span> Открыть терминал в папке с файлом<br />
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>4.</span> Запустить: <code style={{ background: 'var(--bg-hover)', padding: '1px 6px', borderRadius: 4, fontSize: 11 }}>npm install firebase && node wifi-agent.mjs</code>
+          </div>
+          <a
+            href="/wifi-agent.mjs"
+            download="wifi-agent.mjs"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '11px 20px', borderRadius: 12,
+              background: 'var(--accent-purple)', color: '#fff',
+              fontWeight: 900, fontSize: 12, textDecoration: 'none',
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+              boxShadow: '0 4px 16px rgba(123,61,255,0.3)',
+              transition: 'opacity 0.2s',
+            }}
+            onMouseOver={e => e.currentTarget.style.opacity = '0.85'}
+            onMouseOut={e => e.currentTarget.style.opacity = '1'}
+          >
+            ⬇ Скачать wifi-agent.mjs
+          </a>
+        </div>
+      </div>
+
+
+      {/* ── Add / Edit Modal ── */}
+      {showAddModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 24, padding: 28, width: '100%', maxWidth: 420, boxShadow: '0 40px 80px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+                {editingEmp ? 'Изменить' : 'Новый сотрудник'}
               </h2>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-purple)', animation: 'pulse 1s infinite' }} />
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {activeSlot?.name} · SECURITY ACTIVE
-                </p>
+              <button onClick={handleCloseModal} style={{ background: 'var(--bg-hover)', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                  Имя сотрудника
+                </label>
+                <input
+                  value={formName}
+                  onChange={e => setFormName(e.target.value)}
+                  placeholder="Например: Диас"
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600, outline: 'none', boxSizing: 'border-box' }}
+                  autoFocus
+                />
               </div>
-            </div>
 
-            {/* Real QR Code Generator Area */}
-            <div style={{ position: 'relative', width: 240, height: 240, margin: '0 auto 32px', padding: 20, background: '#fff', borderRadius: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-               {!isVerifying ? (
-                 <>
-                   <img 
-                     src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.origin + '/scan?admin=' + (activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name))}&color=000000`}
-                     alt="QR Scan"
-                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                   />
-                   <div style={{ position: 'absolute', width: 44, height: 44, background: 'var(--accent-purple)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 8px 16px rgba(124, 58, 237, 0.4)', border: '3px solid #fff' }}>
-                      <Smartphone size={22} />
-                   </div>
-                 </>
-               ) : (
-                 <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: 60, height: 60, borderRadius: '50%', border: '3px solid var(--accent-purple)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-                    <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>GPS Checking...</div>
-                 </div>
-               )}
-            </div>
-
-            <div style={{ padding: '12px', background: 'var(--bg-hover)', borderRadius: 16, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => {
-              const url = window.location.origin + '/scan?admin=' + (activeSlot.slot === 'Админ 1' ? admin1.name : admin2.name);
-              navigator.clipboard.writeText(url);
-              alert('Ссылка скопирована! Отправьте её администратору в мессенджер.');
-            }}>
-               <RefreshCcw size={14} color="var(--text-muted)" />
-               <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>Проблемы со сканированием? Скопировать ссылку</span>
-            </div>
-
-            {!isVerifying && (
-              <div style={{ width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <RefreshCcw size={12} color="var(--accent-purple)" style={{ animation: 'spin 4s linear infinite' }} />
-                      <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Dynamic Refresh</span>
-                   </div>
-                   <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--accent-purple)' }}>{Math.ceil(qrProgress / 5)}s</span>
-                </div>
-                <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
-                   <div style={{ width: `${qrProgress}%`, height: '100%', background: 'var(--accent-purple)', transition: 'width 0.2s linear' }} />
+              <div>
+                <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                  MAC-адрес телефона / устройства
+                </label>
+                <input
+                  value={formMac}
+                  onChange={e => setFormMac(e.target.value)}
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600, outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }}
+                />
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, fontWeight: 500, lineHeight: 1.5 }}>
+                  Android: Настройки → О телефоне → MAC-адрес WiFi<br />
+                  iPhone: Настройки → Wi-Fi → (i) → отключить «Частный адрес»
                 </div>
               </div>
-            )}
 
-            {!isVerifying && (
-              <div style={{ marginTop: 24, padding: '14px', background: 'var(--bg-hover)', borderRadius: 16, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', animation: 'pulse 1s infinite' }} />
-                 <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>Waiting for mobile scan...</span>
-              </div>
-            )}
+              <button
+                onClick={handleSave}
+                disabled={saving || !formName.trim() || !formMac.trim()}
+                style={{
+                  padding: '14px', borderRadius: 14, border: 'none',
+                  background: saving || !formName.trim() || !formMac.trim() ? 'var(--bg-hover)' : 'var(--accent-purple)',
+                  color: saving || !formName.trim() || !formMac.trim() ? 'var(--text-muted)' : '#fff',
+                  fontWeight: 900, fontSize: 13, cursor: saving ? 'wait' : 'pointer',
+                  textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <Check size={16} /> {saving ? 'Сохранение...' : 'Сохранить'}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       <style>{`
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes modalSmoothEntry {
-          from { opacity: 0; transform: translateX(-50%) translateY(20px) scale(0.96); }
-          to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-        }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
     </div>
   );

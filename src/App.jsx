@@ -33,6 +33,13 @@ const NotificationCorner = () => (
 
 const ProtectedLayout = ({ children }) => {
   const { user, loading } = useTickets();
+  const [isMobile, setIsMobile] = React.useState(() => window.innerWidth <= 768);
+
+  React.useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   if (loading) {
     return (
@@ -49,18 +56,34 @@ const ProtectedLayout = ({ children }) => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex' }}>
       <Sidebar />
-      <div className="mobile-header">
-        <span className="mobile-logo-text">HJTRACK</span>
-      </div>
-      <NotificationCorner />
-      <div className="main-content-wrapper" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }}>
-        <main style={{ flex: 1, padding: '24px 28px', overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}>
+      {!isMobile && <NotificationCorner />}
+      <div
+        className="main-content-wrapper"
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          minWidth: 0,
+          // On mobile: leave room for top bar + bottom tab bar
+          paddingTop: isMobile ? 52 : 0,
+          paddingBottom: isMobile ? 64 : 0,
+        }}
+      >
+        <main style={{
+          flex: 1,
+          padding: isMobile ? '16px 12px' : '24px 28px',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          minWidth: 0,
+        }}>
           {children}
         </main>
       </div>
     </div>
   );
 };
+
 
 const AppContent = () => {
   const { user } = useTickets();

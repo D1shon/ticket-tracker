@@ -20,7 +20,7 @@ const USER_ROLES = {
   'kurbanovtimur585@gmail.com': { role: 'manager', club: '4YOU' },
   'kelessovaan@gmail.com': { role: 'manager', club: 'VILLA' },
   'azimuus@gmail.com':    { role: 'manager', club: 'NURLY ORDA' },
-  'anastasia@hj.fit':     { role: 'manager', club: 'COLIBRI' },
+  '19.anastasiya.tkachenko.88@gmail.com': { role: 'manager', club: 'COLIBRI' },
   'saniya@hj.fit':        { role: 'manager', club: '4YOU' },
   'aziz@hj.fit':          { role: 'manager', club: 'COLIBRI' },
   'saltanat@hj.fit':      { role: 'manager', club: 'NURLY ORDA' },

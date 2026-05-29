@@ -162,7 +162,106 @@ const SettingsPage = () => {
             </div>
           ))}
         </div>
+        {/* ── Команда ── */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40, marginTop: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <Shield size={22} color="var(--accent-purple)" />
+          <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+            Команда
+          </h2>
+        </div>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 32 }}>
+          Зарегистрированные пользователи и их права доступа
+        </p>
+
+        {/* Chefs */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} />
+            <span style={{ fontSize: 10, fontWeight: 900, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              Шеф · Полный доступ
+            </span>
+          </div>
+          <div style={{ background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 16, padding: '12px 16px', marginBottom: 8, fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.6 }}>
+            Видит все клубы · Все заявки · График и финансы всех · Управление командой · Архив
+          </div>
+          {[
+            { name: 'Дильшат', email: 'dilshat.r@hj.fit' },
+            { name: 'Магжан',  email: 'magzhan@hj.fit' },
+          ].map(u => (
+            <div key={u.email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(245,158,11,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: '#f59e0b', flexShrink: 0 }}>{u.name[0]}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{u.name}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{u.email}</div>
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 900, background: '#f59e0b', color: '#000', padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>ШЕФ</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Clubs with managers */}
+        {[
+          {
+            club: '4YOU', color: '#4f8ef7',
+            desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
+            members: [
+              { name: 'Сания',  email: 'saniya@hj.fit' },
+              { name: 'Тимур',  email: 'kurbanovtimur585@gmail.com' },
+              { name: 'Нурлы',  email: 'nurly@hj.fit' },
+            ]
+          },
+          {
+            club: 'COLIBRI', color: '#9b5de5',
+            desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
+            members: [
+              { name: 'Анастасия', email: '19.anastasiya.tkachenko.88@gmail.com' },
+              { name: 'Аружан',    email: 'daewure@mail.ru' },
+              { name: 'Диас',      email: 'diasbakyt3773@gmail.com' },
+            ]
+          },
+          {
+            club: 'VILLA', color: '#f59e0b',
+            desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
+            members: [
+              { name: 'Алина',    email: 'kelessovaan@gmail.com' },
+              { name: 'Салтанат', email: 'blinsalta19@gmail.com' },
+              { name: 'Диас',     email: 'diassd9806@gmail.com' },
+            ]
+          },
+          {
+            club: 'NURLY ORDA', color: '#22c55e',
+            desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
+            members: [
+              { name: 'Айнур', email: 'ainura030594@gmail.com' },
+              { name: 'Азиз',  email: 'azimuus@gmail.com' },
+            ]
+          },
+        ].map(section => (
+          <div key={section.club} style={{ marginBottom: 28 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: section.color }} />
+              <span style={{ fontSize: 10, fontWeight: 900, color: section.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                {section.club} · Менеджер
+              </span>
+            </div>
+            <div style={{ background: `${section.color}08`, border: `1px solid ${section.color}20`, borderRadius: 16, padding: '12px 16px', marginBottom: 8, fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.6 }}>
+              {section.desc}
+            </div>
+            {section.members.map(u => (
+              <div key={u.email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: `${section.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: section.color, flexShrink: 0 }}>{u.name[0]}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{u.name}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{u.email}</div>
+                </div>
+                <span style={{ fontSize: 9, fontWeight: 900, background: `${section.color}20`, color: section.color, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>МЕН.</span>
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
+    </div>
     </div>
   );
 };

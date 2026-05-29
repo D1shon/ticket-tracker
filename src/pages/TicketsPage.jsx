@@ -50,11 +50,17 @@ function useLiveTimer(sinceISO) {
 
     const tick = () => {
       const diff = Math.floor((Date.now() - new Date(sinceISO).getTime()) / 1000);
-      if (diff < 60)   return setElapsed(`${diff}с`);
-      if (diff < 3600) return setElapsed(`${Math.floor(diff / 60)}мин`);
-      const h = Math.floor(diff / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      setElapsed(m > 0 ? `${h}ч ${m}мин` : `${h}ч`);
+      if (diff < 60)     return setElapsed(`${diff}с`);
+      if (diff < 3600)   return setElapsed(`${Math.floor(diff / 60)}мин`);
+      if (diff < 86400)  {
+        const h = Math.floor(diff / 3600);
+        const m = Math.floor((diff % 3600) / 60);
+        return setElapsed(m > 0 ? `${h}ч ${m}мин` : `${h}ч`);
+      }
+      // >= 24 часов: показываем дни + оставшиеся часы
+      const days  = Math.floor(diff / 86400);
+      const hours = Math.floor((diff % 86400) / 3600);
+      return setElapsed(hours > 0 ? `${days}д ${hours}ч` : `${days}д`);
     };
 
     tick();

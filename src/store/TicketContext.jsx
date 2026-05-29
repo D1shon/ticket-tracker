@@ -15,14 +15,16 @@ export const USER_ROLES = {
   'nurly@hj.fit':               { role: 'manager', club: '4YOU', displayName: 'Нурлы' },
 
   // ── COLIBRI ───────────────────────────────────────────────────────────────
-  'anastasia@hj.fit':     { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
-  'daewure@mail.ru':      { role: 'manager', club: 'COLIBRI', displayName: 'Аружан' },
-  'dias.colibri@hj.fit':  { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
+  '19.anastasiya.tkachenko.88@gmail.com': { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
+  'daewure@mail.ru':         { role: 'manager', club: 'COLIBRI', displayName: 'Аружан' },
+  'dias.colibri@hj.fit':     { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
+  'diasbakyt3773@gmail.com': { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
 
   // ── VILLA ─────────────────────────────────────────────────────────────────
-  'diassd9806@gmail.com':  { role: 'manager', club: 'VILLA', displayName: 'Диас' },
-  'kelessovaan@gmail.com': { role: 'manager', club: 'VILLA', displayName: 'Алина' },
-  'saltanat@hj.fit':       { role: 'manager', club: 'VILLA', displayName: 'Салтанат' },
+  'diassd9806@gmail.com':   { role: 'manager', club: 'VILLA', displayName: 'Диас' },
+  'kelessovaan@gmail.com':  { role: 'manager', club: 'VILLA', displayName: 'Алина' },
+  'saltanat@hj.fit':        { role: 'manager', club: 'VILLA', displayName: 'Салтанат' },
+  'blinsalta19@gmail.com':  { role: 'manager', club: 'VILLA', displayName: 'Салтанат' },
 
   // ── NURLY ORDA ────────────────────────────────────────────────────────────
   'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнур' },
@@ -40,6 +42,7 @@ import {
   onSnapshot, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   doc, 
   serverTimestamp
 } from 'firebase/firestore';
@@ -291,6 +294,19 @@ export const TicketProvider = ({ children }) => {
     }
   }, []);
 
+  const deleteTicket = useCallback(async (ticketId) => {
+    if (!ticketId) return;
+    // Optimistic removal
+    setTickets(prev => prev.filter(t => String(t.id) !== String(ticketId)));
+    if (!isFirebaseId(String(ticketId))) return;
+    try {
+      await deleteDoc(doc(db, 'tickets', String(ticketId)));
+      toast.success('Заявка удалена');
+    } catch (error) {
+      toast.error('Ошибка удаления заявки');
+    }
+  }, []);
+
   const addTicket = useCallback(async (ticketData) => {
     try {
       await addDoc(collection(db, 'tickets'), {
@@ -350,7 +366,7 @@ export const TicketProvider = ({ children }) => {
   }, []);
 
   return (
-    <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, addComment, uploadFile }}>
+    <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, deleteTicket, addComment, uploadFile }}>
       {children}
     </TicketContext.Provider>
   );
