@@ -391,25 +391,28 @@ const AttendancePage = () => {
                   {isOnline ? (
                     <>
                       <div style={{ fontSize: 11, fontWeight: 900, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ОНЛАЙН</div>
-                      {arrivedStr && (
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
-                          <Clock size={10} /> Пришёл в {arrivedStr}
-                        </div>
-                      )}
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
+                        <Clock size={10} /> {arrivedStr ? `Пришёл в ${arrivedStr}` : 'Только что'}
+                      </div>
                     </>
-                  ) : (
+                  ) : arrivedStr ? (
                     <>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>ОФЛАЙН</div>
-                      {arrivedStr && (
-                        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
-                          <Clock size={10} /> Пришёл в {arrivedStr}
-                        </div>
-                      )}
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>ОФФЛАЙН</div>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
+                        <Clock size={10} /> Пришёл в {arrivedStr}
+                      </div>
                       {leftStr && (
                         <div style={{ fontSize: 10, fontWeight: 700, color: '#f97316', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 2 }}>
                           <Clock size={10} /> Ушёл в {leftStr}
                         </div>
                       )}
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>ОФФЛАЙН</div>
+                      <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-muted)', marginTop: 2, opacity: 0.6 }}>
+                        Ещё не приходил
+                      </div>
                     </>
                   )}
                 </div>
