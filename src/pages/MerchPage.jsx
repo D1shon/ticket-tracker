@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { 
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
   Trash2, Edit3, CheckCircle, AlertTriangle, ArrowUpRight, 
-  ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet
+  ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet, Download
 } from 'lucide-react';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
@@ -17,9 +17,21 @@ const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы'
 
 const MerchPage = () => {
   const { user } = useTickets();
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'analytics'
-  const [selectedClub, setSelectedClub] = useState('ALL');
   
+  // Role & Permissions check
+  const isChef = useMemo(() => user?.role === 'chef', [user]);
+  const managerClub = useMemo(() => user?.club || null, [user]);
+
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales'
+  const [selectedClub, setSelectedClub] = useState(() => (!isChef && managerClub) ? managerClub : 'ALL');
+  
+  // Sync selectedClub if user updates
+  useEffect(() => {
+    if (!isChef && managerClub) {
+      setSelectedClub(managerClub);
+    }
+  }, [isChef, managerClub]);
+
   // Data States
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
@@ -98,6 +110,7 @@ const MerchPage = () => {
   // ─── CRUD Actions ──────────────────────────────────────────────────────────
   const handleSaveProduct = async (e) => {
     e.preventDefault();
+    if (!isChef) return toast.error('Доступ запрещен');
     if (!productForm.name.trim()) return toast.error('Введите название товара');
     
     const cost = parseFloat(productForm.costPrice) || 0;
@@ -135,6 +148,7 @@ const MerchPage = () => {
   };
 
   const handleDeleteProduct = async (id) => {
+    if (!isChef) return toast.error('Доступ запрещен');
     if (!window.confirm('Вы уверены, что хотите удалить этот товар из базы?')) return;
     try {
       await deleteDoc(doc(db, 'merch_products', id));
@@ -189,6 +203,7 @@ const MerchPage = () => {
 
   const handleAddSupply = async (e) => {
     e.preventDefault();
+    if (!isChef) return toast.error('Доступ запрещен');
     const qty = parseInt(supplyForm.qty) || 0;
     if (qty <= 0) return toast.error('Укажите корректное количество');
 
@@ -199,13 +214,13 @@ const MerchPage = () => {
         updatedAt: serverTimestamp()
       });
 
-      // 2. Log supply event in transactions/sales (with negative profit or just log)
+      // 2. Log supply event in transactions/sales
       await addDoc(collection(db, 'merch_sales'), {
         productId: selectedProductForSupply.id,
         productName: selectedProductForSupply.name,
         category: selectedProductForSupply.category,
         club: selectedProductForSupply.club,
-        qty: -qty, // Negative quantity to represent supply/restock
+        qty: -qty, // Negative quantity represents supply/restock
         costPrice: selectedProductForSupply.costPrice,
         salePrice: 0,
         totalSum: -(qty * selectedProductForSupply.costPrice),
@@ -224,6 +239,59 @@ const MerchPage = () => {
       console.error(err);
       toast.error('Ошибка при пополнении запасов');
     }
+  };
+
+  // ─── CSV Export Function ────────────────────────────────────────────────────
+  const handleExportCSV = () => {
+    let headers = [];
+    let rows = [];
+    
+    if (activeTab === 'inventory') {
+      if (isChef) {
+        headers = ['Название', 'Категория', 'Клуб', 'Себестоимость', 'Цена продажи', 'Остаток', 'Мин. остаток'];
+        rows = filteredProducts.map(p => [
+          p.name, p.category, p.club, p.costPrice, p.salePrice, p.stock, p.minStock
+        ]);
+      } else {
+        headers = ['Название', 'Категория', 'Клуб', 'Цена продажи', 'Остаток'];
+        rows = filteredProducts.map(p => [
+          p.name, p.category, p.club, p.salePrice, p.stock
+        ]);
+      }
+    } else {
+      if (isChef) {
+        headers = ['Дата', 'Клуб', 'Товар', 'Категория', 'Количество', 'Себестоимость', 'Цена продажи', 'Сумма чека', 'Прибыль', 'Оплата', 'Клиент', 'Провел'];
+        rows = filteredSales.map(s => {
+          const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
+          return [
+            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.category, s.qty, s.costPrice, s.salePrice, s.totalSum, s.netProfit, s.paymentMethod, s.clientName, s.cashierName
+          ];
+        });
+      } else {
+        headers = ['Дата', 'Клуб', 'Товар', 'Категория', 'Количество', 'Цена продажи', 'Сумма чека', 'Оплата', 'Клиент', 'Провел'];
+        rows = filteredSales.map(s => {
+          const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
+          return [
+            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.category, s.qty, s.salePrice, s.totalSum, s.paymentMethod, s.clientName, s.cashierName
+          ];
+        });
+      }
+    }
+
+    const csvContent = "\uFEFF" + [
+      headers.join(';'),
+      ...rows.map(r => r.map(val => `"${String(val ?? '').replace(/"/g, '""')}"`).join(';'))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `merch_${activeTab}_${selectedClub}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Экспорт успешно завершен!');
   };
 
   // ─── Filtered Data ─────────────────────────────────────────────────────────
@@ -253,7 +321,6 @@ const MerchPage = () => {
     let totalNetProfit = 0;
     let lowStockCount = 0;
 
-    // Filter products & sales according to active club filter
     const activeProducts = products.filter(p => selectedClub === 'ALL' || p.club === selectedClub);
     const activeSales = sales.filter(s => selectedClub === 'ALL' || s.club === selectedClub);
 
@@ -266,7 +333,6 @@ const MerchPage = () => {
     });
 
     activeSales.forEach(s => {
-      // Only positive quantity is actual sale
       if (s.qty > 0) {
         totalSalesRevenue += (s.totalSum || 0);
         totalNetProfit += (s.netProfit || 0);
@@ -304,107 +370,171 @@ const MerchPage = () => {
         <div className="flex flex-wrap items-center gap-3">
           {/* Club Filter */}
           <div className="flex bg-[var(--bg-primary)] p-1 rounded-xl border border-[var(--border)]">
-            <button 
-              onClick={() => setSelectedClub('ALL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === 'ALL' ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-            >
-              Все клубы
-            </button>
-            {CLUBS.map(club => (
-              <button 
-                key={club}
-                onClick={() => setSelectedClub(club)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === club ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-              >
-                {club}
-              </button>
-            ))}
+            {isChef ? (
+              <>
+                <button 
+                  onClick={() => setSelectedClub('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === 'ALL' ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                >
+                  Все клубы
+                </button>
+                {CLUBS.map(club => (
+                  <button 
+                    key={club}
+                    onClick={() => setSelectedClub(club)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === club ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                  >
+                    {club}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <span className="px-4 py-1.5 text-xs font-black uppercase text-[var(--accent-purple)] tracking-wider">
+                Клуб: {selectedClub}
+              </span>
+            )}
           </div>
 
-          {/* Add Product Button */}
-          <button
-            onClick={() => {
-              setEditingProduct(null);
-              setProductForm({ name: '', club: selectedClub === 'ALL' ? '4YOU' : selectedClub, category: 'Худи', costPrice: '', salePrice: '', stock: '', minStock: '5' });
-              setShowProductModal(true);
-            }}
-            className="flex items-center gap-2 bg-[var(--accent-purple)] hover:bg-purple-600 text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl border border-purple-400/20 shadow-lg shadow-purple-500/10 transition-all"
-          >
-            <Plus size={14} /> Добавить товар
-          </button>
+          {/* Add Product Button (Chef only) */}
+          {isChef && (
+            <button
+              onClick={() => {
+                setEditingProduct(null);
+                setProductForm({ name: '', club: selectedClub === 'ALL' ? '4YOU' : selectedClub, category: 'Худи', costPrice: '', salePrice: '', stock: '', minStock: '5' });
+                setShowProductModal(true);
+              }}
+              className="flex items-center gap-2 bg-[var(--accent-purple)] hover:bg-purple-600 text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl border border-purple-400/20 shadow-lg shadow-purple-500/10 transition-all"
+            >
+              <Plus size={14} /> Добавить товар
+            </button>
+          )}
         </div>
       </div>
 
       {/* Analytics Dashboard Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         
-        {/* Total Cost Value */}
-        <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Стоимость склада</span>
-            <span className="text-xl md:text-2xl font-black text-[var(--text-primary)] tracking-tight block mt-1">
-              {stats.totalInventoryCostValue.toLocaleString()} ₸
-            </span>
-            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest block mt-1">
-              {stats.totalStockItems} шт. в наличии
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
-            <Store size={20} />
-          </div>
-        </div>
+        {isChef ? (
+          <>
+            {/* Total Cost Value (Chef only) */}
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Стоимость склада</span>
+                <span className="text-xl md:text-2xl font-black text-[var(--text-primary)] tracking-tight block mt-1">
+                  {stats.totalInventoryCostValue.toLocaleString()} ₸
+                </span>
+                <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest block mt-1">
+                  {stats.totalStockItems} шт. в наличии
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                <Store size={20} />
+              </div>
+            </div>
 
-        {/* Revenue */}
-        <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Выручка продаж</span>
-            <span className="text-xl md:text-2xl font-black text-emerald-400 tracking-tight block mt-1">
-              {stats.totalSalesRevenue.toLocaleString()} ₸
-            </span>
-            <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
-              Все проведенные чеки
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-            <ArrowUpRight size={20} />
-          </div>
-        </div>
+            {/* Revenue */}
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Выручка продаж</span>
+                <span className="text-xl md:text-2xl font-black text-emerald-400 tracking-tight block mt-1">
+                  {stats.totalSalesRevenue.toLocaleString()} ₸
+                </span>
+                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
+                  Все проведенные чеки
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                <ArrowUpRight size={20} />
+              </div>
+            </div>
 
-        {/* Net Profit */}
-        <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Чистая прибыль</span>
-            <span className="text-xl md:text-2xl font-black text-purple-400 tracking-tight block mt-1">
-              {stats.totalNetProfit.toLocaleString()} ₸
-            </span>
-            <span className="text-[9px] font-bold text-purple-400 uppercase tracking-widest block mt-1">
-              Маржинальность учтена
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-            <DollarSign size={20} />
-          </div>
-        </div>
+            {/* Net Profit (Chef only) */}
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Чистая прибыль</span>
+                <span className="text-xl md:text-2xl font-black text-purple-400 tracking-tight block mt-1">
+                  {stats.totalNetProfit.toLocaleString()} ₸
+                </span>
+                <span className="text-[9px] font-bold text-purple-400 uppercase tracking-widest block mt-1">
+                  Маржинальность учтена
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
+                <DollarSign size={20} />
+              </div>
+            </div>
 
-        {/* Low Stock Alerts */}
-        <div className={`bg-[var(--bg-card)] p-5 rounded-3xl border shadow-md flex items-center justify-between transition-all ${stats.lowStockCount > 0 ? 'border-orange-500/30 bg-orange-500/5' : 'border-[var(--border)]'}`}>
-          <div>
-            <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Мало на складе</span>
-            <span className={`text-xl md:text-2xl font-black tracking-tight block mt-1 ${stats.lowStockCount > 0 ? 'text-orange-400' : 'text-[var(--text-primary)]'}`}>
-              {stats.lowStockCount} товаров
-            </span>
-            <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
-              Требуется пополнение
-            </span>
-          </div>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stats.lowStockCount > 0 ? 'bg-orange-500/10 text-orange-400' : 'bg-[var(--bg-hover)] text-[var(--text-muted)]'}`}>
-            <AlertTriangle size={20} />
-          </div>
-        </div>
+            {/* Low Stock Alerts */}
+            <div className={`bg-[var(--bg-card)] p-5 rounded-3xl border shadow-md flex items-center justify-between transition-all ${stats.lowStockCount > 0 ? 'border-orange-500/30 bg-orange-500/5' : 'border-[var(--border)]'}`}>
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Мало на складе</span>
+                <span className={`text-xl md:text-2xl font-black tracking-tight block mt-1 ${stats.lowStockCount > 0 ? 'text-orange-400' : 'text-[var(--text-primary)]'}`}>
+                  {stats.lowStockCount} товаров
+                </span>
+                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
+                  Требуется пополнение
+                </span>
+              </div>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stats.lowStockCount > 0 ? 'bg-orange-500/10 text-orange-400' : 'bg-[var(--bg-hover)] text-[var(--text-muted)]'}`}>
+                <AlertTriangle size={20} />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Revenue card for manager */}
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between col-span-2 md:col-span-2">
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Выручка клуба ({selectedClub})</span>
+                <span className="text-xl md:text-2xl font-black text-emerald-400 tracking-tight block mt-1">
+                  {stats.totalSalesRevenue.toLocaleString()} ₸
+                </span>
+                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
+                  Ваши продажи по клубу
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                <ArrowUpRight size={20} />
+              </div>
+            </div>
+
+            {/* Total items count for manager */}
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Товары на складе</span>
+                <span className="text-xl md:text-2xl font-black text-[var(--text-primary)] tracking-tight block mt-1">
+                  {stats.totalStockItems} шт.
+                </span>
+                <span className="text-[9px] font-bold text-blue-400 uppercase tracking-widest block mt-1">
+                  Всего единиц в наличии
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                <Store size={20} />
+              </div>
+            </div>
+
+            {/* Low stock alerts for manager */}
+            <div className={`bg-[var(--bg-card)] p-5 rounded-3xl border shadow-md flex items-center justify-between transition-all ${stats.lowStockCount > 0 ? 'border-orange-500/30 bg-orange-500/5' : 'border-[var(--border)]'}`}>
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Мало на складе</span>
+                <span className={`text-xl md:text-2xl font-black tracking-tight block mt-1 ${stats.lowStockCount > 0 ? 'text-orange-400' : 'text-[var(--text-primary)]'}`}>
+                  {stats.lowStockCount} позиций
+                </span>
+                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
+                  Сообщите о поставке
+                </span>
+              </div>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stats.lowStockCount > 0 ? 'bg-orange-500/10 text-orange-400' : 'bg-[var(--bg-hover)] text-[var(--text-muted)]'}`}>
+                <AlertTriangle size={20} />
+              </div>
+            </div>
+          </>
+        )}
 
       </div>
 
-      {/* Tabs & Search Panel */}
+      {/* Tabs, Search & Export Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Navigation Tabs */}
         <div className="flex gap-1.5 p-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl w-fit">
@@ -422,16 +552,26 @@ const MerchPage = () => {
           </button>
         </div>
 
-        {/* Search Input */}
-        <div className="relative w-full sm:w-80">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-          <input 
-            type="text"
-            placeholder={activeTab === 'inventory' ? 'Поиск товара или категории...' : 'Поиск чеков / кассира...'}
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-purple)] transition-all"
-          />
+        {/* Search Input & CSV Export */}
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-80">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <input 
+              type="text"
+              placeholder={activeTab === 'inventory' ? 'Поиск товара или категории...' : 'Поиск чеков / кассира...'}
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-purple)] transition-all"
+            />
+          </div>
+
+          <button
+            onClick={handleExportCSV}
+            title="Экспортировать отчет в CSV (Excel)"
+            className="p-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] rounded-2xl border border-[var(--border)] flex items-center justify-center transition-all shadow-md"
+          >
+            <Download size={18} />
+          </button>
         </div>
       </div>
 
@@ -457,7 +597,7 @@ const MerchPage = () => {
                   <tr className="border-b border-[var(--border)] text-left bg-[var(--bg-hover)]/30">
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Товар / Категория</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Клуб</th>
-                    <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Себестоимость</th>
+                    {isChef && <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Себестоимость</th>}
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Цена продажи</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">В наличии</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">Статус</th>
@@ -480,9 +620,11 @@ const MerchPage = () => {
                             {p.club}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          <span className="font-bold text-xs text-[var(--text-secondary)]">{(p.costPrice || 0).toLocaleString()} ₸</span>
-                        </td>
+                        {isChef && (
+                          <td className="px-6 py-4 text-right">
+                            <span className="font-bold text-xs text-[var(--text-secondary)]">{(p.costPrice || 0).toLocaleString()} ₸</span>
+                          </td>
+                        )}
                         <td className="px-6 py-4 text-right">
                           <span className="font-extrabold text-sm text-emerald-400">{(p.salePrice || 0).toLocaleString()} ₸</span>
                         </td>
@@ -517,44 +659,48 @@ const MerchPage = () => {
                               <ShoppingCart size={11} /> Продать
                             </button>
 
-                            {/* Restock Button */}
-                            <button
-                              onClick={() => {
-                                setSelectedProductForSupply(p);
-                                setShowSupplyModal(true);
-                              }}
-                              className="flex items-center gap-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all"
-                            >
-                              + Поставка
-                            </button>
+                            {isChef && (
+                              <>
+                                {/* Restock Button (Chef only) */}
+                                <button
+                                  onClick={() => {
+                                    setSelectedProductForSupply(p);
+                                    setShowSupplyModal(true);
+                                  }}
+                                  className="flex items-center gap-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all"
+                                >
+                                  + Поставка
+                                </button>
 
-                            {/* Edit Button */}
-                            <button
-                              onClick={() => {
-                                setEditingProduct(p);
-                                setProductForm({
-                                  name: p.name,
-                                  club: p.club,
-                                  category: p.category,
-                                  costPrice: String(p.costPrice),
-                                  salePrice: String(p.salePrice),
-                                  stock: String(p.stock),
-                                  minStock: String(p.minStock)
-                                });
-                                setShowProductModal(true);
-                              }}
-                              className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-purple-400 rounded-lg border border-[var(--border)] transition-all"
-                            >
-                              <Edit3 size={12} />
-                            </button>
+                                {/* Edit Button (Chef only) */}
+                                <button
+                                  onClick={() => {
+                                    setEditingProduct(p);
+                                    setProductForm({
+                                      name: p.name,
+                                      club: p.club,
+                                      category: p.category,
+                                      costPrice: String(p.costPrice),
+                                      salePrice: String(p.salePrice),
+                                      stock: String(p.stock),
+                                      minStock: String(p.minStock)
+                                    });
+                                    setShowProductModal(true);
+                                  }}
+                                  className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-purple-400 rounded-lg border border-[var(--border)] transition-all"
+                                >
+                                  <Edit3 size={12} />
+                                </button>
 
-                            {/* Delete Button */}
-                            <button
-                              onClick={() => handleDeleteProduct(p.id)}
-                              className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-red-500 rounded-lg border border-[var(--border)] transition-all"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                                {/* Delete Button (Chef only) */}
+                                <button
+                                  onClick={() => handleDeleteProduct(p.id)}
+                                  className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-red-500 rounded-lg border border-[var(--border)] transition-all"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -654,7 +800,7 @@ const MerchPage = () => {
       )}
 
       {/* ─── MODAL: ADD / EDIT PRODUCT ─── */}
-      {showProductModal && (
+      {showProductModal && isChef && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative">
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
@@ -873,7 +1019,7 @@ const MerchPage = () => {
       )}
 
       {/* ─── MODAL: SUPPLY / RESTOCK ─── */}
-      {showSupplyModal && selectedProductForSupply && (
+      {showSupplyModal && selectedProductForSupply && isChef && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
