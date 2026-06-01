@@ -83,17 +83,26 @@ const ChecklistDetail = () => {
     }
     
     toast.success('Проверка завершена');
-    navigate(`/checklists?club=${club}`);
+    navigate(`/checklists?club=${club}&date=${dateKey}`);
   };
 
   const allAnswered = cardData.items.every((_, i) => itemStates[i] !== undefined && itemStates[i] !== null);
+
+  const getFormattedDate = () => {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return format(new Date(y, m - 1, d), 'dd.MM.yyyy');
+    }
+    return dateKey;
+  };
+  const formattedDate = getFormattedDate();
 
   return (
     <div className="animate-fade min-h-full" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-primary)' }}>
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <button 
-          onClick={() => navigate(`/checklists?club=${club}`)}
+          onClick={() => navigate(`/checklists?club=${club}&date=${dateKey}`)}
           className="w-10 h-10 rounded-full bg-[var(--bg-hover)] hover:bg-[var(--bg-hover)]/80 flex items-center justify-center text-[var(--text-secondary)] transition-all"
         >
           <ChevronLeft size={20} />
@@ -101,7 +110,7 @@ const ChecklistDetail = () => {
         <div>
           <h1 className="text-xl font-bold text-[var(--text-primary)]">{cardData.title}</h1>
           <p className="text-xs text-[var(--text-muted)] font-medium uppercase tracking-wider mt-0.5">
-            {shift.time} {shift.name} · Клуб <span style={{ color: 'var(--accent-purple)', fontWeight: 900 }}>{club}</span>
+            {shift.time} {shift.name} · Клуб <span style={{ color: 'var(--accent-purple)', fontWeight: 900 }}>{club}</span> · Дата: <span className="text-[var(--text-secondary)] font-bold">{formattedDate}</span>
           </p>
         </div>
       </div>
@@ -185,7 +194,7 @@ const ChecklistDetail = () => {
         {/* Action Button */}
         <div className="flex items-center gap-4 pt-8 border-t border-[var(--border)]">
           <button 
-            onClick={() => navigate(`/checklists?club=${club}`)}
+            onClick={() => navigate(`/checklists?club=${club}&date=${dateKey}`)}
             className="px-8 py-4 rounded-2xl bg-[var(--bg-hover)] text-[var(--text-secondary)] text-sm font-bold hover:bg-[var(--bg-hover)]/80 transition-all"
           >
             Отмена

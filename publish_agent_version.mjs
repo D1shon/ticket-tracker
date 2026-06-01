@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, setDoc, doc } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCPAitt8EX3ialTb2-_1FQimmlpw5blFYk',
@@ -11,9 +12,13 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Записать версию 3.2 в Firestore — агенты на всех машинах скачают обновление
+// Sign in anonymously first to satisfy security rules
+await signInAnonymously(auth);
+
+// Записать версию 3.3 в Firestore — агенты на всех машинах скачают обновление
 await setDoc(doc(db, 'settings', 'agent'), {
   version: '3.3',
   updateUrl: 'https://ticket-tracker-inky.vercel.app/wifi-agent.mjs',

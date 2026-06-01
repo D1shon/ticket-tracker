@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, Clock, ChevronDown, Calendar, MoreHorizontal } from 'lucide-react';
 import { CLUBS, SHIFTS_DATA, CHECK_ITEMS } from '../data/checklistData';
 import { format, addDays, subDays, startOfToday } from 'date-fns';
@@ -39,13 +39,37 @@ const ChecklistPage = () => {
   // Strictly filter clubs for managers, and exclude 'ВСЕ КЛУБЫ' for checklists
   const availableClubs = (isManager && userClub) ? [userClub] : CLUBS.filter(c => c !== 'ВСЕ КЛУБЫ');
 
-  const [activeClub, setActiveClub] = useState(userClub || '4YOU');
-  const [activeDate, setActiveDate] = useState(startOfToday());
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Read initial date/club from URL query parameters
+  const initialDateStr = searchParams.get('date');
+  const initialClub = searchParams.get('club') || userClub || '4YOU';
+
+  const getInitialDate = () => {
+    if (initialDateStr) {
+      const [year, month, day] = initialDateStr.split('-').map(Number);
+      if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+        return new Date(year, month - 1, day);
+      }
+    }
+    return startOfToday();
+  };
+
+  const [activeClub, setActiveClub] = useState(initialClub);
+  const [activeDate, setActiveDate] = useState(getInitialDate);
   const { checklistData } = useChecklist();
   const navigate = useNavigate();
 
+  // Sync state changes back to searchParams
+  useEffect(() => {
+    const newParams = {};
+    if (activeClub) newParams.club = activeClub;
+    newParams.date = format(activeDate, 'yyyy-MM-dd');
+    setSearchParams(newParams, { replace: true });
+  }, [activeClub, activeDate, setSearchParams]);
+
   // Force active club and prevent seeing others
-  React.useEffect(() => {
+  useEffect(() => {
     if (userClub && isManager) {
       setActiveClub(userClub);
     }
@@ -135,9 +159,20 @@ const ChecklistPage = () => {
                 →
               </button>
             </div>
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-[11px] font-bold text-[var(--text-secondary)]">
+            <div className="relative flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent-purple)]/50 text-[11px] font-bold text-[var(--text-secondary)] transition-all cursor-pointer">
               <Calendar size={14} className="text-[var(--accent-purple)]" />
-              {format(activeDate, 'dd.MM.yyyy')}
+              <span>{format(activeDate, 'dd.MM.yyyy')}</span>
+              <input 
+                type="date"
+                value={format(activeDate, 'yyyy-MM-dd')}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const [year, month, day] = e.target.value.split('-').map(Number);
+                    setActiveDate(new Date(year, month - 1, day));
+                  }
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
             </div>
           </div>
         </div>
