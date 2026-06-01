@@ -15,10 +15,10 @@ const db = getFirestore(app);
 
 // Записать версию 3.2 в Firestore — агенты на всех машинах скачают обновление
 await setDoc(doc(db, 'settings', 'agent'), {
-  version: '3.2',
+  version: '3.3',
   updateUrl: 'https://ticket-tracker-inky.vercel.app/wifi-agent.mjs',
   updatedAt: new Date().toISOString(),
 });
 
-console.log('✅ Версия агента 3.2 записана в Firestore. Все агенты обновятся автоматически в течение 5 минут.');
+console.log('✅ Версия агента 3.3 записана в Firestore. Все агенты обновятся автоматически в течение 5 минут.');
 process.exit(0);
