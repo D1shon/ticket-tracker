@@ -43,24 +43,12 @@ async function test(monthKey) {
   const settings = settingsSnap.exists() ? settingsSnap.data() : { hourlyRate: 1500 };
   const rate = settings.hourlyRate || 1500;
   
-  console.log(`Employees count: ${employees.length}, hourlyRate: ${rate}`);
-  
   // Helper to determine if is working shift
   const isWorkingShift = (val) => {
     if (!val) return false;
     const clean = String(val).trim().toLowerCase();
     if (clean === '' || clean === '—' || clean === '-' || clean === 'x' || clean === 'х') return false;
-    
-    const dayOffKeywords = [
-      'выходной', 'вых', 'в',
-      'отпуск', 'отп', 'о',
-      'больничный', 'бол', 'б',
-      'off', 'vacation', 'sick'
-    ];
-    
-    return !dayOffKeywords.some(keyword => {
-      return clean === keyword || clean.startsWith(keyword + '.') || clean.startsWith(keyword + ' ');
-    });
+    return true;
   };
 
   const getShiftRazvozkaAmount = (val) => {
@@ -106,10 +94,9 @@ async function test(monthKey) {
     return 0;
   };
 
-  // Days in month list (e.g. 1 to 31 for May)
   const getDaysInMonth = (mKey) => {
     const [year, month] = mKey.split('-').map(Number);
-    const date = new Date(year, month, 0); // month is 1-indexed for date constructor here to get last day
+    const date = new Date(year, month, 0);
     const days = [];
     for (let i = 1; i <= date.getDate(); i++) {
       days.push(i);
@@ -124,7 +111,6 @@ async function test(monthKey) {
     '2026-05-11', '2026-07-06', '2026-08-30', '2026-10-25', '2026-12-16', '2026-12-17'
   ];
 
-  // Group working
   const workingCountsByDayAndClub = {};
   days.forEach(dayNum => {
     workingCountsByDayAndClub[dayNum] = {};
@@ -162,12 +148,9 @@ async function test(monthKey) {
       
       const isWorking = isWorkingShift(val);
       if (isWorking) {
-        // Find day of week
-        const [year, month] = monthKey.split('-').map(Number);
-        const dayDate = new Date(year, month - 1, dayNum);
-        const dayOfWeek = dayDate.getDay();
+        const dayOfWeek = new Date(monthKey.split('-')[0], monthKey.split('-')[1] - 1, dayNum).getDay();
         const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
-        const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+        const formattedDate = `${monthKey.split('-')[0]}-${monthKey.split('-')[1]}-${String(dayNum).padStart(2, '0')}`;
         const isHolidayDay = HOLIDAYS_2026.includes(formattedDate);
         
         const workingEmps = workingCountsByDayAndClub[dayNum]?.[empClub] || [];
@@ -217,21 +200,36 @@ async function test(monthKey) {
     return {
       name: emp.name,
       isService: emp.isService,
-      toPay
+      toPay,
+      advance
     };
   };
 
   CLUBS.forEach(club => {
-    const clubEmps = employees.filter(e => (e.club || '4YOU') === club && !e.isService);
-    let total = 0;
-    clubEmps.forEach(emp => {
+    const allEmps = employees.filter(e => (e.club || '4YOU') === club);
+    const regularEmps = employees.filter(e => (e.club || '4YOU') === club && !e.isService);
+    
+    let totalAll = 0;
+    let advAll = 0;
+    allEmps.forEach(emp => {
       const stats = getEmployeeStats(emp);
-      total += stats.toPay;
+      totalAll += stats.toPay;
+      advAll += stats.advance;
     });
-    console.log(`Club ${club} Total: ${total}`);
+
+    let totalReg = 0;
+    let advReg = 0;
+    regularEmps.forEach(emp => {
+      const stats = getEmployeeStats(emp);
+      totalReg += stats.toPay;
+      advReg += stats.advance;
+    });
+
+    console.log(`Club ${club}:`);
+    console.log(`  WITHOUT service: Total: ${totalReg}, Advance: ${advReg}`);
+    console.log(`  WITH service:    Total: ${totalAll}, Advance: ${advAll}`);
   });
 }
 
 await test('2026-05');
-await test('2026-06');
 process.exit(0);

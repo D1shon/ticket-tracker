@@ -590,7 +590,7 @@ const SchedulePage = () => {
   };
 
   const getClubTotal = (clubName) => {
-    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName && !e.isService);
+    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
     return clubEmps.reduce((sum, emp) => {
       const s = getEmployeeStats(emp.id);
       // toPay already = salary + razvozka - advance + correction
@@ -600,7 +600,7 @@ const SchedulePage = () => {
 
   // Returns advance total for a club (for display hint)
   const getClubAdvanceTotal = (clubName) => {
-    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName && !e.isService);
+    const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
     return clubEmps.reduce((sum, emp) => sum + getEmployeeStats(emp.id).advance, 0);
   };
 
