@@ -680,13 +680,35 @@ const SchedulePage = () => {
   if (view === 'selection') {
     return (
       <div className="animate-fade" style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 0' }}>
-        <div style={{ marginBottom: 40, textAlign: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12 }}>
+        <div style={{ marginBottom: 40, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
             <Database size={32} color="var(--accent-purple)" />
             <h1 style={{ fontSize: 32, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
               Графики работы
             </h1>
           </div>
+          
+          {/* Month Selector on the selection page */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '8px 0 12px' }}>
+            <button 
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} 
+              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: 8, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <div className="text-center" style={{ minWidth: 140 }}>
+              <h2 className="text-base font-bold text-[var(--text-primary)] capitalize" style={{ margin: 0 }}>
+                {format(currentMonth, 'LLLL yyyy', { locale: ru })}
+              </h2>
+            </div>
+            <button 
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} 
+              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: 8, color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
           <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             Выберите объект для просмотра и редактирования табеля
           </p>
