@@ -36,40 +36,57 @@ export const CallProvider = ({ children }) => {
 
   // ─── Listen to room-counts collection ──────────────────────────────────────
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'call_rooms'), (snap) => {
-      const counts = {};
-      snap.docs.forEach(d => { counts[d.id] = d.data().count || 0; });
-      setRoomCounts(counts);
-    });
-    return () => unsub();
+    let unsub;
+    try {
+      unsub = onSnapshot(collection(db, 'call_rooms'), (snap) => {
+        const counts = {};
+        snap.docs.forEach(d => { counts[d.id] = d.data().count || 0; });
+        setRoomCounts(counts);
+      }, (error) => {
+        console.warn('[CallContext] Listener to call_rooms failed:', error);
+      });
+    } catch (e) {
+      console.warn('[CallContext] onSnapshot call_rooms failed:', e);
+    }
+    return () => { if (unsub) unsub(); };
   }, []);
 
   // ─── Helpers to update Firestore room count ─────────────────────────────────
   const incrementRoom = async (channel) => {
-    const ref = doc(db, 'call_rooms', channel);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      await setDoc(ref, { count: (snap.data().count || 0) + 1 }, { merge: true });
-    } else {
-      await setDoc(ref, { count: 1 });
+    try {
+      const ref = doc(db, 'call_rooms', channel);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        await setDoc(ref, { count: (snap.data().count || 0) + 1 }, { merge: true });
+      } else {
+        await setDoc(ref, { count: 1 });
+      }
+    } catch (e) {
+      console.warn('[CallContext] Failed to increment room count in Firestore:', e);
     }
   };
 
   const decrementRoom = async (channel) => {
-    const ref = doc(db, 'call_rooms', channel);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      const next = Math.max(0, (snap.data().count || 1) - 1);
-      if (next === 0) {
-        await deleteDoc(ref);
-      } else {
-        await setDoc(ref, { count: next }, { merge: true });
+    try {
+      const ref = doc(db, 'call_rooms', channel);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const next = Math.max(0, (snap.data().count || 1) - 1);
+        if (next === 0) {
+          await deleteDoc(ref);
+        } else {
+          await setDoc(ref, { count: next }, { merge: true });
+        }
       }
+    } catch (e) {
+      console.warn('[CallContext] Failed to decrement room count in Firestore:', e);
     }
   };
 
   // ─── Join ───────────────────────────────────────────────────────────────────
   const joinCall = async (displayName) => {
+    let createdAudioTrack = null;
+    let createdVideoTrack = null;
     try {
       const channel = getChannel(displayName);
       channelRef.current = channel;
@@ -135,18 +152,37 @@ export const CallProvider = ({ children }) => {
         { encoderConfig: 'high_quality_stereo', AEC: true, ANS: true, AGC: true },
         { encoderConfig: { width: 1280, height: 720, frameRate: 30 } }
       );
+      createdAudioTrack = audioTrack;
+      createdVideoTrack = videoTrack;
 
       setLocalAudioTrack(audioTrack);
       setLocalVideoTrack(videoTrack);
       await clientRef.current.publish([audioTrack, videoTrack]);
 
-      // Update Firestore counter
+      // Update Firestore counter (wrapped in try-catch internally, won't throw)
       await incrementRoom(channel);
 
       setIsInCall(true);
       toast.success(`Вы вошли в комнату: ${displayName}`);
     } catch (error) {
       console.error('[CallContext] Join call error:', error);
+      
+      // Clean up captured tracks to release microphone/camera and avoid duplicate sound
+      if (createdAudioTrack) {
+        try { createdAudioTrack.stop(); createdAudioTrack.close(); } catch (e) {}
+      }
+      if (createdVideoTrack) {
+        try { createdVideoTrack.stop(); createdVideoTrack.close(); } catch (e) {}
+      }
+      if (clientRef.current) {
+        try { await clientRef.current.leave(); } catch (e) {}
+      }
+
+      setLocalAudioTrack(null);
+      setLocalVideoTrack(null);
+      setRoomName('');
+      setIsInCall(false);
+
       const errStr = String(error);
       if (errStr.includes('Permission denied') || errStr.includes('NotAllowedError') || error?.code === 'PERMISSION_DENIED') {
         toast.error('Ошибка доступа: Разрешите браузеру доступ к камере и микрофону.', { duration: 8000 });
