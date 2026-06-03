@@ -86,6 +86,7 @@ const ChecklistDetail = () => {
             subtitle: inspectorName.trim()
               ? `${problemDescription} (Проверил: ${inspectorName.trim()})`
               : problemDescription,
+            inspectorName: inspectorName.trim() || '',
             club: club,
             priority: 'high',
             status: 'new',

@@ -424,6 +424,13 @@ const TicketDetail = () => {
     );
   }
 
+  const getInspectorName = () => {
+    if (ticket.inspectorName) return ticket.inspectorName;
+    const match = ticket.subtitle?.match(/\(Проверил:\s*([^)]+)\)/);
+    return match ? match[1].trim() : null;
+  };
+  const inspector = getInspectorName();
+
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Breadcrumb */}
@@ -647,6 +654,14 @@ const TicketDetail = () => {
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Создана</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{formatCreatedDate(ticket.createdAt)}</span>
               </div>
+
+              {inspector && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <User size={14} color="var(--text-muted)" />
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Проверяющий</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-purple)' }}>{inspector}</span>
+                </div>
+              )}
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                   <BookOpen size={13} color="var(--text-muted)" />
