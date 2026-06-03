@@ -19,6 +19,15 @@ const formatMac = (mac) => {
   return mac.replace(/[^a-fA-F0-9]/g, '').toUpperCase().match(/.{1,2}/g)?.join(':') || mac;
 };
 
+const formatDuration = (seconds) => {
+  if (!seconds || seconds <= 0) return '0 мин';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} мин`;
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return `${hrs} ч ${remMins} мин`;
+};
+
 
 
 const LiveClock = () => {
@@ -481,8 +490,21 @@ const AttendancePage = () => {
                 {/* Name + MAC */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>{emp.name}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                    {formatMac(emp.macAddress)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      {formatMac(emp.macAddress)}
+                    </span>
+                    {emp.session && typeof emp.session.totalSeconds === 'number' && emp.session.totalSeconds > 0 && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 800,
+                        color: 'var(--accent-purple)',
+                        background: 'rgba(123,61,255,0.08)',
+                        padding: '2px 8px', borderRadius: 8,
+                        display: 'inline-flex', alignItems: 'center', gap: 4
+                      }}>
+                        <Clock size={10} /> В сети сегодня: {formatDuration(emp.session.totalSeconds)}
+                      </span>
+                    )}
                   </div>
                 </div>
 

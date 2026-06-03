@@ -19,7 +19,7 @@
  */
 
 import { initializeApp }        from 'firebase/app';
-import { getFirestore, collection, getDocs, getDoc, setDoc, doc, query, where } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, getDoc, setDoc, doc, query, where, increment } from 'firebase/firestore';
 import { execSync, spawn, exec } from 'child_process';
 import os                       from 'os';
 import https                    from 'https';
@@ -29,7 +29,7 @@ import { fileURLToPath }        from 'url';
 import path                     from 'path';
 
 // ── Версия агента (менять при каждом обновлении) ──────────────────────
-const AGENT_VERSION = '3.4';
+const AGENT_VERSION = '3.6';
 const AGENT_FILE    = fileURLToPath(import.meta.url);
 const UPDATE_URL    = 'https://ticket-tracker-inky.vercel.app/wifi-agent.mjs';
 
@@ -64,13 +64,14 @@ async function checkForUpdate() {
     const latestVersion = data.version;
     const updateUrl = data.updateUrl || UPDATE_URL;
 
-    if (!latestVersion || latestVersion === AGENT_VERSION) return;
+    if (!latestVersion || !isNewerVersion(latestVersion, AGENT_VERSION)) return;
 
     console.log(`\n[agent] 🔄 Найдена новая версия: v${latestVersion} (текущая: v${AGENT_VERSION})`);
     console.log(`[agent] 📥 Скачиваю обновление с ${updateUrl}...`);
 
-    // Скачать новый агент
-    await downloadFile(updateUrl, AGENT_FILE + '.new');
+    // Скачать новый агент с кэш-бастером
+    const busterUrl = updateUrl.includes('?') ? `${updateUrl}&t=${Date.now()}` : `${updateUrl}?t=${Date.now()}`;
+    await downloadFile(busterUrl, AGENT_FILE + '.new');
 
     // Проверить что файл не пустой
     const stat = fs.statSync(AGENT_FILE + '.new');
@@ -80,11 +81,26 @@ async function checkForUpdate() {
       return;
     }
 
+    // Проверить версию внутри скачанного файла для предотвращения вечного цикла
+    const content = fs.readFileSync(AGENT_FILE + '.new', 'utf8');
+    const match = content.match(/const AGENT_VERSION\s*=\s*['"]([^'"]+)['"]/);
+    if (!match) {
+      console.error('[agent] ❌ Не удалось найти версию в скачанном файле, отмена обновления');
+      fs.unlinkSync(AGENT_FILE + '.new');
+      return;
+    }
+    const newVersion = match[1];
+    if (newVersion === AGENT_VERSION) {
+      console.error(`[agent] ❌ Скачанный файл имеет ту же версию (v${newVersion}), обновление отменено для предотвращения цикла.`);
+      fs.unlinkSync(AGENT_FILE + '.new');
+      return;
+    }
+
     // Заменить старый файл
     fs.renameSync(AGENT_FILE + '.new', AGENT_FILE);
-    console.log(`[agent] ✅ Обновление установлено. Перезапускаюсь...`);
+    console.log(`[agent] ✅ Обновление успешно установлено (новая версия: v${newVersion}). Перезапускаюсь...`);
 
-    // Перезапуститься (PM2 подхватит или запустить напрямую)
+    // Перезапуститься
     const child = spawn(process.execPath, [AGENT_FILE], {
       detached: true,
       stdio: 'ignore',
@@ -95,6 +111,19 @@ async function checkForUpdate() {
   } catch (err) {
     console.error('[agent] Ошибка при проверке обновлений:', err.message);
   }
+}
+
+function isNewerVersion(latest, current) {
+  const parse = (v) => v.split('.').map(Number);
+  const a = parse(latest);
+  const b = parse(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const valA = a[i] || 0;
+    const valB = b[i] || 0;
+    if (valA > valB) return true;
+    if (valA < valB) return false;
+  }
+  return false;
 }
 
 function downloadFile(url, dest) {
@@ -282,11 +311,30 @@ function getArpMacs() {
   }
 }
 
+let isOffHours = false;
+
 // ── Основной цикл сканирования ────────────────────────────────────────
 async function scan() {
   if (!CLUB_ID) return;
 
   const now     = new Date();
+  const hour    = now.getHours();
+
+  // Рабочие часы: с 6:00 до 23:00
+  if (hour < 6 || hour >= 23) {
+    if (!isOffHours) {
+      console.log(`[agent] 🕒 Вне рабочих часов (06:00 - 23:00). Помечаем всех сотрудников оффлайн.`);
+      await markAllOffline();
+      isOffHours = true;
+    }
+    return;
+  }
+
+  if (isOffHours) {
+    console.log(`[agent] ☀️ Рабочее время началось (06:00). Возобновляем сканирование.`);
+    isOffHours = false;
+  }
+
   const today   = now.toISOString().split('T')[0];
   const nowIso  = now.toISOString();
   const timeStr = now.toLocaleTimeString('ru-RU');
@@ -344,10 +392,27 @@ async function scan() {
             clubId: CLUB_ID, employeeId: emp.id, name: emp.name,
             macAddress: mac, date: today,
             arrivedAt: nowIso, lastSeen: nowIso, isOnline: true,
+            totalSeconds: 0,
           });
           console.log(`  📍 Зафиксирован приход: ${emp.name} в ${now.toLocaleTimeString('ru-RU')}`);
         } else {
-          await setDoc(sessionRef, { isOnline: true, lastSeen: nowIso }, { merge: true });
+          const sessData = existing.docs[0].data();
+          const prevLastSeen = sessData.lastSeen;
+          const wasOnline = sessData.isOnline;
+          let secondsToAdd = 0;
+
+          if (wasOnline && prevLastSeen) {
+            const diff = (now.getTime() - new Date(prevLastSeen).getTime()) / 1000;
+            if (diff > 0 && diff < 300) {
+              secondsToAdd = Math.round(diff);
+            }
+          }
+
+          await setDoc(sessionRef, {
+            isOnline: true,
+            lastSeen: nowIso,
+            totalSeconds: increment(secondsToAdd)
+          }, { merge: true });
         }
       } catch (err) {
         console.error(`  [agent] Ошибка записи для ${emp.name}:`, err.message);
@@ -395,7 +460,7 @@ async function scan() {
 
 // ── Heartbeat ─────────────────────────────────────────────────────────
 async function sendHeartbeat() {
-  if (!CLUB_ID) return;
+  if (!CLUB_ID || isOffHours) return;
   try {
     await setDoc(doc(db, 'wifi_agents', CLUB_ID), {
       clubId: CLUB_ID,
@@ -421,9 +486,23 @@ async function markAllOffline() {
       where('date',   '==', today),
       where('isOnline', '==', true));
     const snap = await getDocs(q);
-    const updates = snap.docs.map(d =>
-      setDoc(d.ref, { isOnline: false, lastSeen: nowIso, leftAt: nowIso }, { merge: true })
-    );
+    const updates = snap.docs.map(d => {
+      const sessData = d.data();
+      const prevLastSeen = sessData.lastSeen;
+      let secondsToAdd = 0;
+      if (prevLastSeen) {
+        const diff = (new Date().getTime() - new Date(prevLastSeen).getTime()) / 1000;
+        if (diff > 0 && diff < 300) {
+          secondsToAdd = Math.round(diff);
+        }
+      }
+      return setDoc(d.ref, {
+        isOnline: false,
+        lastSeen: nowIso,
+        leftAt: nowIso,
+        totalSeconds: increment(secondsToAdd)
+      }, { merge: true });
+    });
     await Promise.all(updates);
     await setDoc(doc(db, 'wifi_agents', CLUB_ID), {
       clubId: CLUB_ID, lastSeen: new Date(0).toISOString(), host: os.hostname(), version: AGENT_VERSION,

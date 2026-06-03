@@ -15,6 +15,7 @@ import TicketsPage from './pages/TicketsPage';
 import TicketDetail from './components/tickets/TicketDetail';
 import SchedulePage from './pages/SchedulePage';
 import MerchPage from './pages/MerchPage';
+import SalesPage from './pages/SalesPage';
 import ChecklistPage from './pages/ChecklistPage';
 import ChecklistDetail from './pages/ChecklistDetail';
 import ArchivePage from './pages/ArchivePage';
@@ -159,6 +160,12 @@ const AppContent = () => {
         <Route path="/merch" element={
           <ProtectedLayout>
             <MerchPage />
+          </ProtectedLayout>
+        } />
+
+        <Route path="/sales" element={
+          <ProtectedLayout>
+            <SalesPage />
           </ProtectedLayout>
         } />
 

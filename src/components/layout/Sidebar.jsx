@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Ticket, CheckSquare, Calendar, 
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
-  MoreHorizontal, X, ChevronRight, Package
+  MoreHorizontal, X, ChevronRight, Package, TrendingUp
 } from 'lucide-react';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
@@ -13,8 +13,9 @@ const ALL_NAV = [
   { icon: Ticket,          label: 'Заявки',     path: '/tickets',     primary: true  },
   { icon: Calendar,        label: 'График',      path: '/schedule',    primary: true  },
   { icon: CheckSquare,     label: 'Чек-листы',  path: '/checklists',  primary: true  },
-  { icon: Package,         label: 'Мерч',        path: '/merch',       primary: true  },
-  { icon: LayoutDashboard, label: 'Дашборд',    path: '/dashboard',   primary: true  },
+  { icon: Package,         label: 'Склад',       path: '/merch',       primary: true  },
+  { icon: TrendingUp,      label: 'Продажи',    path: '/sales',       primary: true  },
+  { icon: LayoutDashboard, label: 'Дашборд',    path: '/dashboard',   primary: false },
   { icon: Archive,         label: 'Архив',       path: '/archive',     primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },

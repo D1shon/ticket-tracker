@@ -18,12 +18,12 @@ const db = getFirestore(app);
 // Sign in anonymously first to satisfy security rules
 await signInAnonymously(auth);
 
-// Записать версию 3.4 в Firestore — агенты на всех машинах скачают обновление
+// Записать версию 3.6 в Firestore — агенты на всех машинах скачают обновление
 await setDoc(doc(db, 'settings', 'agent'), {
-  version: '3.4',
+  version: '3.6',
   updateUrl: 'https://ticket-tracker-inky.vercel.app/wifi-agent.mjs',
   updatedAt: new Date().toISOString(),
 });
 
-console.log('✅ Версия агента 3.4 записана в Firestore. Все агенты обновятся автоматически в течение 5 минут.');
+console.log('✅ Версия агента 3.6 записана в Firestore. Все агенты обновятся автоматически в течение 5 минут.');
 process.exit(0);

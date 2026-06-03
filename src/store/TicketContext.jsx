@@ -113,6 +113,63 @@ function sortByRecentActivity(arr) {
   });
 }
 
+// Helper to compress images on the client side using Canvas
+const compressImage = (file) => new Promise((resolve) => {
+  if (!file.type.startsWith('image/')) {
+    resolve(file);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      // Max dimensions 800px
+      const MAX_WIDTH = 800;
+      const MAX_HEIGHT = 800;
+
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width *= MAX_HEIGHT / height;
+          height = MAX_HEIGHT;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          resolve(file);
+          return;
+        }
+        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+          type: 'image/jpeg',
+          lastModified: Date.now()
+        });
+        resolve(compressedFile);
+      }, 'image/jpeg', 0.5); // 50% JPEG quality for ultra-small size (~30-60KB)
+    };
+    img.onerror = () => resolve(file);
+    img.src = e.target.result;
+  };
+  reader.onerror = () => resolve(file);
+  reader.readAsDataURL(file);
+});
+
+// Cache storage availability status to bypass waiting/timeouts once a failure occurs
+let isStorageHealthy = true;
+
 export const TicketProvider = ({ children }) => {
   const [user,    setUser]    = useState(null);
   const [tickets, setTickets] = useState(loadCachedTickets);
@@ -345,21 +402,106 @@ export const TicketProvider = ({ children }) => {
     }
   }, [user]);
 
-  const uploadFile = useCallback(async (file, onProgress) => {
-    if (!file) return null;
-    if (!auth.currentUser) {
+  const uploadFile = useCallback(async (rawFile, onProgress) => {
+    if (!rawFile) return null;
+
+    // Compress first if image
+    let file = rawFile;
+    if (rawFile.type.startsWith('image/')) {
+      try {
+        file = await compressImage(rawFile);
+      } catch (e) {
+        console.error('Compression failed, using raw file', e);
+      }
+    }
+    
+    const maxBase64Size = 900 * 1024; // 900 KB
+    const isSmallFile = file.size <= maxBase64Size;
+
+    const convertToBase64 = (f) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(f);
+    });
+
+    // If we already know storage is broken, immediately use Base64/local URL
+    if (!isStorageHealthy || !auth.currentUser) {
+      if (isSmallFile) {
+        try {
+          const base64Url = await convertToBase64(file);
+          toast.success('Загружено (Base64 фоллбек)');
+          return { name: file.name, url: base64Url, type: file.type };
+        } catch {}
+      }
       return { name: file.name, url: URL.createObjectURL(file), type: file.type, isLocal: true };
     }
+
     const fileId = Math.random().toString(36).slice(2, 11);
     const storageRef = ref(storage, `attachments/${fileId}_${file.name}`);
     const task = uploadBytesResumable(storageRef, file);
+
     return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(async () => {
+        try { task.cancel(); } catch {}
+        isStorageHealthy = false; // Mark storage as broken
+        if (isSmallFile) {
+          console.warn('[Storage Timeout] Falling back to Base64');
+          try {
+            const base64Url = await convertToBase64(file);
+            toast.success('Загружено (локальный Base64)');
+            resolve({ name: file.name, url: base64Url, type: file.type });
+            return;
+          } catch (err) {
+            reject(err);
+            return;
+          }
+        }
+        toast.error('Превышено время ожидания загрузки (15 сек)');
+        reject(new Error('Upload timeout'));
+      }, 15000);
+
       task.on('state_changed',
-        (snap) => { if (onProgress) onProgress((snap.bytesTransferred / snap.totalBytes) * 100); },
-        (err)  => { toast.error('Ошибка загрузки файла'); reject(err); },
+        (snap) => { 
+          if (onProgress) onProgress((snap.bytesTransferred / snap.totalBytes) * 100); 
+        },
+        async (err)  => { 
+          clearTimeout(timeoutId);
+          console.error('[Storage Upload Error]', err);
+          isStorageHealthy = false; // Mark storage as broken
+          if (isSmallFile) {
+            console.warn('[Storage Error] Falling back to Base64');
+            try {
+              const base64Url = await convertToBase64(file);
+              toast.success('Загружено (локальный Base64)');
+              resolve({ name: file.name, url: base64Url, type: file.type });
+              return;
+            } catch (fallbackErr) {
+              console.error('[Base64 Fallback Error]', fallbackErr);
+            }
+          }
+          toast.error(`Ошибка загрузки: ${err.message || 'нет доступа к хранилищу'}`); 
+          reject(err); 
+        },
         async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          resolve({ name: file.name, url, type: file.type });
+          clearTimeout(timeoutId);
+          try {
+            const url = await getDownloadURL(task.snapshot.ref);
+            resolve({ name: file.name, url, type: file.type });
+          } catch (err) {
+            console.error('[Storage Get URL Error]', err);
+            isStorageHealthy = false; // Mark storage as broken
+            if (isSmallFile) {
+              try {
+                const base64Url = await convertToBase64(file);
+                toast.success('Загружено (локальный Base64)');
+                resolve({ name: file.name, url: base64Url, type: file.type });
+                return;
+              } catch (fallbackErr) {}
+            }
+            toast.error('Ошибка получения ссылки на файл');
+            reject(err);
+          }
         }
       );
     });

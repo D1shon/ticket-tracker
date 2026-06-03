@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { 
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
   Trash2, Edit3, CheckCircle, AlertTriangle, ArrowUpRight, 
-  ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet, Download
+  ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet, Download, ClipboardList
 } from 'lucide-react';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
@@ -22,8 +22,10 @@ const MerchPage = () => {
   const isChef = useMemo(() => user?.role === 'chef', [user]);
   const managerClub = useMemo(() => user?.club || null, [user]);
 
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales'
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'resort'
   const [selectedClub, setSelectedClub] = useState(() => (!isChef && managerClub) ? managerClub : 'ALL');
+  const [resortValues, setResortValues] = useState({}); // productId -> actual count string
+  const [savingResort, setSavingResort] = useState(false);
   
   // Sync selectedClub if user updates
   useEffect(() => {
@@ -238,6 +240,52 @@ const MerchPage = () => {
     } catch (err) {
       console.error(err);
       toast.error('Ошибка при пополнении запасов');
+    }
+  };
+
+  // ─── Resort (Inventory Recount) ────────────────────────────────────────────
+  const handleSaveResort = async () => {
+    if (!isChef) return;
+    const changed = Object.entries(resortValues).filter(([id, val]) => {
+      const prod = products.find(p => p.id === id);
+      return prod && val !== '' && parseInt(val) !== prod.stock;
+    });
+    if (changed.length === 0) return toast.error('Нет изменений для сохранения');
+    setSavingResort(true);
+    try {
+      await Promise.all(changed.map(async ([id, val]) => {
+        const prod = products.find(p => p.id === id);
+        const actual = parseInt(val);
+        const diff = actual - prod.stock;
+        await updateDoc(doc(db, 'merch_products', id), {
+          stock: actual,
+          updatedAt: serverTimestamp(),
+        });
+        // Log adjustment
+        await addDoc(collection(db, 'merch_sales'), {
+          productId: id,
+          productName: prod.name,
+          category: prod.category || '',
+          club: prod.club,
+          qty: diff,
+          costPrice: prod.costPrice || 0,
+          salePrice: 0,
+          totalSum: 0,
+          netProfit: 0,
+          paymentMethod: 'Пересорт',
+          clientName: `Факт: ${actual} шт (было: ${prod.stock})`,
+          cashierName: user?.name || user?.email || 'Чеф',
+          createdAt: serverTimestamp(),
+        });
+      }));
+      toast.success(`Пересорт сохранён: ${changed.length} позиций обновлено`);
+      setResortValues({});
+      setActiveTab('inventory');
+    } catch (err) {
+      console.error(err);
+      toast.error('Ошибка при сохранении пересорта');
+    } finally {
+      setSavingResort(false);
     }
   };
 
@@ -550,6 +598,14 @@ const MerchPage = () => {
           >
             <History size={14} /> История продаж
           </button>
+          {isChef && (
+            <button
+              onClick={() => { setActiveTab('resort'); setResortValues({}); }}
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'resort' ? 'bg-orange-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+            >
+              <ClipboardList size={14} /> Пересорт
+            </button>
+          )}
         </div>
 
         {/* Search Input & CSV Export */}
@@ -576,7 +632,97 @@ const MerchPage = () => {
       </div>
 
       {/* Content Body */}
-      {activeTab === 'inventory' ? (
+      {activeTab === 'resort' ? (
+        /* --- RESORT (INVENTORY RECOUNT) TAB --- */
+        <div className="bg-[var(--bg-card)] rounded-3xl border border-orange-500/20 shadow-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between" style={{ background: 'rgba(245,158,11,0.04)' }}>
+            <div>
+              <div className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wide flex items-center gap-2">
+                <ClipboardList size={16} className="text-orange-400" /> Пересорт / Инвентаризация
+              </div>
+              <div className="text-[10px] text-[var(--text-muted)] font-bold mt-0.5 uppercase tracking-widest">
+                Введите фактическое кол-во для каждой позиции — остаток будет обновлён автоматически
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { setActiveTab('inventory'); setResortValues({}); }}
+                className="px-4 py-2 rounded-xl text-xs font-bold border border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleSaveResort}
+                disabled={savingResort}
+                className="px-5 py-2 rounded-xl text-xs font-black uppercase border border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition-all disabled:opacity-50"
+              >
+                {savingResort ? 'Сохраняем...' : 'Сохранить пересорт'}
+              </button>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-left bg-[var(--bg-hover)]/30">
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Товар</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Клуб</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">Система</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">Факт</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">Разница</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProducts.map(p => {
+                  const factVal = resortValues[p.id] ?? '';
+                  const fact = factVal === '' ? null : parseInt(factVal);
+                  const diff = fact !== null ? fact - p.stock : null;
+                  const hasDiff = diff !== null && diff !== 0;
+                  return (
+                    <tr key={p.id} className={`border-b border-[var(--border)] transition-colors ${hasDiff ? 'bg-orange-500/5' : 'hover:bg-[var(--bg-hover)]/30'}`}>
+                      <td className="px-6 py-3">
+                        <span className="font-extrabold text-sm text-[var(--text-primary)] block">{p.name}</span>
+                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">{p.category}</span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <span className="px-2 py-0.5 text-[10px] font-black bg-purple-500/10 text-purple-400 rounded-lg border border-purple-500/20 uppercase">{p.club}</span>
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        <span className="font-black text-sm text-[var(--text-primary)]">{p.stock} шт</span>
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder={String(p.stock)}
+                          value={factVal}
+                          onChange={e => setResortValues(prev => ({ ...prev, [p.id]: e.target.value }))}
+                          className="w-20 text-center font-black text-sm rounded-lg border outline-none py-1.5 px-2 transition-all"
+                          style={{
+                            background: hasDiff ? 'rgba(245,158,11,0.08)' : 'var(--bg-hover)',
+                            borderColor: hasDiff ? '#f59e0b' : 'var(--border)',
+                            color: hasDiff ? '#f59e0b' : 'var(--text-primary)',
+                          }}
+                        />
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        {diff === null ? (
+                          <span className="text-[var(--text-muted)] text-xs">—</span>
+                        ) : diff === 0 ? (
+                          <span className="text-emerald-400 font-black text-xs">✔ OK</span>
+                        ) : (
+                          <span className={`font-black text-sm ${diff > 0 ? 'text-blue-400' : 'text-red-500'}`}>
+                            {diff > 0 ? '+' : ''}{diff} шт
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : activeTab === 'inventory' ? (
         /* --- INVENTORY LIST TAB --- */
         <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-xl overflow-hidden">
           {loadingProducts ? (

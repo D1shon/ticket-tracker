@@ -98,7 +98,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
   ] : SHIFT_OPTIONS;
 
   const getShiftColor = (val) => {
-    if (!val) return 'bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]';
+    if (!val) return 'shift-empty border';
     const norm = val.trim();
     
     let isWeekendDay = false;
@@ -114,27 +114,13 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     const isFullDay = norm === '6:30-22:30' || norm === '8:30-21:30' || norm === '6:30-22:00';
 
     if (isMorning) {
-      if (isWeekendDay) {
-        // morning weekend: dark green
-        return 'bg-emerald-800/30 text-emerald-300 border-emerald-700/40';
-      } else {
-        // morning weekdays: light green
-        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      }
+      return isWeekendDay ? 'shift-morning-weekend border' : 'shift-morning border';
     }
+    if (isEvening) return 'shift-evening border';
+    if (isFullDay)  return 'shift-fullday border';
 
-    if (isEvening) {
-      // evening: blue
-      return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
-    }
-
-    if (isFullDay) {
-      // full day: pink
-      return 'bg-pink-500/20 text-pink-400 border-pink-500/40';
-    }
-
-    // Any other custom value (like 8:00-17:00, выходной, etc.)
-    return 'bg-purple-500/10 text-[var(--accent-purple)] border-purple-500/30';
+    // Any other custom value
+    return 'shift-custom border';
   };
 
   const handleOpen = () => {
@@ -325,14 +311,21 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
   return (
     <td
       ref={cellRef}
-      className={`p-1 border-r border-[var(--border)] relative select-none ${isHoliday ? 'bg-red-500/5' : ''} ${isToday ? 'bg-purple-500/10' : ''} min-w-[60px] md:min-w-[90px]`}
+      className={`p-0.5 border-r border-[var(--border)] relative select-none ${isHoliday ? 'bg-red-500/5' : ''} ${isToday ? 'bg-purple-500/10' : ''}`}
+      style={{ minWidth: isMobile ? 44 : 90, maxWidth: isMobile ? 44 : 90 }}
       onClick={handleOpen}
     >
       <div
         id={`cell-${rowIdx}-${colIdx}`}
-        className={`w-full min-h-[38px] rounded-lg text-[9px] md:text-[10px] text-center font-bold border flex items-center justify-center transition-all ${getShiftColor(initialValue)} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default opacity-75'}`}
+        className={`w-full rounded-md text-center font-bold border flex items-center justify-center transition-all ${getShiftColor(initialValue)} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default opacity-75'}`}
+        style={{ minHeight: isMobile ? 32 : 38, fontSize: isMobile ? 8 : 10 }}
       >
-        {initialValue || (canEdit ? <span className="opacity-20 text-[16px]">+</span> : <span className="opacity-10">—</span>)}
+        {initialValue
+          ? (isMobile
+              ? (initialValue.includes('-') ? initialValue.split('-')[0] : initialValue)
+              : initialValue)
+          : (canEdit ? <span className="opacity-20" style={{ fontSize: isMobile ? 14 : 16 }}>+</span> : <span className="opacity-10">—</span>)
+        }
       </div>
       {picker}
     </td>
@@ -920,17 +913,20 @@ const SchedulePage = () => {
           onMouseUp={handleTableMouseUpOrLeave}
           onMouseLeave={handleTableMouseUpOrLeave}
         >
-          <table className="w-full text-left border-separate border-spacing-0 min-w-[1800px] select-none">
+          <table className="w-full text-left border-separate border-spacing-0 select-none" style={{ minWidth: 900 }}>
             <thead>
               <tr className="text-[9px] uppercase tracking-widest font-black text-[var(--text-muted)]">
                 {/* Visual "Two-Part" Split using Sticky & Thick Border */}
-                <th style={{ position: stickyNames ? 'sticky' : 'relative', top: 0, left: 0, zIndex: stickyNames ? 50 : 10, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-5 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
+                <th style={{ position: stickyNames ? 'sticky' : 'relative', top: 0, left: 0, zIndex: stickyNames ? 50 : 10, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderRight: '2px solid var(--border)', minWidth: 140, maxWidth: 280, width: 140 }} className="px-2 md:px-6 py-4 md:py-5">
                   Сотрудник
                 </th>
                 
                 {daysInMonth.map(day => (
-                  <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className={`px-1 py-4 text-center min-w-[60px] md:min-w-[90px] ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
-                    <div className="flex flex-col items-center gap-0.5"><span className="opacity-50">{format(day, 'eeeeee', { locale: ru }) + '.'}</span><span className="text-xs">{format(day, 'd')}</span></div>
+                  <th key={day.toString()} style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', minWidth: 44, maxWidth: 90 }} className={`px-0.5 py-3 text-center ${HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd')) ? 'text-red-500' : ''}`}>
+                    <div className="flex flex-col items-center gap-0">
+                      <span className="opacity-50 hidden md:block">{format(day, 'eeeeee', { locale: ru }) + '.'}</span>
+                      <span style={{ fontSize: 10 }}>{format(day, 'd')}</span>
+                    </div>
                   </th>
                 ))}
                 
@@ -948,31 +944,33 @@ const SchedulePage = () => {
                 const stats = getEmployeeStats(emp.id);
                 return (
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
-                    <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
-                      <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-                        <Users size={14} className="text-[var(--text-muted)] flex-shrink-0" />
-                        <div className="flex-1 flex items-center justify-between min-w-0">
-                          {editingEmpId === emp.id ? (
-                            <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-xs md:text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
-                          ) : (
-                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                              <span onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }} title={emp.name} className="text-xs md:text-sm font-bold text-[var(--text-primary)] cursor-pointer truncate">{emp.name}</span>
-                              {emp.isService && (
-                                <span className="text-[7px] font-black px-1 py-0.5 rounded flex-shrink-0 hidden md:inline" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>СЕР</span>
-                              )}
+                    <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)', minWidth: 140, maxWidth: 280, width: 140 }} className="px-2 md:px-6 py-3 md:py-4">
+                      <div className="w-full">
+                        {editingEmpId === emp.id ? (
+                          <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-xs md:text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <span
+                              onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }}
+                              title={emp.name}
+                              style={{ overflowWrap: 'break-word', wordBreak: 'break-word', hyphens: 'auto' }}
+                              className="text-xs md:text-sm font-bold text-[var(--text-primary)] cursor-pointer leading-tight block w-full"
+                            >{emp.name}</span>
+                            {emp.isService && (
+                              <span className="text-[7px] font-black px-1 py-0.5 rounded self-start hidden md:inline" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>СЕР</span>
+                            )}
+                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 mt-0.5">
+                              <button onClick={() => moveEmployee(emp.id, 'up')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={11}/></button>
+                              <button onClick={() => moveEmployee(emp.id, 'down')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={11}/></button>
+                              <button
+                                onClick={() => setEmployeeService(emp.id, !emp.isService)}
+                                className={`p-0.5 transition-colors ${emp.isService ? 'text-amber-500' : 'text-[var(--text-muted)] hover:text-amber-400'}`}
+                                title={emp.isService ? 'Снять статус сервисника' : 'Отметить как сервисника'}
+                              ><Wrench size={11}/></button>
+                              <button onClick={() => removeEmployee(emp.id)} className="p-0.5 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={11}/></button>
                             </div>
-                          )}
-                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 flex-shrink-0">
-                            <button onClick={() => moveEmployee(emp.id, 'up')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={12}/></button>
-                            <button onClick={() => moveEmployee(emp.id, 'down')} className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={12}/></button>
-                            <button
-                              onClick={() => setEmployeeService(emp.id, !emp.isService)}
-                              className={`p-1 transition-colors ${emp.isService ? 'text-amber-500' : 'text-[var(--text-muted)] hover:text-amber-400'}`}
-                              title={emp.isService ? 'Снять статус сервисника' : 'Отметить как сервисника'}
-                            ><Wrench size={12}/></button>
-                            <button onClick={() => removeEmployee(emp.id)} className="p-1 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={12}/></button>
                           </div>
-                        </div>
+                        )}
                       </div>
                     </td>
                     {daysInMonth.map((day, dIdx) => {
@@ -1060,7 +1058,7 @@ const SchedulePage = () => {
               })}
               {pendingRows.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
+                  <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[160px] md:min-w-[280px] max-w-[160px] md:max-w-[280px]">
                     <div className="flex items-center gap-2 md:gap-4"><Users size={14} className="text-[var(--text-muted)]" /><input value={row.name} autoFocus onChange={e => setPendingRows(prev => prev.map(r => r.id === row.id ? { ...r, name: e.target.value } : r))} onKeyDown={e => e.key === 'Enter' && savePendingRow(row.id)} placeholder="ФИО..." className="bg-transparent text-xs md:text-sm text-[var(--text-primary)] outline-none w-full" /><button onClick={() => savePendingRow(row.id)} className="text-green-500"><Check size={16}/></button></div>
                   </td>
                   {daysInMonth.map(d => <td key={d.toString()} style={{ borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="text-[10px] text-[var(--text-muted)] text-center italic">—</td>)}
@@ -1074,7 +1072,7 @@ const SchedulePage = () => {
                 </tr>
               ))}
               <tr>
-                <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">
+                <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[160px] md:min-w-[280px] max-w-[160px] md:max-w-[280px]">
                   <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
                 </td>
                 <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
