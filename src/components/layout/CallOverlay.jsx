@@ -34,7 +34,7 @@ const VideoPlayer = ({ track, style, className }) => {
         } catch (_) {}
       };
     }
-  }, [track, style]);
+  }, [track, style?.objectFit]);
 
   return <div ref={containerRef} className={className} style={{ width: '100%', height: '100%', overflow: 'hidden', ...style }} />;
 };
@@ -155,7 +155,7 @@ const CallOverlay = () => {
         position: 'relative',
         width: '100%',
         flex: isFullPage ? 1 : 'none',
-        height: isFullPage ? 'auto' : (getWidth() * 9) / 16,
+        height: isFullPage ? '100%' : (getWidth() * 9) / 16,
         background: '#000'
       }}>
         <VideoPlayer 
@@ -272,14 +272,13 @@ const CallOverlay = () => {
         gap: 2,
         background: '#000',
         flex: isFullPage ? 1 : 'none',
-        minHeight: isFullPage ? 'auto' : (getWidth() / activeCameras.length) * 0.75
+        height: isFullPage ? '100%' : (getWidth() / activeCameras.length) * 0.75
       }}>
         {activeCameras.map(cam => (
           <div key={cam.id} style={{
             position: 'relative',
             background: '#1a1a20',
-            height: isFullPage ? '100%' : 'auto',
-            aspectRatio: isFullPage ? 'auto' : '4/3',
+            height: '100%',
             width: '100%'
           }}>
             <VideoPlayer track={cam.track} />
