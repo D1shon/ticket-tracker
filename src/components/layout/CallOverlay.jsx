@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useCall } from '../../store/CallContext';
-import { PhoneOff, Monitor, Maximize2, Minimize2, User } from 'lucide-react';
+import { PhoneOff, Monitor, Maximize2, Minimize2, User, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { toast } from 'sonner';
 
 const CallOverlay = () => {
   const {
@@ -8,6 +9,7 @@ const CallOverlay = () => {
     isScreenSharing,
     remoteUsers,
     localVideoTrack,
+    localAudioTrack,
     screenTrack,
     leaveCall,
     toggleScreenShare,
@@ -21,17 +23,25 @@ const CallOverlay = () => {
   });
   const [isDragging, setIsDragging] = React.useState(false);
   const [isFullPage, setIsFullPage] = React.useState(true);
+  const [isMicMuted, setIsMicMuted] = React.useState(false);
+  const [isCameraMuted, setIsCameraMuted] = React.useState(false);
+
   const dragStartPos = useRef({ x: 0, y: 0 });
   const localRef = useRef(null);
   const remoteRef = useRef(null);
 
   // Reset to full-page when a new call starts
   useEffect(() => {
-    if (isInCall) setIsFullPage(true);
+    if (isInCall) {
+      setIsFullPage(true);
+      setIsMicMuted(false);
+      setIsCameraMuted(false);
+    }
   }, [isInCall]);
 
   // Local video / screen track
   useEffect(() => {
+    if (isCameraMuted && !isScreenSharing) return;
     const track = isScreenSharing ? screenTrack : localVideoTrack;
     const container = localRef.current;
     if (track && container) {
@@ -39,7 +49,7 @@ const CallOverlay = () => {
       try { track.play(container); } catch (err) { console.error('[CallOverlay] local track error:', err); }
       return () => { try { track.stop(); } catch (_) {} };
     }
-  }, [localVideoTrack, screenTrack, isScreenSharing, isInCall, size, isFullPage]);
+  }, [localVideoTrack, screenTrack, isScreenSharing, isInCall, size, isFullPage, isCameraMuted]);
 
   // Remote video track
   const remoteVideoTrack = remoteUsers[0]?.videoTrack;
@@ -74,6 +84,36 @@ const CallOverlay = () => {
       window.removeEventListener('mouseup', onUp);
     };
   }, [isDragging]);
+
+  const toggleMic = async () => {
+    if (localAudioTrack) {
+      try {
+        const nextState = !isMicMuted;
+        await localAudioTrack.setEnabled(!nextState);
+        setIsMicMuted(nextState);
+        toast.success(nextState ? 'Микрофон выключен' : 'Микрофон включен');
+      } catch (err) {
+        console.error('Toggle mic error:', err);
+      }
+    } else {
+      toast.error('Микрофон недоступен');
+    }
+  };
+
+  const toggleCamera = async () => {
+    if (localVideoTrack) {
+      try {
+        const nextState = !isCameraMuted;
+        await localVideoTrack.setEnabled(!nextState);
+        setIsCameraMuted(nextState);
+        toast.success(nextState ? 'Камера выключена' : 'Камера включена');
+      } catch (err) {
+        console.error('Toggle camera error:', err);
+      }
+    } else {
+      toast.error('Камера недоступна');
+    }
+  };
 
   if (!isInCall) return null;
 
@@ -237,14 +277,30 @@ const CallOverlay = () => {
           aspectRatio: isFullPage ? 'auto' : '4/3',
           width: '100%'
         }}>
-          <div ref={localRef} style={{ width: '100%', height: '100%' }} />
+          {!isCameraMuted && (localVideoTrack || screenTrack) ? (
+            <div ref={localRef} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <div style={{
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              color: 'rgba(255,255,255,0.15)',
+              width: '100%', height: '100%',
+              position: 'absolute', inset: 0
+            }}>
+              <VideoOff size={size === 1 ? 40 : 80} strokeWidth={1} />
+              <span style={{ fontSize: 10, fontWeight: 800, marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Камера отключена
+              </span>
+            </div>
+          )}
           <div style={{
             position: 'absolute', bottom: 12, left: 12,
             background: 'rgba(0,0,0,0.5)',
             padding: '4px 8px', borderRadius: 6,
-            fontSize: 10, color: 'white', fontWeight: 800
+            fontSize: 10, color: 'white', fontWeight: 800,
+            zIndex: 10
           }}>
-            Я
+            Я {isMicMuted ? '🔇' : '🎙️'}
           </div>
         </div>
 
@@ -304,14 +360,60 @@ const CallOverlay = () => {
         display: 'flex',
         justifyContent: 'center',
         background: 'rgba(0,0,0,0.2)',
-        borderTop: isFullPage ? '1px solid rgba(255,255,255,0.05)' : 'none'
+        borderTop: isFullPage ? '1px solid rgba(255,255,255,0.05)' : 'none',
+        gap: 12
       }}>
+        {/* Toggle Mic */}
+        <button
+          onClick={toggleMic}
+          style={{
+            flex: isFullPage ? 'none' : 1,
+            width: isFullPage ? 56 : undefined,
+            height: 44,
+            background: isMicMuted ? '#ef4444' : 'rgba(255,255,255,0.05)',
+            border: 'none',
+            borderRadius: 12,
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+          title={isMicMuted ? "Включить микрофон" : "Выключить микрофон"}
+        >
+          {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
+        </button>
+
+        {/* Toggle Camera */}
+        <button
+          onClick={toggleCamera}
+          style={{
+            flex: isFullPage ? 'none' : 1,
+            width: isFullPage ? 56 : undefined,
+            height: 44,
+            background: isCameraMuted ? '#ef4444' : 'rgba(255,255,255,0.05)',
+            border: 'none',
+            borderRadius: 12,
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+          title={isCameraMuted ? "Включить камеру" : "Выключить камеру"}
+        >
+          {isCameraMuted ? <VideoOff size={18} /> : <Video size={18} />}
+        </button>
+
+        {/* Screen Share */}
         <button
           onClick={toggleScreenShare}
           style={{
             width: isFullPage ? 'auto' : '100%',
             minWidth: isFullPage ? 220 : undefined,
-            flex: isFullPage ? 'none' : 1,
+            flex: isFullPage ? 'none' : 2,
             background: isScreenSharing ? '#3b82f6' : 'rgba(255,255,255,0.05)',
             border: 'none',
             padding: '12px',

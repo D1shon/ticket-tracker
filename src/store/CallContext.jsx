@@ -148,16 +148,53 @@ export const CallProvider = ({ children }) => {
       const uid = await clientRef.current.join(APP_ID, channel, null, null);
       uidRef.current = uid;
 
-      const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
-        { encoderConfig: 'high_quality_stereo', AEC: true, ANS: true, AGC: true },
-        { encoderConfig: { width: 1280, height: 720, frameRate: 30 } }
-      );
-      createdAudioTrack = audioTrack;
-      createdVideoTrack = videoTrack;
+      let audioTrack = null;
+      let videoTrack = null;
 
-      setLocalAudioTrack(audioTrack);
-      setLocalVideoTrack(videoTrack);
-      await clientRef.current.publish([audioTrack, videoTrack]);
+      try {
+        // Try getting both camera and microphone first
+        const [aTrack, vTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
+          { encoderConfig: 'high_quality_stereo', AEC: true, ANS: true, AGC: true },
+          { encoderConfig: { width: 1280, height: 720, frameRate: 30 } }
+        );
+        audioTrack = aTrack;
+        videoTrack = vTrack;
+      } catch (deviceErr) {
+        console.warn('[CallContext] Failed to get both mic and camera, trying mic only:', deviceErr);
+        try {
+          // Fallback 1: Microphone only
+          audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+            encoderConfig: 'high_quality_stereo', AEC: true, ANS: true, AGC: true
+          });
+        } catch (micErr) {
+          console.warn('[CallContext] Failed to get mic, trying camera only:', micErr);
+          try {
+            // Fallback 2: Camera only
+            videoTrack = await AgoraRTC.createCameraVideoTrack({
+              encoderConfig: { width: 1280, height: 720, frameRate: 30 }
+            });
+          } catch (camErr) {
+            console.warn('[CallContext] No audio/video devices accessible, joining as listener:', camErr);
+            toast.info('Камера и микрофон не найдены или заблокированы. Вы вошли в режиме слушателя.');
+          }
+        }
+      }
+
+      const tracksToPublish = [];
+      if (audioTrack) {
+        createdAudioTrack = audioTrack;
+        setLocalAudioTrack(audioTrack);
+        tracksToPublish.push(audioTrack);
+      }
+      if (videoTrack) {
+        createdVideoTrack = videoTrack;
+        setLocalVideoTrack(videoTrack);
+        tracksToPublish.push(videoTrack);
+      }
+
+      if (tracksToPublish.length > 0) {
+        await clientRef.current.publish(tracksToPublish);
+      }
 
       // Update Firestore counter (wrapped in try-catch internally, won't throw)
       await incrementRoom(channel);
