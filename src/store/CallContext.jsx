@@ -131,12 +131,12 @@ export const CallProvider = ({ children }) => {
         if (mediaType === 'video') {
           setRemoteUsers(prev => prev.map(u =>
             u.uid === user.uid ? { ...u, videoTrack: null } : u
-          ).filter(u => u.videoTrack || u.audioTrack));
+          ));
         }
         if (mediaType === 'audio') {
           setRemoteUsers(prev => prev.map(u =>
             u.uid === user.uid ? { ...u, audioTrack: null } : u
-          ).filter(u => u.videoTrack || u.audioTrack));
+          ));
         }
       });
 
@@ -259,7 +259,12 @@ export const CallProvider = ({ children }) => {
         toast.success('Демонстрация экрана началась');
       } catch (err) {
         console.error('[CallContext] Screen share error:', err);
-        toast.error('Ошибка демонстрации экрана: ' + (err?.message || err));
+        const errStr = String(err);
+        if (errStr.includes('Permission denied') || errStr.includes('NotAllowedError')) {
+          toast.error('Ошибка: Разрешите доступ к записи экрана в браузере или системных настройках.');
+        } else {
+          toast.error('Ошибка демонстрации экрана: ' + (err?.message || errStr));
+        }
       }
     } else {
       stopScreenShare(screenTrack);
