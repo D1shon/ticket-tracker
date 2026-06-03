@@ -91,12 +91,39 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
   const getShiftColor = (val) => {
     if (!val) return 'bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]';
     const norm = val.trim();
-    if (norm === '6:30-14:30') return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
-    if (norm === '14:30-22:30') return 'bg-orange-500/20 text-orange-400 border-orange-500/40';
-    if (norm === '8:30-14:30') return 'bg-purple-500/20 text-purple-400 border-purple-500/40';
-    if (norm === '14:30-21:30') return 'bg-violet-500/20 text-violet-400 border-violet-500/40';
-    if (norm === '6:30-22:30') return 'bg-pink-500/20 text-pink-400 border-pink-500/40';
-    if (norm === '8:30-21:30') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
+    
+    let isWeekendDay = false;
+    try {
+      const dateStr = `${monthKey}-${String(dayNum).padStart(2, '0')}`;
+      isWeekendDay = isWeekend(new Date(dateStr));
+    } catch (e) {
+      console.error(e);
+    }
+
+    const isMorning = norm === '6:30-14:30' || norm === '8:30-14:30';
+    const isEvening = norm === '14:30-22:30' || norm === '14:30-21:30';
+    const isFullDay = norm === '6:30-22:30' || norm === '8:30-21:30';
+
+    if (isMorning) {
+      if (isWeekendDay) {
+        // morning weekend: dark green
+        return 'bg-emerald-800/30 text-emerald-300 border-emerald-700/40';
+      } else {
+        // morning weekdays: light green
+        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+      }
+    }
+
+    if (isEvening) {
+      // evening: blue
+      return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+    }
+
+    if (isFullDay) {
+      // full day: pink
+      return 'bg-pink-500/20 text-pink-400 border-pink-500/40';
+    }
+
     // Any other custom value (like 8:00-17:00, выходной, etc.)
     return 'bg-purple-500/10 text-[var(--accent-purple)] border-purple-500/30';
   };
@@ -159,33 +186,54 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
         } : undefined}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-          {SHIFT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onMouseDown={e => { e.stopPropagation(); handleSelect(opt.value); }}
-              style={{
-                background: initialValue === opt.value ? opt.bg : 'transparent',
-                color: initialValue === opt.value ? opt.text : opt.bg,
-                border: 'none',
-                borderBottom: `1px solid var(--border)`,
-                padding: '16px 8px',
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: 'pointer',
-                transition: 'all 0.12s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                outline: 'none',
-              }}
-              onMouseEnter={e => { if (initialValue !== opt.value) e.currentTarget.style.background = opt.bg + '1a'; }}
-              onMouseLeave={e => { if (initialValue !== opt.value) e.currentTarget.style.background = 'transparent'; }}
-            >
-              {initialValue === opt.value && <Check size={12} />}
-              {opt.label}
-            </button>
-          ))}
+          {SHIFT_OPTIONS.map((opt) => {
+            const isOptMorning = opt.value === '6:30-14:30' || opt.value === '8:30-14:30';
+            const isOptEvening = opt.value === '14:30-22:30' || opt.value === '14:30-21:30';
+            const isOptFullDay = opt.value === '6:30-22:30' || opt.value === '8:30-21:30';
+
+            let isWeekendDay = false;
+            try {
+              const dateStr = `${monthKey}-${String(dayNum).padStart(2, '0')}`;
+              isWeekendDay = isWeekend(new Date(dateStr));
+            } catch (e) {}
+
+            let optColor = '#a855f7'; // fallback violet
+            if (isOptMorning) {
+              optColor = isWeekendDay ? '#065f46' : '#10b981'; // dark green / light green
+            } else if (isOptEvening) {
+              optColor = '#3b82f6'; // blue
+            } else if (isOptFullDay) {
+              optColor = '#ec4899'; // pink
+            }
+
+            return (
+              <button
+                key={opt.value}
+                onMouseDown={e => { e.stopPropagation(); handleSelect(opt.value); }}
+                style={{
+                  background: initialValue === opt.value ? optColor : 'transparent',
+                  color: initialValue === opt.value ? '#fff' : optColor,
+                  border: 'none',
+                  borderBottom: `1px solid var(--border)`,
+                  padding: '16px 8px',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  transition: 'all 0.12s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  outline: 'none',
+                }}
+                onMouseEnter={e => { if (initialValue !== opt.value) e.currentTarget.style.background = optColor + '1a'; }}
+                onMouseLeave={e => { if (initialValue !== opt.value) e.currentTarget.style.background = 'transparent'; }}
+              >
+                {initialValue === opt.value && <Check size={12} />}
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Custom manual input field */}
@@ -510,10 +558,6 @@ const SchedulePage = () => {
         
         const isWorking = isWorkingShift(val);
         if (isWorking) {
-          const dayOfWeek = day.getDay();
-          const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
-          const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
-          
           const workingEmps = workingCountsByDayAndClub[dayNum]?.[empClub] || [];
           const W = workingEmps.length;
           
@@ -537,9 +581,7 @@ const SchedulePage = () => {
               razvozka += dailyAmount / W;
             }
           } else {
-            if (!isWeekendDay && !isHolidayDay) {
-              razvozka += getShiftRazvozkaAmount(val);
-            }
+            razvozka += getShiftRazvozkaAmount(val);
           }
         }
       });
@@ -636,25 +678,19 @@ const SchedulePage = () => {
     let total = 0;
     daysInMonth.forEach(day => {
       const dayNum = format(day, 'd');
-      const dayOfWeek = day.getDay();
-      const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
-      const isHolidayDay = HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'));
-
       const overrideVal = clubDailyRazvozka[dayNum];
       const hasOverride = overrideVal !== undefined && overrideVal !== null && overrideVal !== '';
       if (hasOverride) {
         const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
         total += dailyAmount;
       } else {
-        if (!isWeekendDay && !isHolidayDay) {
-          let daySum = 0;
-          clubEmployees.forEach(emp => {
-            const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
-            const val = scheduleData[empDocId]?.days?.[dayNum] || '';
-            daySum += getShiftRazvozkaAmount(val);
-          });
-          total += daySum;
-        }
+        let daySum = 0;
+        clubEmployees.forEach(emp => {
+          const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+          const val = scheduleData[empDocId]?.days?.[dayNum] || '';
+          daySum += getShiftRazvozkaAmount(val);
+        });
+        total += daySum;
       }
     });
     return total;
