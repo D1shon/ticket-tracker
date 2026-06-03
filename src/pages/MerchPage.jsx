@@ -112,10 +112,13 @@ const MerchPage = () => {
   // ─── CRUD Actions ──────────────────────────────────────────────────────────
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    if (!isChef) return toast.error('Доступ запрещен');
+    const canManage = isChef || (managerClub && productForm.club === managerClub);
+    if (!canManage) return toast.error('Доступ запрещен');
     if (!productForm.name.trim()) return toast.error('Введите название товара');
     
-    const cost = parseFloat(productForm.costPrice) || 0;
+    const cost = isChef 
+      ? (parseFloat(productForm.costPrice) || 0) 
+      : (editingProduct ? (editingProduct.costPrice || 0) : 0);
     const sale = parseFloat(productForm.salePrice) || 0;
     const initialStock = parseInt(productForm.stock) || 0;
     const min = parseInt(productForm.minStock) || 0;
@@ -142,7 +145,7 @@ const MerchPage = () => {
       }
       setShowProductModal(false);
       setEditingProduct(null);
-      setProductForm({ name: '', club: '4YOU', category: 'Худи', costPrice: '', salePrice: '', stock: '', minStock: '5' });
+      setProductForm({ name: '', club: managerClub || '4YOU', category: 'Худи', costPrice: '', salePrice: '', stock: '', minStock: '5' });
     } catch (err) {
       console.error(err);
       toast.error('Ошибка сохранения товара');
@@ -150,7 +153,10 @@ const MerchPage = () => {
   };
 
   const handleDeleteProduct = async (id) => {
-    if (!isChef) return toast.error('Доступ запрещен');
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+    const canDelete = isChef || (managerClub && product.club === managerClub);
+    if (!canDelete) return toast.error('Доступ запрещен');
     if (!window.confirm('Вы уверены, что хотите удалить этот товар из базы?')) return;
     try {
       await deleteDoc(doc(db, 'merch_products', id));
@@ -167,7 +173,7 @@ const MerchPage = () => {
     if (qty > selectedProductForSale.stock) return toast.error(`Недостаточно товара на складе (в наличии: ${selectedProductForSale.stock} шт)`);
 
     const totalSum = qty * selectedProductForSale.salePrice;
-    const netProfit = totalSum - (qty * selectedProductForSale.costPrice);
+    const netProfit = totalSum - (qty * (selectedProductForSale.costPrice || 0));
 
     try {
       // 1. Create sale record
@@ -177,7 +183,7 @@ const MerchPage = () => {
         category: selectedProductForSale.category,
         club: selectedProductForSale.club,
         qty,
-        costPrice: selectedProductForSale.costPrice,
+        costPrice: selectedProductForSale.costPrice || 0,
         salePrice: selectedProductForSale.salePrice,
         totalSum,
         netProfit,
@@ -205,31 +211,34 @@ const MerchPage = () => {
 
   const handleAddSupply = async (e) => {
     e.preventDefault();
-    if (!isChef) return toast.error('Доступ запрещен');
+    const product = selectedProductForSupply;
+    if (!product) return;
+    const canSupply = isChef || (managerClub && product.club === managerClub);
+    if (!canSupply) return toast.error('Доступ запрещен');
     const qty = parseInt(supplyForm.qty) || 0;
     if (qty <= 0) return toast.error('Укажите корректное количество');
 
     try {
       // 1. Update stock
-      await updateDoc(doc(db, 'merch_products', selectedProductForSupply.id), {
+      await updateDoc(doc(db, 'merch_products', product.id), {
         stock: increment(qty),
         updatedAt: serverTimestamp()
       });
 
       // 2. Log supply event in transactions/sales
       await addDoc(collection(db, 'merch_sales'), {
-        productId: selectedProductForSupply.id,
-        productName: selectedProductForSupply.name,
-        category: selectedProductForSupply.category,
-        club: selectedProductForSupply.club,
+        productId: product.id,
+        productName: product.name,
+        category: product.category,
+        club: product.club,
         qty: -qty, // Negative quantity represents supply/restock
-        costPrice: selectedProductForSupply.costPrice,
+        costPrice: product.costPrice || 0,
         salePrice: 0,
-        totalSum: -(qty * selectedProductForSupply.costPrice),
+        totalSum: -(qty * (product.costPrice || 0)),
         netProfit: 0,
         paymentMethod: 'Складская поставка',
         clientName: supplyForm.notes.trim() || 'Поставка',
-        cashierName: user?.name || user?.email || 'Админ',
+        cashierName: user?.name || user?.email || 'Менеджер',
         createdAt: serverTimestamp()
       });
 
@@ -245,10 +254,10 @@ const MerchPage = () => {
 
   // ─── Resort (Inventory Recount) ────────────────────────────────────────────
   const handleSaveResort = async () => {
-    if (!isChef) return;
     const changed = Object.entries(resortValues).filter(([id, val]) => {
       const prod = products.find(p => p.id === id);
-      return prod && val !== '' && parseInt(val) !== prod.stock;
+      const canResort = isChef || (managerClub && prod?.club === managerClub);
+      return prod && canResort && val !== '' && parseInt(val) !== prod.stock;
     });
     if (changed.length === 0) return toast.error('Нет изменений для сохранения');
     setSavingResort(true);
@@ -274,7 +283,7 @@ const MerchPage = () => {
           netProfit: 0,
           paymentMethod: 'Пересорт',
           clientName: `Факт: ${actual} шт (было: ${prod.stock})`,
-          cashierName: user?.name || user?.email || 'Чеф',
+          cashierName: user?.name || user?.email || 'Менеджер',
           createdAt: serverTimestamp(),
         });
       }));
@@ -443,8 +452,8 @@ const MerchPage = () => {
             )}
           </div>
 
-          {/* Add Product Button (Chef only) */}
-          {isChef && (
+          {/* Add Product Button */}
+          {(isChef || !!managerClub) && (
             <button
               onClick={() => {
                 setEditingProduct(null);
@@ -598,7 +607,7 @@ const MerchPage = () => {
           >
             <History size={14} /> История продаж
           </button>
-          {isChef && (
+          {(isChef || !!managerClub) && (
             <button
               onClick={() => { setActiveTab('resort'); setResortValues({}); }}
               className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'resort' ? 'bg-orange-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
@@ -805,9 +814,9 @@ const MerchPage = () => {
                               <ShoppingCart size={11} /> Продать
                             </button>
 
-                            {isChef && (
+                            {(isChef || (managerClub && p.club === managerClub)) && (
                               <>
-                                {/* Restock Button (Chef only) */}
+                                {/* Restock Button */}
                                 <button
                                   onClick={() => {
                                     setSelectedProductForSupply(p);
@@ -818,7 +827,7 @@ const MerchPage = () => {
                                   + Поставка
                                 </button>
 
-                                {/* Edit Button (Chef only) */}
+                                {/* Edit Button */}
                                 <button
                                   onClick={() => {
                                     setEditingProduct(p);
@@ -826,10 +835,10 @@ const MerchPage = () => {
                                       name: p.name,
                                       club: p.club,
                                       category: p.category,
-                                      costPrice: String(p.costPrice),
-                                      salePrice: String(p.salePrice),
-                                      stock: String(p.stock),
-                                      minStock: String(p.minStock)
+                                      costPrice: String(p.costPrice || ''),
+                                      salePrice: String(p.salePrice || ''),
+                                      stock: String(p.stock || ''),
+                                      minStock: String(p.minStock || '')
                                     });
                                     setShowProductModal(true);
                                   }}
@@ -838,7 +847,7 @@ const MerchPage = () => {
                                   <Edit3 size={12} />
                                 </button>
 
-                                {/* Delete Button (Chef only) */}
+                                {/* Delete Button */}
                                 <button
                                   onClick={() => handleDeleteProduct(p.id)}
                                   className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-red-500 rounded-lg border border-[var(--border)] transition-all"
@@ -946,7 +955,7 @@ const MerchPage = () => {
       )}
 
       {/* ─── MODAL: ADD / EDIT PRODUCT ─── */}
-      {showProductModal && isChef && (
+      {showProductModal && (isChef || !!managerClub) && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative">
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
@@ -980,8 +989,9 @@ const MerchPage = () => {
                   <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Клуб</label>
                   <select 
                     value={productForm.club}
+                    disabled={!isChef}
                     onChange={e => setProductForm({...productForm, club: e.target.value})}
-                    className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all disabled:opacity-50"
                   >
                     {CLUBS.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -999,26 +1009,41 @@ const MerchPage = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Себестоимость (₸)</label>
-                  <input 
-                    type="number"
-                    placeholder="5000"
-                    value={productForm.costPrice}
-                    onChange={e => setProductForm({...productForm, costPrice: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена продажи (₸)</label>
-                  <input 
-                    type="number"
-                    placeholder="12000"
-                    value={productForm.salePrice}
-                    onChange={e => setProductForm({...productForm, salePrice: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
-                  />
-                </div>
+                {isChef ? (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Себестоимость (₸)</label>
+                      <input 
+                        type="number"
+                        placeholder="5000"
+                        value={productForm.costPrice}
+                        onChange={e => setProductForm({...productForm, costPrice: e.target.value})}
+                        className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена продажи (₸)</label>
+                      <input 
+                        type="number"
+                        placeholder="12000"
+                        value={productForm.salePrice}
+                        onChange={e => setProductForm({...productForm, salePrice: e.target.value})}
+                        className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена продажи (₸)</label>
+                    <input 
+                      type="number"
+                      placeholder="12000"
+                      value={productForm.salePrice}
+                      onChange={e => setProductForm({...productForm, salePrice: e.target.value})}
+                      className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1165,7 +1190,7 @@ const MerchPage = () => {
       )}
 
       {/* ─── MODAL: SUPPLY / RESTOCK ─── */}
-      {showSupplyModal && selectedProductForSupply && isChef && (
+      {showSupplyModal && selectedProductForSupply && (isChef || (managerClub && selectedProductForSupply.club === managerClub)) && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
