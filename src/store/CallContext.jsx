@@ -200,7 +200,15 @@ export const CallProvider = ({ children }) => {
       try {
         // createScreenVideoTrack may return [screenTrack, audioTrack] or just screenTrack
         const result = await AgoraRTC.createScreenVideoTrack(
-          { encoderConfig: '1080p_1', optimizationMode: 'detail' },
+          { 
+            encoderConfig: {
+              width: 1920,
+              height: 1080,
+              frameRate: 15, // Bumped from 5fps to 15fps for smooth rendering
+              bitrateMax: 1500
+            }, 
+            optimizationMode: 'detail' 
+          },
           'disable'  // no system audio capture to avoid echo
         );
         const track = Array.isArray(result) ? result[0] : result;
