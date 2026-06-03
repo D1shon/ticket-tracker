@@ -74,7 +74,7 @@ const COLUMN_LABELS = {
   toPay: 'К выдаче'
 };
 
-const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToday, onKeyDown, updateCell, rowIdx, colIdx, canEdit = true }) => {
+const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToday, onKeyDown, updateCell, rowIdx, colIdx, canEdit = true, club }) => {
   const [open, setOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
   const [customValue, setCustomValue] = useState('');
@@ -87,6 +87,15 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  const isNurlyOrda = club?.toUpperCase() === 'NURLY ORDA';
+
+  const currentShiftOptions = isNurlyOrda ? [
+    { label: '6:30–22:00',  value: '6:30-22:00',  bg: '#ec4899', text: '#fff' },
+    { label: '13:30–23:00', value: '13:30-23:00', bg: '#3b82f6', text: '#fff' },
+    { label: '9:00–19:00',  value: '9:00-19:00',  bg: '#a855f7', text: '#fff' },
+    { label: '11:00–20:00', value: '11:00-20:00', bg: '#a855f7', text: '#fff' },
+  ] : SHIFT_OPTIONS;
 
   const getShiftColor = (val) => {
     if (!val) return 'bg-[var(--bg-hover)] text-[var(--text-muted)] border-[var(--border)]';
@@ -101,8 +110,8 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     }
 
     const isMorning = norm === '6:30-14:30' || norm === '8:30-14:30';
-    const isEvening = norm === '14:30-22:30' || norm === '14:30-21:30';
-    const isFullDay = norm === '6:30-22:30' || norm === '8:30-21:30';
+    const isEvening = norm === '14:30-22:30' || norm === '14:30-21:30' || norm === '13:30-23:00';
+    const isFullDay = norm === '6:30-22:30' || norm === '8:30-21:30' || norm === '6:30-22:00';
 
     if (isMorning) {
       if (isWeekendDay) {
@@ -186,10 +195,10 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
         } : undefined}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-          {SHIFT_OPTIONS.map((opt) => {
+          {currentShiftOptions.map((opt) => {
             const isOptMorning = opt.value === '6:30-14:30' || opt.value === '8:30-14:30';
-            const isOptEvening = opt.value === '14:30-22:30' || opt.value === '14:30-21:30';
-            const isOptFullDay = opt.value === '6:30-22:30' || opt.value === '8:30-21:30';
+            const isOptEvening = opt.value === '14:30-22:30' || opt.value === '14:30-21:30' || opt.value === '13:30-23:00';
+            const isOptFullDay = opt.value === '6:30-22:30' || opt.value === '8:30-21:30' || opt.value === '6:30-22:00';
 
             let isWeekendDay = false;
             try {
@@ -488,7 +497,7 @@ const SchedulePage = () => {
   // +1500 if starts at or before 6:30 (morning pickup needed)
   // +1500 if ends at or after 21:30 (evening dropoff needed)
   // 0 if neither (e.g. 8:30-20:30)
-  const getShiftRazvozkaAmount = (val) => {
+  const getShiftRazvozkaAmount = (val, club) => {
     if (!isWorkingShift(val)) return 0;
     const clean = String(val).trim().replace(/\s+/g, '').replace(/\./g, ':');
 
@@ -509,7 +518,9 @@ const SchedulePage = () => {
     const endMin   = toMin(parts[1]);
 
     const EARLY_START = 6 * 60 + 30;  // 6:30
-    const LATE_END    = 22 * 60 + 30; // 22:30
+    
+    const isNurlyOrda = club?.toUpperCase() === 'NURLY ORDA';
+    const LATE_END    = isNurlyOrda ? (22 * 60) : (22 * 60 + 30); // 22:00 vs 22:30
 
     return (startMin <= EARLY_START ? 1500 : 0) + (endMin >= LATE_END ? 1500 : 0);
   };
@@ -566,7 +577,9 @@ const SchedulePage = () => {
             const tempDocId = tempEmpId.includes('_') ? tempEmpId : `${monthKey}_${tempEmpId}`;
             const tempEmpData = scheduleData[tempDocId] || {};
             const tempVal = tempEmpData.days?.[dayNum] || '';
-            totalWeight += getShiftRazvozkaAmount(tempVal);
+            const tempEmp = employees.find(e => e.id === tempEmpId);
+            const tempClub = tempEmp?.club || '4YOU';
+            totalWeight += getShiftRazvozkaAmount(tempVal, tempClub);
           });
 
           const overrideVal = clubDailyRazvozka[dayNum];
@@ -574,14 +587,14 @@ const SchedulePage = () => {
           if (hasOverride) {
             if (totalWeight > 0) {
               const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
-              const myWeight = getShiftRazvozkaAmount(val);
+              const myWeight = getShiftRazvozkaAmount(val, empClub);
               razvozka += (dailyAmount * myWeight) / totalWeight;
             } else if (W > 0) {
               const dailyAmount = overrideVal === '-' ? 0 : (parseFloat(overrideVal) || 0);
               razvozka += dailyAmount / W;
             }
           } else {
-            razvozka += getShiftRazvozkaAmount(val);
+            razvozka += getShiftRazvozkaAmount(val, empClub);
           }
         }
       });
@@ -688,7 +701,7 @@ const SchedulePage = () => {
         clubEmployees.forEach(emp => {
           const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
           const val = scheduleData[empDocId]?.days?.[dayNum] || '';
-          daySum += getShiftRazvozkaAmount(val);
+          daySum += getShiftRazvozkaAmount(val, emp.club || '4YOU');
         });
         total += daySum;
       }
@@ -965,7 +978,7 @@ const SchedulePage = () => {
                     {daysInMonth.map((day, dIdx) => {
                       const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
                       return (
-                        <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[empDocId]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} canEdit={canEditSchedule} />
+                        <ScheduleCell key={day.toString()} monthKey={monthKey} empId={emp.id} dayNum={format(day, 'd')} initialValue={scheduleData[empDocId]?.days?.[format(day, 'd')] || ''} isHoliday={HOLIDAYS_2026.includes(format(day, 'yyyy-MM-dd'))} isToday={format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')} onKeyDown={handleKeyDown} updateCell={updateCell} rowIdx={rowIdx} colIdx={dIdx + 1} canEdit={canEditSchedule} club={emp.club || '4YOU'} />
                       );
                     })}
                     {visibleCols.totalHours && <td className="px-4 py-4 text-center text-xs text-[var(--accent-purple)] bg-purple-500/5 font-bold border-r border-[var(--border)]">{stats.totalHours.toFixed(1)} ч</td>}
