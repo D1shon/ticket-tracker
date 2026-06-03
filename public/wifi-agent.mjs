@@ -29,7 +29,7 @@ import { fileURLToPath }        from 'url';
 import path                     from 'path';
 
 // ── Версия агента (менять при каждом обновлении) ──────────────────────
-const AGENT_VERSION = '3.2';
+const AGENT_VERSION = '3.3';
 const AGENT_FILE    = fileURLToPath(import.meta.url);
 const UPDATE_URL    = 'https://ticket-tracker-inky.vercel.app/wifi-agent.mjs';
 
