@@ -20,7 +20,7 @@
 
 import { initializeApp }        from 'firebase/app';
 import { getFirestore, collection, getDocs, getDoc, setDoc, doc, query, where } from 'firebase/firestore';
-import { execSync, spawn }      from 'child_process';
+import { execSync, spawn, exec } from 'child_process';
 import os                       from 'os';
 import https                    from 'https';
 import http                     from 'http';
@@ -29,7 +29,7 @@ import { fileURLToPath }        from 'url';
 import path                     from 'path';
 
 // ── Версия агента (менять при каждом обновлении) ──────────────────────
-const AGENT_VERSION = '3.3';
+const AGENT_VERSION = '3.4';
 const AGENT_FILE    = fileURLToPath(import.meta.url);
 const UPDATE_URL    = 'https://ticket-tracker-inky.vercel.app/wifi-agent.mjs';
 
@@ -226,24 +226,23 @@ async function pingSubnet(subnetPrefix) {
 
   console.log(`[agent] 📡 ARP sweep ${subnetPrefix}.1–254 ...`);
 
-  const promises = [];
+  const ipList = [];
   for (let i = 1; i <= 254; i++) {
-    const ip = `${subnetPrefix}.${i}`;
-    promises.push(new Promise(resolve => {
-      try {
-        // 2 попытки, 1500мс таймаут — iPhone отвечает на ARP даже в сне
-        const cmd = platform === 'win32'
-          ? `ping -n 2 -w 1500 ${ip}`
-          : `ping -c 2 -W 2 ${ip}`;
-        execSync(cmd, { timeout: 5000, stdio: 'ignore' });
-      } catch {}
-      resolve();
-    }));
+    ipList.push(`${subnetPrefix}.${i}`);
   }
 
-  // Пачками по 50
-  for (let i = 0; i < promises.length; i += 50) {
-    await Promise.all(promises.slice(i, i + 50));
+  const batchSize = 30; // 30 parallel pings at a time
+  for (let i = 0; i < ipList.length; i += batchSize) {
+    const batch = ipList.slice(i, i + batchSize);
+    const promises = batch.map(ip => {
+      const cmd = platform === 'win32'
+        ? `ping -n 2 -w 1500 ${ip}`
+        : `ping -c 2 -W 2 ${ip}`;
+      return new Promise(resolve => {
+        exec(cmd, { timeout: 5000 }, () => resolve());
+      });
+    });
+    await Promise.all(promises);
   }
 
   // Windows: принудительно обновить таблицу соседей (ARP кэш)
