@@ -1,7 +1,43 @@
 import React, { useEffect, useRef } from 'react';
 import { useCall } from '../../store/CallContext';
-import { PhoneOff, Monitor, Maximize2, Minimize2, User, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { PhoneOff, Monitor, Maximize2, Minimize2, User, Mic, MicOff, Video, VideoOff, X } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Self-contained VideoPlayer component to ensure Agora tracks play correctly
+// and apply object-fit scaling (contain for screen share, cover for camera)
+const VideoPlayer = ({ track, style, className }) => {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (track && container) {
+      container.innerHTML = '';
+      try {
+        track.play(container);
+        const applyStyle = () => {
+          const video = container.querySelector('video');
+          if (video) {
+            video.style.objectFit = style?.objectFit || 'cover';
+            video.style.width = '100%';
+            video.style.height = '100%';
+          }
+        };
+        applyStyle();
+        const timer = setTimeout(applyStyle, 100);
+        return () => clearTimeout(timer);
+      } catch (err) {
+        console.error('[VideoPlayer] play track error:', err);
+      }
+      return () => {
+        try {
+          track.stop();
+        } catch (_) {}
+      };
+    }
+  }, [track, style]);
+
+  return <div ref={containerRef} className={className} style={{ width: '100%', height: '100%', overflow: 'hidden', ...style }} />;
+};
 
 const CallOverlay = () => {
   const {
@@ -27,8 +63,6 @@ const CallOverlay = () => {
   const [isCameraMuted, setIsCameraMuted] = React.useState(false);
 
   const dragStartPos = useRef({ x: 0, y: 0 });
-  const localRef = useRef(null);
-  const remoteRef = useRef(null);
 
   // Reset to full-page when a new call starts
   useEffect(() => {
@@ -38,29 +72,6 @@ const CallOverlay = () => {
       setIsCameraMuted(false);
     }
   }, [isInCall]);
-
-  // Local video / screen track
-  useEffect(() => {
-    if (isCameraMuted && !isScreenSharing) return;
-    const track = isScreenSharing ? screenTrack : localVideoTrack;
-    const container = localRef.current;
-    if (track && container) {
-      container.innerHTML = '';
-      try { track.play(container); } catch (err) { console.error('[CallOverlay] local track error:', err); }
-      return () => { try { track.stop(); } catch (_) {} };
-    }
-  }, [localVideoTrack, screenTrack, isScreenSharing, isInCall, size, isFullPage, isCameraMuted]);
-
-  // Remote video track
-  const remoteVideoTrack = remoteUsers[0]?.videoTrack;
-  useEffect(() => {
-    const container = remoteRef.current;
-    if (remoteVideoTrack && container) {
-      container.innerHTML = '';
-      try { remoteVideoTrack.play(container); } catch (err) { console.error('[CallOverlay] remote track error:', err); }
-      return () => { try { remoteVideoTrack.stop(); } catch (_) {} };
-    }
-  }, [remoteVideoTrack, size, isFullPage]);
 
   // Drag logic (floating mode only)
   const handleMouseDown = (e) => {
@@ -120,10 +131,177 @@ const CallOverlay = () => {
   const getWidth = () => size === 1 ? 340 : size === 2 ? 560 : 800;
   const cycleSize = () => setSize(prev => prev === 3 ? 1 : prev + 1);
 
-  const remoteUser = remoteUsers[0];
-  const hasRemoteVideo = !!remoteUser?.videoTrack;
-  const hasRemoteAudio = !!remoteUser?.audioTrack;
-  const hasRemote = remoteUsers.length > 0;
+  // Screen share tracks check
+  const activeScreenShareUser = remoteUsers.find(u => u.isScreen && u.videoTrack);
+  const activeScreenTrack = isScreenSharing ? screenTrack : (activeScreenShareUser ? activeScreenShareUser.videoTrack : null);
+  const hasActiveScreenShare = !!activeScreenTrack;
+
+  // Active camera tracks for normal grid
+  const activeCameras = [];
+  if (!isCameraMuted && localVideoTrack) {
+    activeCameras.push({ id: 'local', track: localVideoTrack, name: 'Я', isLocal: true });
+  }
+  remoteUsers.filter(u => !u.isScreen).forEach(u => {
+    if (u.videoTrack) {
+      activeCameras.push({ id: u.uid, track: u.videoTrack, name: 'Собеседник', isLocal: false });
+    }
+  });
+
+  const gridColumns = activeCameras.length > 1 ? '1fr 1fr' : '1fr';
+
+  const renderScreenShareLayout = () => {
+    return (
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        flex: isFullPage ? 1 : 'none',
+        height: isFullPage ? 'auto' : (getWidth() * 9) / 16,
+        background: '#000'
+      }}>
+        <VideoPlayer 
+          track={activeScreenTrack} 
+          style={{ objectFit: 'contain' }} 
+        />
+        
+        {/* Floating thumbnail strip for camera streams */}
+        <div style={{
+          position: 'absolute',
+          top: 16,
+          right: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          zIndex: 100
+        }}>
+          {/* Local Camera Thumbnail */}
+          {!isCameraMuted && localVideoTrack && (
+            <div style={{
+              width: isFullPage ? 160 : 100,
+              height: isFullPage ? 120 : 75,
+              borderRadius: 12,
+              overflow: 'hidden',
+              border: '2px solid rgba(255,255,255,0.2)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              background: '#1a1a20',
+              position: 'relative'
+            }}>
+              <VideoPlayer track={localVideoTrack} />
+              <div style={{
+                position: 'absolute',
+                bottom: 6,
+                left: 6,
+                background: 'rgba(0,0,0,0.6)',
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontSize: 9,
+                color: 'white',
+                fontWeight: 800
+              }}>
+                Я {isMicMuted ? '🔇' : '🎙️'}
+              </div>
+            </div>
+          )}
+
+          {/* Remote Camera Thumbnail */}
+          {remoteUsers.filter(u => !u.isScreen).map(u => (
+            <div key={u.uid} style={{
+              width: isFullPage ? 160 : 100,
+              height: isFullPage ? 120 : 75,
+              borderRadius: 12,
+              overflow: 'hidden',
+              border: '2px solid rgba(255,255,255,0.2)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              background: '#1a1a20',
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {u.videoTrack ? (
+                <VideoPlayer track={u.videoTrack} />
+              ) : (
+                <User size={isFullPage ? 32 : 20} className="text-white/20" />
+              )}
+              <div style={{
+                position: 'absolute',
+                bottom: 6,
+                left: 6,
+                background: 'rgba(0,0,0,0.6)',
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontSize: 9,
+                color: 'white',
+                fontWeight: 800
+              }}>
+                Собеседник {u.audioTrack ? '🔊' : '🔇'}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderNormalGrid = () => {
+    if (activeCameras.length === 0) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'rgba(255,255,255,0.15)',
+          height: '100%',
+          width: '100%',
+          minHeight: isFullPage ? 'auto' : 240,
+          background: '#000',
+          flex: isFullPage ? 1 : 'none'
+        }}>
+          <User size={80} strokeWidth={1} />
+          <span style={{ fontSize: 10, fontWeight: 800, marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            Все камеры отключены
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: gridColumns,
+        gap: 2,
+        background: '#000',
+        flex: isFullPage ? 1 : 'none',
+        minHeight: isFullPage ? 'auto' : (getWidth() / activeCameras.length) * 0.75
+      }}>
+        {activeCameras.map(cam => (
+          <div key={cam.id} style={{
+            position: 'relative',
+            background: '#1a1a20',
+            height: isFullPage ? '100%' : 'auto',
+            aspectRatio: isFullPage ? 'auto' : '4/3',
+            width: '100%'
+          }}>
+            <VideoPlayer track={cam.track} />
+            <div style={{
+              position: 'absolute',
+              bottom: 12,
+              left: 12,
+              background: 'rgba(0,0,0,0.5)',
+              padding: '4px 8px',
+              borderRadius: 6,
+              fontSize: 10,
+              color: 'white',
+              fontWeight: 800,
+              zIndex: 10
+            }}>
+              {cam.name} {cam.isLocal ? (isMicMuted ? '🔇' : '🎙️') : (remoteUsers[0]?.audioTrack ? '🔊' : '🔇')}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div style={{
@@ -260,99 +438,8 @@ const CallOverlay = () => {
         </div>
       </div>
 
-      {/* ── Video Grid ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: hasRemote ? '1fr 1fr' : '1fr',
-        gap: 2,
-        background: '#000',
-        flex: isFullPage ? 1 : 'none',
-        minHeight: isFullPage ? 'auto' : (getWidth() / (hasRemote ? 2 : 1)) * 0.75
-      }}>
-        {/* Local stream */}
-        <div style={{
-          position: 'relative',
-          background: '#1a1a20',
-          height: isFullPage ? '100%' : 'auto',
-          aspectRatio: isFullPage ? 'auto' : '4/3',
-          width: '100%'
-        }}>
-          {!isCameraMuted && (localVideoTrack || screenTrack) ? (
-            <div ref={localRef} style={{ width: '100%', height: '100%' }} />
-          ) : (
-            <div style={{
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              color: 'rgba(255,255,255,0.15)',
-              width: '100%', height: '100%',
-              position: 'absolute', inset: 0
-            }}>
-              <VideoOff size={size === 1 ? 40 : 80} strokeWidth={1} />
-              <span style={{ fontSize: 10, fontWeight: 800, marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                Камера отключена
-              </span>
-            </div>
-          )}
-          <div style={{
-            position: 'absolute', bottom: 12, left: 12,
-            background: 'rgba(0,0,0,0.5)',
-            padding: '4px 8px', borderRadius: 6,
-            fontSize: 10, color: 'white', fontWeight: 800,
-            zIndex: 10
-          }}>
-            Я {isMicMuted ? '🔇' : '🎙️'}
-          </div>
-        </div>
-
-        {/* Remote stream */}
-        {hasRemote ? (
-          <div style={{
-            position: 'relative',
-            background: '#1a1a20',
-            height: isFullPage ? '100%' : 'auto',
-            aspectRatio: isFullPage ? 'auto' : '4/3',
-            width: '100%'
-          }}>
-            {hasRemoteVideo ? (
-              <div ref={remoteRef} style={{ width: '100%', height: '100%' }} />
-            ) : (
-              <div style={{
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                color: 'rgba(255,255,255,0.15)',
-                width: '100%', height: '100%'
-              }}>
-                <User size={size === 1 ? 40 : 80} strokeWidth={1} />
-                <span style={{ fontSize: 10, fontWeight: 800, marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  Камера отключена
-                </span>
-              </div>
-            )}
-            <div style={{
-              position: 'absolute', bottom: 12, left: 12,
-              background: 'rgba(0,0,0,0.5)',
-              padding: '4px 8px', borderRadius: 6,
-              fontSize: 10, color: 'white', fontWeight: 800
-            }}>
-              Собеседник {hasRemoteAudio ? '\uD83D\uDD0A' : '\uD83D\uDD07'}
-            </div>
-          </div>
-        ) : !isScreenSharing && (
-          <div style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            color: 'rgba(255,255,255,0.15)',
-            height: isFullPage ? '100%' : 'auto',
-            aspectRatio: isFullPage ? 'auto' : '4/3',
-            width: '100%'
-          }}>
-            <User size={size === 1 ? 40 : 80} strokeWidth={1} />
-            <span style={{ fontSize: 10, fontWeight: 800, marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              Ожидание...
-            </span>
-          </div>
-        )}
-      </div>
+      {/* ── Content View ── */}
+      {hasActiveScreenShare ? renderScreenShareLayout() : renderNormalGrid()}
 
       {/* ── Bottom Controls ── */}
       <div style={{

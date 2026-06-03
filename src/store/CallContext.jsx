@@ -31,6 +31,7 @@ export const CallProvider = ({ children }) => {
   const [roomCounts, setRoomCounts]         = useState({});   // { channel: count }
 
   const clientRef   = useRef(null);
+  const screenClientRef = useRef(null);
   const channelRef  = useRef('');  // current channel name
   const uidRef      = useRef(null);
 
@@ -97,17 +98,18 @@ export const CallProvider = ({ children }) => {
       // ── Remote user published (video / screen / audio) ──
       clientRef.current.on('user-published', async (user, mediaType) => {
         await clientRef.current.subscribe(user, mediaType);
+        const isScreen = typeof user.uid === 'string' && user.uid.endsWith('_screen');
 
         if (mediaType === 'video') {
           setRemoteUsers(prev => {
             const existing = prev.find(u => u.uid === user.uid);
             if (existing) {
               return prev.map(u => u.uid === user.uid
-                ? { ...u, videoTrack: user.videoTrack }
+                ? { ...u, videoTrack: user.videoTrack, isScreen }
                 : u
               );
             }
-            return [...prev, { uid: user.uid, videoTrack: user.videoTrack, audioTrack: null }];
+            return [...prev, { uid: user.uid, videoTrack: user.videoTrack, audioTrack: null, isScreen }];
           });
         }
 
@@ -117,11 +119,11 @@ export const CallProvider = ({ children }) => {
             const existing = prev.find(u => u.uid === user.uid);
             if (existing) {
               return prev.map(u => u.uid === user.uid
-                ? { ...u, audioTrack: user.audioTrack }
+                ? { ...u, audioTrack: user.audioTrack, isScreen }
                 : u
               );
             }
-            return [...prev, { uid: user.uid, videoTrack: null, audioTrack: user.audioTrack }];
+            return [...prev, { uid: user.uid, videoTrack: null, audioTrack: user.audioTrack, isScreen }];
           });
         }
       });
@@ -235,23 +237,26 @@ export const CallProvider = ({ children }) => {
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
       try {
-        // createScreenVideoTrack may return [screenTrack, audioTrack] or just screenTrack
         const result = await AgoraRTC.createScreenVideoTrack(
           { 
             encoderConfig: {
               width: 1920,
               height: 1080,
-              frameRate: 15, // Bumped from 5fps to 15fps for smooth rendering
+              frameRate: 15,
               bitrateMax: 1500
             }, 
             optimizationMode: 'detail' 
           },
-          'disable'  // no system audio capture to avoid echo
+          'disable'
         );
         const track = Array.isArray(result) ? result[0] : result;
 
-        await clientRef.current.unpublish(localVideoTrack);
-        await clientRef.current.publish(track);
+        const screenClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+        screenClientRef.current = screenClient;
+
+        const screenUid = `${uidRef.current}_screen`;
+        await screenClient.join(APP_ID, channelRef.current, null, screenUid);
+        await screenClient.publish(track);
 
         track.on('track-ended', () => stopScreenShare(track));
         setScreenTrack(track);
@@ -274,12 +279,12 @@ export const CallProvider = ({ children }) => {
   const stopScreenShare = async (track) => {
     try {
       if (track) {
-        await clientRef.current.unpublish(track);
         track.stop();
         track.close();
       }
-      if (localVideoTrack) {
-        await clientRef.current.publish(localVideoTrack);
+      if (screenClientRef.current) {
+        await screenClientRef.current.leave();
+        screenClientRef.current = null;
       }
     } catch (e) {
       console.error('[CallContext] stopScreenShare error:', e);
@@ -294,6 +299,10 @@ export const CallProvider = ({ children }) => {
       if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
       if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
       if (screenTrack)     { screenTrack.stop(); screenTrack.close(); }
+      if (screenClientRef.current) {
+        try { await screenClientRef.current.leave(); } catch (e) {}
+        screenClientRef.current = null;
+      }
       if (clientRef.current) await clientRef.current.leave();
 
       // Update Firestore counter
