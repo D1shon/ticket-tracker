@@ -87,11 +87,28 @@ export const ChecklistProvider = ({ children }) => {
     }
   };
 
+  const saveSessionInspector = async (dateKey, club, sessionGroupId, inspectorName) => {
+    try {
+      const docId = `${dateKey}_${club}_session_${sessionGroupId}`;
+      await setDoc(doc(db, 'checklists', docId), {
+        dateKey,
+        club,
+        sessionGroupId,
+        inspectorName,
+        updatedAt: serverTimestamp(),
+        updatedBy: user?.email || 'system'
+      });
+    } catch (error) {
+      console.error("Error saving session inspector:", error);
+    }
+  };
+
   return (
     <ChecklistContext.Provider value={{
       checklistData,
       loading,
-      updateCheckState
+      updateCheckState,
+      saveSessionInspector
     }}>
       {children}
     </ChecklistContext.Provider>

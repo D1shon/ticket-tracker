@@ -13,7 +13,7 @@ const ChecklistDetail = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { addTicket } = useTickets();
-  const { checklistData, updateCheckState } = useChecklist();
+  const { checklistData, updateCheckState, saveSessionInspector } = useChecklist();
   
   const dateKey = searchParams.get('date') || format(startOfToday(), 'yyyy-MM-dd');
   const club = searchParams.get('club') || '4YOU';
@@ -25,6 +25,19 @@ const ChecklistDetail = () => {
   const [itemStates, setItemStates] = useState({});
   const [itemIssues, setItemIssues] = useState({});
   const [itemTimestamps, setItemTimestamps] = useState({});
+
+  const isMorningSession = shiftId === 'morning' || shiftId === 'day';
+  const sessionGroupId = isMorningSession ? 'morning_day' : 'evening_night';
+  const sessionDocId = `${dateKey}_${club}_session_${sessionGroupId}`;
+  
+  const savedInspectorName = checklistData[sessionDocId]?.inspectorName || '';
+  const [inspectorName, setInspectorName] = useState('');
+
+  useEffect(() => {
+    if (savedInspectorName && !inspectorName) {
+      setInspectorName(savedInspectorName);
+    }
+  }, [savedInspectorName]);
 
   // Load from context on mount or docId change
   useEffect(() => {
@@ -56,6 +69,11 @@ const ChecklistDetail = () => {
 
   const handleComplete = async () => {
     const issueIndices = Object.keys(itemStates).filter(idx => itemStates[idx] === 'issue');
+    const hasIssues = issueIndices.length > 0;
+
+    if (hasIssues && inspectorName.trim() && saveSessionInspector) {
+      await saveSessionInspector(dateKey, club, sessionGroupId, inspectorName.trim());
+    }
     
     if (!cardData.noTicket) {
       for (const idx of issueIndices) {
@@ -65,7 +83,9 @@ const ChecklistDetail = () => {
         if (problemDescription?.trim()) {
           const newTicket = {
             title: `${itemTitle} (${shift.time})`,
-            subtitle: problemDescription,
+            subtitle: inspectorName.trim()
+              ? `${problemDescription} (Проверил: ${inspectorName.trim()})`
+              : problemDescription,
             club: club,
             priority: 'high',
             status: 'new',
@@ -87,6 +107,8 @@ const ChecklistDetail = () => {
   };
 
   const allAnswered = cardData.items.every((_, i) => itemStates[i] !== undefined && itemStates[i] !== null);
+  const hasIssues = Object.values(itemStates).some(state => state === 'issue');
+  const isSubmitDisabled = !allAnswered || (hasIssues && !inspectorName.trim());
 
   const getFormattedDate = () => {
     const [y, m, d] = dateKey.split('-').map(Number);
@@ -191,6 +213,25 @@ const ChecklistDetail = () => {
           })}
         </div>
 
+        {/* Inspector Name Input Card */}
+        {hasIssues && (
+          <div className="bg-[var(--bg-card)] border border-red-500/25 rounded-2xl p-6 mb-8 animate-fade shadow-lg">
+            <h3 className="text-xs font-black uppercase tracking-widest text-red-400 mb-2 flex items-center gap-1.5">
+              <AlertCircle size={14} className="text-red-400" /> Укажите имя проверяющего
+            </h3>
+            <p className="text-[11px] text-[var(--text-muted)] font-medium mb-4 leading-relaxed">
+              Поскольку обнаружены проблемы, укажите имя сотрудника, заметившего их. Это имя будет зафиксировано в создаваемых заявках. Имя указывается один раз в день для смен {isMorningSession ? "6:30 и 11:30" : "16:30 и 21:30"}.
+            </p>
+            <input
+              type="text"
+              value={inspectorName}
+              onChange={(e) => setInspectorName(e.target.value)}
+              placeholder="ФИО проверяющего..."
+              className="w-full bg-[var(--bg-hover)] border border-[var(--border)] focus:border-red-500/40 rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)]/60"
+            />
+          </div>
+        )}
+
         {/* Action Button */}
         <div className="flex items-center gap-4 pt-8 border-t border-[var(--border)]">
           <button 
@@ -201,9 +242,9 @@ const ChecklistDetail = () => {
           </button>
           <button 
             onClick={handleComplete}
-            disabled={!allAnswered}
+            disabled={isSubmitDisabled}
             className={`flex-1 py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-              allAnswered 
+              !isSubmitDisabled 
                 ? 'bg-[var(--accent-purple)] text-white shadow-xl shadow-purple-500/20 hover:-translate-y-0.5' 
                 : 'bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-not-allowed'
             }`}
