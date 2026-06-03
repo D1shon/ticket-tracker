@@ -87,7 +87,7 @@ async function checkForUpdate() {
     // Перезапуститься (PM2 подхватит или запустить напрямую)
     const child = spawn(process.execPath, [AGENT_FILE], {
       detached: true,
-      stdio: 'inherit',
+      stdio: 'ignore',
     });
     child.unref();
     process.exit(0);
