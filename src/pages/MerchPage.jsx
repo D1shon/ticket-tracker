@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   collection, query, onSnapshot, setDoc, doc, deleteDoc, 
   serverTimestamp, addDoc, updateDoc, increment
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
 import { 
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
   Trash2, Edit3, CheckCircle, AlertTriangle, ArrowUpRight, 
-  ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet, Download, ClipboardList
+  ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet, Download, ClipboardList,
+  Image, Camera, UploadCloud
 } from 'lucide-react';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
@@ -52,6 +54,13 @@ const MerchPage = () => {
   
   const [showSupplyModal, setShowSupplyModal] = useState(false);
   const [selectedProductForSupply, setSelectedProductForSupply] = useState(null);
+
+  // Photo upload state
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(0);
+  const photoInputRef = useRef(null);
 
   // Form States (New / Edit Product)
   const [productForm, setProductForm] = useState({
@@ -109,6 +118,64 @@ const MerchPage = () => {
     };
   }, []);
 
+  // ─── Photo Handlers ────────────────────────────────────────────────────────
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast.error('Выберите файл изображения');
+    if (file.size > 5 * 1024 * 1024) return toast.error('Размер файла не должен превышать 5 МБ');
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleUploadPhoto = async (productId) => {
+    if (!photoFile) return null;
+    setPhotoUploading(true);
+    setPhotoUploadProgress(0);
+    const fileExt = photoFile.name.split('.').pop();
+    const path = `merch_photos/${productId}.${fileExt}`;
+    const sRef = storageRef(storage, path);
+    return new Promise((resolve, reject) => {
+      const task = uploadBytesResumable(sRef, photoFile);
+      task.on('state_changed',
+        (snap) => setPhotoUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+        (err) => { setPhotoUploading(false); reject(err); },
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          setPhotoUploading(false);
+          resolve(url);
+        }
+      );
+    });
+  };
+
+  const handleDeletePhoto = async (product) => {
+    const canManage = isChef || (managerClub && product.club === managerClub);
+    if (!canManage) return toast.error('Доступ запрещен');
+    if (!window.confirm('Удалить фото товара?')) return;
+    try {
+      // Delete from Storage if stored as merch_photos/
+      if (product.imageUrl) {
+        try {
+          // Extract path from URL - works for Firebase Storage URLs
+          const decodedUrl = decodeURIComponent(product.imageUrl);
+          const pathMatch = decodedUrl.match(/merch_photos%2F[^?]+|merch_photos\/[^?]+/);
+          if (pathMatch) {
+            const filePath = pathMatch[0].replace('%2F', '/');
+            await deleteObject(storageRef(storage, filePath));
+          }
+        } catch (storageErr) {
+          console.warn('Could not delete from storage, removing reference only:', storageErr);
+        }
+      }
+      await updateDoc(doc(db, 'merch_products', product.id), { imageUrl: null, updatedAt: serverTimestamp() });
+      toast.success('Фото удалено');
+    } catch (err) {
+      console.error(err);
+      toast.error('Ошибка удаления фото');
+    }
+  };
+
   // ─── CRUD Actions ──────────────────────────────────────────────────────────
   const handleSaveProduct = async (e) => {
     e.preventDefault();
@@ -129,22 +196,37 @@ const MerchPage = () => {
       category: productForm.category,
       costPrice: cost,
       salePrice: sale,
-      stock: editingProduct ? editingProduct.stock : initialStock, // Don't overwrite stock on edit
+      stock: editingProduct ? editingProduct.stock : initialStock,
       minStock: min,
       updatedAt: serverTimestamp()
     };
 
     try {
+      let productId;
       if (editingProduct) {
         await updateDoc(doc(db, 'merch_products', editingProduct.id), data);
+        productId = editingProduct.id;
         toast.success('Товар успешно обновлен');
       } else {
         data.createdAt = serverTimestamp();
-        await addDoc(collection(db, 'merch_products'), data);
+        const docRef = await addDoc(collection(db, 'merch_products'), data);
+        productId = docRef.id;
         toast.success('Товар добавлен в инвентарь');
       }
+
+      // Upload photo if selected
+      if (photoFile && productId) {
+        const url = await handleUploadPhoto(productId);
+        if (url) {
+          await updateDoc(doc(db, 'merch_products', productId), { imageUrl: url });
+          toast.success('Фото загружено!');
+        }
+      }
+
       setShowProductModal(false);
       setEditingProduct(null);
+      setPhotoFile(null);
+      setPhotoPreview(null);
       setProductForm({ name: '', club: managerClub || '4YOU', category: 'Худи', costPrice: '', salePrice: '', stock: '', minStock: '5' });
     } catch (err) {
       console.error(err);
@@ -767,8 +849,24 @@ const MerchPage = () => {
                     return (
                       <tr key={p.id} className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)]/40 transition-colors">
                         <td className="px-6 py-4">
-                          <span className="font-extrabold text-sm text-[var(--text-primary)] block">{p.name}</span>
-                          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mt-0.5 block">{p.category}</span>
+                          <div className="flex items-center gap-3">
+                            {/* Product Photo Thumbnail */}
+                            {p.imageUrl ? (
+                              <img
+                                src={p.imageUrl}
+                                alt={p.name}
+                                className="w-11 h-11 rounded-xl object-cover border border-[var(--border)] flex-shrink-0 shadow-md"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] flex items-center justify-center flex-shrink-0">
+                                <Image size={16} className="text-[var(--text-muted)] opacity-40" />
+                              </div>
+                            )}
+                            <div>
+                              <span className="font-extrabold text-sm text-[var(--text-primary)] block">{p.name}</span>
+                              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mt-0.5 block">{p.category}</span>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <span className="px-2.5 py-1 text-[10px] font-black bg-purple-500/10 text-purple-400 rounded-lg border border-purple-500/20 uppercase">
@@ -831,6 +929,8 @@ const MerchPage = () => {
                                 <button
                                   onClick={() => {
                                     setEditingProduct(p);
+                                    setPhotoFile(null);
+                                    setPhotoPreview(p.imageUrl || null);
                                     setProductForm({
                                       name: p.name,
                                       club: p.club,
@@ -846,6 +946,17 @@ const MerchPage = () => {
                                 >
                                   <Edit3 size={12} />
                                 </button>
+
+                                {/* Delete Photo Button */}
+                                {p.imageUrl && (
+                                  <button
+                                    onClick={() => handleDeletePhoto(p)}
+                                    title="Удалить фото"
+                                    className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-orange-400 rounded-lg border border-[var(--border)] transition-all"
+                                  >
+                                    <Image size={12} />
+                                  </button>
+                                )}
 
                                 {/* Delete Button */}
                                 <button
@@ -1070,19 +1181,84 @@ const MerchPage = () => {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-[var(--border)] flex justify-end gap-3">
+              {/* ── Photo Upload Section ── */}
+              <div className="border-t border-[var(--border)] pt-4">
+                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-2">Фото товара</label>
+                <div className="flex items-start gap-3">
+                  {/* Preview */}
+                  <div
+                    className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-dashed border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-purple-400 transition-all flex-shrink-0 bg-[var(--bg-primary)] relative group"
+                    onClick={() => photoInputRef.current?.click()}
+                  >
+                    {photoPreview ? (
+                      <>
+                        <img src={photoPreview} alt="preview" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Camera size={20} className="text-white" />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
+                        <UploadCloud size={22} />
+                        <span className="text-[8px] font-black uppercase">Фото</span>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoSelect}
+                  />
+                  <div className="flex flex-col gap-2 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="text-xs font-bold text-purple-400 hover:text-purple-300 border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 rounded-xl px-3 py-2 transition-all text-left"
+                    >
+                      {photoPreview ? '🔄 Заменить фото' : '📷 Выбрать фото'}
+                    </button>
+                    {photoPreview && (
+                      <button
+                        type="button"
+                        onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                        className="text-xs font-bold text-red-400 hover:text-red-300 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 rounded-xl px-3 py-2 transition-all text-left"
+                      >
+                        🗑 Убрать фото
+                      </button>
+                    )}
+                    <span className="text-[9px] text-[var(--text-muted)] font-semibold">JPG/PNG, до 5 МБ</span>
+                  </div>
+                </div>
+                {/* Upload Progress */}
+                {photoUploading && (
+                  <div className="mt-3">
+                    <div className="h-1.5 bg-[var(--bg-hover)] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500 transition-all duration-300"
+                        style={{ width: `${photoUploadProgress}%` }}
+                      />
+                    </div>
+                    <span className="text-[9px] font-bold text-[var(--text-muted)] mt-1 block">Загрузка... {photoUploadProgress}%</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-[var(--border)] flex justify-end gap-3">
                 <button 
                   type="button"
-                  onClick={() => setShowProductModal(false)}
+                  onClick={() => { setShowProductModal(false); setPhotoFile(null); setPhotoPreview(null); }}
                   className="px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all"
                 >
                   Отмена
                 </button>
                 <button 
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-[var(--accent-purple)] hover:bg-purple-600 text-white shadow-lg transition-all"
+                  disabled={photoUploading}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-[var(--accent-purple)] hover:bg-purple-600 text-white shadow-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {editingProduct ? 'Сохранить изменения' : 'Создать'}
+                  {photoUploading ? `Загрузка ${photoUploadProgress}%...` : (editingProduct ? 'Сохранить изменения' : 'Создать')}
                 </button>
               </div>
 
@@ -1110,16 +1286,28 @@ const MerchPage = () => {
 
             <form onSubmit={handleCreateSale} className="p-5 space-y-4">
               
-              <div className="p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)]">
-                <span className="text-[10px] font-black uppercase text-purple-400 tracking-widest">{selectedProductForSale.category} • {selectedProductForSale.club}</span>
-                <h4 className="font-extrabold text-sm text-[var(--text-primary)] mt-1">{selectedProductForSale.name}</h4>
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border)]/60">
-                  <span className="text-xs text-[var(--text-secondary)] font-semibold">Цена:</span>
-                  <span className="font-black text-sm text-emerald-400">{selectedProductForSale.salePrice.toLocaleString()} ₸</span>
-                </div>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs text-[var(--text-secondary)] font-semibold">В наличии:</span>
-                  <span className="font-bold text-xs text-[var(--text-primary)]">{selectedProductForSale.stock} шт</span>
+              <div className="bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] overflow-hidden">
+                {/* Product image banner */}
+                {selectedProductForSale.imageUrl && (
+                  <div className="w-full h-44 bg-black overflow-hidden">
+                    <img
+                      src={selectedProductForSale.imageUrl}
+                      alt={selectedProductForSale.name}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+                <div className="p-4">
+                  <span className="text-[10px] font-black uppercase text-purple-400 tracking-widest">{selectedProductForSale.category} • {selectedProductForSale.club}</span>
+                  <h4 className="font-extrabold text-sm text-[var(--text-primary)] mt-1">{selectedProductForSale.name}</h4>
+                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border)]/60">
+                    <span className="text-xs text-[var(--text-secondary)] font-semibold">Цена:</span>
+                    <span className="font-black text-sm text-emerald-400">{selectedProductForSale.salePrice.toLocaleString()} ₸</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-[var(--text-secondary)] font-semibold">В наличии:</span>
+                    <span className="font-bold text-xs text-[var(--text-primary)]">{selectedProductForSale.stock} шт</span>
+                  </div>
                 </div>
               </div>
 
