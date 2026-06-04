@@ -118,54 +118,51 @@ const MerchPage = () => {
   }, []);
 
   // ─── Photo Handlers ────────────────────────────────────────────────────────
-  // Uses ImgBB API (free image hosting) — no Firebase Storage upgrade needed
-  const IMGBB_API_KEY = '1b9e1a80a637e0c1ae0e2ed0dd16b625'; // free key, 6MB limit
+  // Compresses image via Canvas API → base64 JPEG → stored directly in Firestore
+  // No external services, no Firebase Storage, no API keys required.
 
   const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) return toast.error('Выберите файл изображения');
-    if (file.size > 5 * 1024 * 1024) return toast.error('Размер файла не должен превышать 5 МБ');
+    if (file.size > 15 * 1024 * 1024) return toast.error('Размер файла не должен превышать 15 МБ');
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
 
+  const compressImageToBase64 = (file) => new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX_SIZE = 800; // px — keeps final size ~100-220 KB
+      let { width, height } = img;
+      if (width > MAX_SIZE || height > MAX_SIZE) {
+        if (width > height) { height = Math.round((height * MAX_SIZE) / width); width = MAX_SIZE; }
+        else { width = Math.round((width * MAX_SIZE) / height); height = MAX_SIZE; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => reject(new Error('Не удалось прочитать изображение'));
+    img.src = objectUrl;
+  });
+
   const handleUploadPhoto = async () => {
     if (!photoFile) return null;
     setPhotoUploading(true);
-    setPhotoUploadProgress(0);
+    setPhotoUploadProgress(30);
     try {
-      const formData = new FormData();
-      formData.append('image', photoFile);
-      formData.append('key', IMGBB_API_KEY);
-
-      const xhr = new XMLHttpRequest();
-      return await new Promise((resolve, reject) => {
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setPhotoUploadProgress(Math.round((e.loaded / e.total) * 100));
-          }
-        };
-        xhr.onload = () => {
-          setPhotoUploading(false);
-          if (xhr.status === 200) {
-            const result = JSON.parse(xhr.responseText);
-            if (result.success) {
-              resolve(result.data.url); // direct image URL
-            } else {
-              reject(new Error('Ошибка хостинга фото'));
-            }
-          } else {
-            reject(new Error(`HTTP ошибка: ${xhr.status}`));
-          }
-        };
-        xhr.onerror = () => { setPhotoUploading(false); reject(new Error('Ошибка сети')); };
-        xhr.open('POST', 'https://api.imgbb.com/1/upload');
-        xhr.send(formData);
-      });
+      const base64 = await compressImageToBase64(photoFile);
+      setPhotoUploadProgress(100);
+      setPhotoUploading(false);
+      return base64;
     } catch (err) {
       setPhotoUploading(false);
-      throw err;
+      throw new Error('Не удалось обработать изображение: ' + err.message);
     }
   };
 
