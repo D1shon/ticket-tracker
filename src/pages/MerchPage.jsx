@@ -3,8 +3,7 @@ import {
   collection, query, onSnapshot, setDoc, doc, deleteDoc, 
   serverTimestamp, addDoc, updateDoc, increment
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
 import { 
@@ -119,6 +118,9 @@ const MerchPage = () => {
   }, []);
 
   // ─── Photo Handlers ────────────────────────────────────────────────────────
+  // Uses ImgBB API (free image hosting) — no Firebase Storage upgrade needed
+  const IMGBB_API_KEY = '1b9e1a80a637e0c1ae0e2ed0dd16b625'; // free key, 6MB limit
+
   const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -128,25 +130,43 @@ const MerchPage = () => {
     setPhotoPreview(URL.createObjectURL(file));
   };
 
-  const handleUploadPhoto = async (productId) => {
+  const handleUploadPhoto = async () => {
     if (!photoFile) return null;
     setPhotoUploading(true);
     setPhotoUploadProgress(0);
-    const fileExt = photoFile.name.split('.').pop();
-    const path = `merch_photos/${productId}.${fileExt}`;
-    const sRef = storageRef(storage, path);
-    return new Promise((resolve, reject) => {
-      const task = uploadBytesResumable(sRef, photoFile);
-      task.on('state_changed',
-        (snap) => setPhotoUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-        (err) => { setPhotoUploading(false); reject(err); },
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
+    try {
+      const formData = new FormData();
+      formData.append('image', photoFile);
+      formData.append('key', IMGBB_API_KEY);
+
+      const xhr = new XMLHttpRequest();
+      return await new Promise((resolve, reject) => {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setPhotoUploadProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+        xhr.onload = () => {
           setPhotoUploading(false);
-          resolve(url);
-        }
-      );
-    });
+          if (xhr.status === 200) {
+            const result = JSON.parse(xhr.responseText);
+            if (result.success) {
+              resolve(result.data.url); // direct image URL
+            } else {
+              reject(new Error('Ошибка хостинга фото'));
+            }
+          } else {
+            reject(new Error(`HTTP ошибка: ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => { setPhotoUploading(false); reject(new Error('Ошибка сети')); };
+        xhr.open('POST', 'https://api.imgbb.com/1/upload');
+        xhr.send(formData);
+      });
+    } catch (err) {
+      setPhotoUploading(false);
+      throw err;
+    }
   };
 
   const handleDeletePhoto = async (product) => {
@@ -154,20 +174,6 @@ const MerchPage = () => {
     if (!canManage) return toast.error('Доступ запрещен');
     if (!window.confirm('Удалить фото товара?')) return;
     try {
-      // Delete from Storage if stored as merch_photos/
-      if (product.imageUrl) {
-        try {
-          // Extract path from URL - works for Firebase Storage URLs
-          const decodedUrl = decodeURIComponent(product.imageUrl);
-          const pathMatch = decodedUrl.match(/merch_photos%2F[^?]+|merch_photos\/[^?]+/);
-          if (pathMatch) {
-            const filePath = pathMatch[0].replace('%2F', '/');
-            await deleteObject(storageRef(storage, filePath));
-          }
-        } catch (storageErr) {
-          console.warn('Could not delete from storage, removing reference only:', storageErr);
-        }
-      }
       await updateDoc(doc(db, 'merch_products', product.id), { imageUrl: null, updatedAt: serverTimestamp() });
       toast.success('Фото удалено');
     } catch (err) {
@@ -231,7 +237,7 @@ const MerchPage = () => {
 
       // Upload new photo if selected
       if (photoFile && productId) {
-        const url = await handleUploadPhoto(productId);
+        const url = await handleUploadPhoto();
         if (url) {
           await updateDoc(doc(db, 'merch_products', productId), { imageUrl: url });
           toast.success('Фото загружено!');
