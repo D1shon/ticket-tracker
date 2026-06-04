@@ -291,7 +291,7 @@ const SalesPage = () => {
                 {/* Buyer Type (Client/Employee) Switcher */}
                 {!isFree && (
                   <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                    <button type="button" onClick={() => setBuyerType('client')}
+                    <button type="button" onClick={() => { setBuyerType('client'); setCustomPrice(String(selectedProduct.salePrice || 0)); }}
                       style={{
                         flex: 1, padding: '6px', borderRadius: 9, fontSize: 10, fontWeight: 800,
                         border: `1px solid ${buyerType === 'client' ? accentColor : 'var(--border)'}`,
@@ -299,7 +299,7 @@ const SalesPage = () => {
                         color: buyerType === 'client' ? accentColor : 'var(--text-secondary)',
                         cursor: 'pointer', transition: 'all 0.15s',
                       }}>Клиент</button>
-                    <button type="button" onClick={() => setBuyerType('employee')}
+                    <button type="button" onClick={() => { setBuyerType('employee'); setCustomPrice(String(selectedProduct.employeePrice || selectedProduct.salePrice || 0)); }}
                       style={{
                         flex: 1, padding: '6px', borderRadius: 9, fontSize: 10, fontWeight: 800,
                         border: `1px solid ${buyerType === 'employee' ? accentColor : 'var(--border)'}`,

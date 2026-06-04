@@ -68,6 +68,7 @@ const MerchPage = () => {
     category: 'Худи',
     costPrice: '',
     salePrice: '',
+    employeePrice: '',
     stock: '',
     minStock: '5'
   });
@@ -194,6 +195,7 @@ const MerchPage = () => {
       ? (parseFloat(productForm.costPrice) || 0) 
       : (editingProduct ? (editingProduct.costPrice || 0) : 0);
     const sale = parseFloat(productForm.salePrice) || 0;
+    const employee = parseFloat(productForm.employeePrice) || 0;
     const initialStock = parseInt(productForm.stock) || 0;
     const min = parseInt(productForm.minStock) || 0;
 
@@ -203,6 +205,7 @@ const MerchPage = () => {
       category: productForm.category,
       costPrice: cost,
       salePrice: sale,
+      employeePrice: employee,
       stock: editingProduct ? editingProduct.stock : initialStock,
       minStock: min,
       updatedAt: serverTimestamp()
@@ -843,6 +846,7 @@ const MerchPage = () => {
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Товар / Категория</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Клуб</th>
                     {isChef && <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Себестоимость</th>}
+                    <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Цена сотрудника</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Цена продажи</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">В наличии</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">Статус</th>
@@ -886,6 +890,9 @@ const MerchPage = () => {
                             <span className="font-bold text-xs text-[var(--text-secondary)]">{(p.costPrice || 0).toLocaleString()} ₸</span>
                           </td>
                         )}
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-semibold text-xs text-purple-400">{(p.employeePrice || 0).toLocaleString()} ₸</span>
+                        </td>
                         <td className="px-6 py-4 text-right">
                           <span className="font-extrabold text-sm text-emerald-400">{(p.salePrice || 0).toLocaleString()} ₸</span>
                         </td>
@@ -954,6 +961,7 @@ const MerchPage = () => {
                                       category: p.category,
                                       costPrice: String(p.costPrice || ''),
                                       salePrice: String(p.salePrice || ''),
+                                      employeePrice: String(p.employeePrice || ''),
                                       stock: String(p.stock || ''),
                                       minStock: String(p.minStock || '')
                                     });
@@ -1143,32 +1151,52 @@ const MerchPage = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                {isChef ? (
-                  <>
-                    <div>
-                      <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Себестоимость (₸)</label>
-                      <input 
-                        type="number"
-                        placeholder="5000"
-                        value={productForm.costPrice}
-                        onChange={e => setProductForm({...productForm, costPrice: e.target.value})}
-                        className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена продажи (₸)</label>
-                      <input 
-                        type="number"
-                        placeholder="12000"
-                        value={productForm.salePrice}
-                        onChange={e => setProductForm({...productForm, salePrice: e.target.value})}
-                        className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="col-span-2">
+              {isChef ? (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Себест. (₸)</label>
+                    <input 
+                      type="number"
+                      placeholder="5000"
+                      value={productForm.costPrice}
+                      onChange={e => setProductForm({...productForm, costPrice: e.target.value})}
+                      className="w-full px-2 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена сотр. (₸)</label>
+                    <input 
+                      type="number"
+                      placeholder="8000"
+                      value={productForm.employeePrice}
+                      onChange={e => setProductForm({...productForm, employeePrice: e.target.value})}
+                      className="w-full px-2 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена прод. (₸)</label>
+                    <input 
+                      type="number"
+                      placeholder="12000"
+                      value={productForm.salePrice}
+                      onChange={e => setProductForm({...productForm, salePrice: e.target.value})}
+                      className="w-full px-2 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена сотрудника (₸)</label>
+                    <input 
+                      type="number"
+                      placeholder="8000"
+                      value={productForm.employeePrice}
+                      onChange={e => setProductForm({...productForm, employeePrice: e.target.value})}
+                      className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    />
+                  </div>
+                  <div>
                     <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена продажи (₸)</label>
                     <input 
                       type="number"
@@ -1178,8 +1206,8 @@ const MerchPage = () => {
                       className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
                     />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1341,14 +1369,14 @@ const MerchPage = () => {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setSaleForm({ ...saleForm, buyerType: 'client' })}
+                    onClick={() => setSaleForm({ ...saleForm, buyerType: 'client', customPrice: String(selectedProductForSale.salePrice || 0) })}
                     className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${saleForm.buyerType === 'client' ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)] shadow-sm' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
                   >
                     Клиент
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSaleForm({ ...saleForm, buyerType: 'employee' })}
+                    onClick={() => setSaleForm({ ...saleForm, buyerType: 'employee', customPrice: String(selectedProductForSale.employeePrice || selectedProductForSale.salePrice || 0) })}
                     className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${saleForm.buyerType === 'employee' ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)] shadow-sm' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
                   >
                     Сотрудник
