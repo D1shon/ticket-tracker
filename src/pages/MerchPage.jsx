@@ -123,7 +123,7 @@ const MerchPage = () => {
   const [photoBase64, setPhotoBase64] = useState(null);
 
   const compressImageToBase64 = (file) => new Promise((resolve, reject) => {
-    const img = new Image();
+    const img = new window.Image();
     const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
