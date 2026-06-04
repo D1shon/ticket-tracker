@@ -76,7 +76,10 @@ const MerchPage = () => {
   const [saleForm, setSaleForm] = useState({
     qty: '1',
     paymentMethod: 'Kaspi',
-    clientName: ''
+    clientName: '',
+    buyerType: 'client',
+    customPrice: '',
+    notes: ''
   });
 
   // Form States (Supply / Restock)
@@ -256,7 +259,8 @@ const MerchPage = () => {
     if (qty <= 0) return toast.error('Укажите корректное количество');
     if (qty > selectedProductForSale.stock) return toast.error(`Недостаточно товара на складе (в наличии: ${selectedProductForSale.stock} шт)`);
 
-    const totalSum = qty * selectedProductForSale.salePrice;
+    const salePrice = parseFloat(saleForm.customPrice) >= 0 ? parseFloat(saleForm.customPrice) : selectedProductForSale.salePrice;
+    const totalSum = qty * salePrice;
     const netProfit = totalSum - (qty * (selectedProductForSale.costPrice || 0));
 
     try {
@@ -268,11 +272,13 @@ const MerchPage = () => {
         club: selectedProductForSale.club,
         qty,
         costPrice: selectedProductForSale.costPrice || 0,
-        salePrice: selectedProductForSale.salePrice,
+        salePrice,
         totalSum,
         netProfit,
         paymentMethod: saleForm.paymentMethod,
-        clientName: saleForm.clientName.trim() || 'Гость',
+        buyerType: saleForm.buyerType || 'client',
+        clientName: saleForm.clientName.trim() || (saleForm.buyerType === 'employee' ? 'Сотрудник' : 'Гость'),
+        notes: saleForm.notes.trim() || null,
         cashierName: user?.name || user?.email || 'Менеджер',
         createdAt: serverTimestamp()
       });
@@ -286,7 +292,7 @@ const MerchPage = () => {
       toast.success('Продажа успешно проведена!');
       setShowSaleModal(false);
       setSelectedProductForSale(null);
-      setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '' });
+      setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '', buyerType: 'client', customPrice: '', notes: '' });
     } catch (err) {
       console.error(err);
       toast.error('Ошибка проведения продажи');
@@ -907,6 +913,14 @@ const MerchPage = () => {
                               disabled={isOut}
                               onClick={() => {
                                 setSelectedProductForSale(p);
+                                setSaleForm({
+                                  qty: '1',
+                                  paymentMethod: 'Kaspi',
+                                  clientName: '',
+                                  buyerType: 'client',
+                                  customPrice: String(p.salePrice),
+                                  notes: ''
+                                });
                                 setShowSaleModal(true);
                               }}
                               className={`flex items-center gap-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase border transition-all ${isOut ? 'bg-gray-500/10 text-gray-500 border-gray-500/10 cursor-not-allowed' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'}`}
@@ -1052,7 +1066,14 @@ const MerchPage = () => {
                             )}
                           </div>
                           {s.clientName && s.clientName !== 'Гость' && (
-                            <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">Клиент: {s.clientName}</span>
+                            <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">
+                              {s.buyerType === 'employee' ? 'Сотрудник: ' : 'Клиент: '}{s.clientName}
+                            </span>
+                          )}
+                          {s.notes && (
+                            <span className="text-[10px] italic text-purple-400 block mt-0.5 bg-purple-500/5 py-0.5 px-1.5 rounded w-fit border border-purple-500/10">
+                              💬 {s.notes}
+                            </span>
                           )}
                         </td>
                         <td className="px-6 py-4 text-xs font-bold text-[var(--text-secondary)]">
@@ -1314,24 +1335,56 @@ const MerchPage = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Buyer Type Switcher */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Кто покупает?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSaleForm({ ...saleForm, buyerType: 'client' })}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${saleForm.buyerType === 'client' ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)] shadow-sm' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                  >
+                    Клиент
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSaleForm({ ...saleForm, buyerType: 'employee' })}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${saleForm.buyerType === 'employee' ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)] shadow-sm' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                  >
+                    Сотрудник
+                  </button>
+                </div>
+              </div>
+
+              {/* Inputs Grid */}
+              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Количество (шт)</label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Кол-во (шт)</label>
                   <input 
                     type="number"
                     min="1"
                     max={selectedProductForSale.stock}
                     value={saleForm.qty}
                     onChange={e => setSaleForm({...saleForm, qty: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-bold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Тип оплаты</label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Цена (₸/шт)</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    value={saleForm.customPrice}
+                    onChange={e => setSaleForm({...saleForm, customPrice: e.target.value})}
+                    className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-bold text-emerald-400 outline-none focus:border-[var(--accent-purple)] transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Оплата</label>
                   <select 
                     value={saleForm.paymentMethod}
                     onChange={e => setSaleForm({...saleForm, paymentMethod: e.target.value})}
-                    className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                    className="w-full px-2 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-xs font-bold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
                   >
                     <option value="Kaspi">Kaspi</option>
                     <option value="Наличные">Наличные</option>
@@ -1341,13 +1394,26 @@ const MerchPage = () => {
               </div>
 
               <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Имя клиента (необязательно)</label>
+                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">
+                  {saleForm.buyerType === 'employee' ? 'Имя сотрудника' : 'Имя клиента (необязательно)'}
+                </label>
                 <input 
                   type="text"
-                  placeholder="Аскар А."
+                  placeholder={saleForm.buyerType === 'employee' ? 'Иван И.' : 'Аскар А.'}
                   value={saleForm.clientName}
                   onChange={e => setSaleForm({...saleForm, clientName: e.target.value})}
                   className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Комментарий к продаже</label>
+                <textarea 
+                  rows="2"
+                  placeholder="Укажите детали (например: скидка, вычет из зп и т.д.)"
+                  value={saleForm.notes}
+                  onChange={e => setSaleForm({...saleForm, notes: e.target.value})}
+                  className="w-full px-4 py-2 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all resize-none"
                 />
               </div>
 
@@ -1355,7 +1421,7 @@ const MerchPage = () => {
               <div className="pt-2 flex items-center justify-between border-t border-[var(--border)]">
                 <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Итого к оплате:</span>
                 <span className="text-lg font-black text-emerald-400">
-                  {((parseInt(saleForm.qty) || 0) * selectedProductForSale.salePrice).toLocaleString()} ₸
+                  {((parseInt(saleForm.qty) || 0) * (parseFloat(saleForm.customPrice) || 0)).toLocaleString()} ₸
                 </span>
               </div>
 
