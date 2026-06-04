@@ -190,6 +190,7 @@ const MerchPage = () => {
     const initialStock = parseInt(productForm.stock) || 0;
     const min = parseInt(productForm.minStock) || 0;
 
+
     const data = {
       name: productForm.name.trim(),
       club: productForm.club,
@@ -201,6 +202,19 @@ const MerchPage = () => {
       updatedAt: serverTimestamp()
     };
 
+    // Preserve existing imageUrl when editing (unless user explicitly cleared it)
+    if (editingProduct) {
+      if (photoFile) {
+        // New photo will be uploaded below — don't set yet
+      } else if (photoPreview) {
+        // Preview is still the existing photo URL — keep it
+        data.imageUrl = editingProduct.imageUrl || null;
+      } else {
+        // User cleared the preview → remove photo
+        data.imageUrl = null;
+      }
+    }
+
     try {
       let productId;
       if (editingProduct) {
@@ -209,12 +223,13 @@ const MerchPage = () => {
         toast.success('Товар успешно обновлен');
       } else {
         data.createdAt = serverTimestamp();
+        data.imageUrl = null; // will be set after upload if photo selected
         const docRef = await addDoc(collection(db, 'merch_products'), data);
         productId = docRef.id;
         toast.success('Товар добавлен в инвентарь');
       }
 
-      // Upload photo if selected
+      // Upload new photo if selected
       if (photoFile && productId) {
         const url = await handleUploadPhoto(productId);
         if (url) {
