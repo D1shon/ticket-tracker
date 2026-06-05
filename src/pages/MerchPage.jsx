@@ -759,7 +759,7 @@ const MerchPage = () => {
                 </div>
               </div>
               
-              <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-1 w-full">
+              <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-1.5 w-full">
                 <div>
                   <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">День</span>
                   <span className="text-[11px] font-black text-[var(--text-primary)] block mt-0.5">{stats.todaySalesRevenue.toLocaleString()} ₸</span>
@@ -768,9 +768,36 @@ const MerchPage = () => {
                   <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Месяц</span>
                   <span className="text-[11px] font-black text-[var(--text-primary)] block mt-0.5">{stats.monthSalesRevenue.toLocaleString()} ₸</span>
                 </div>
-                <div className="border-l border-[var(--border)] pl-1.5">
-                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">{(startDate || endDate) ? 'Период' : 'Все'}</span>
-                  <span className="text-[11px] font-black text-purple-400 block mt-0.5">{stats.periodSalesRevenue.toLocaleString()} ₸</span>
+                <div className="border-l border-[var(--border)] pl-1.5 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Период</span>
+                    <span className="text-[11px] font-black text-purple-400 block mt-0.5">{stats.periodSalesRevenue.toLocaleString()} ₸</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 mt-1">
+                    <input 
+                      type="date"
+                      value={startDate}
+                      onChange={e => setStartDate(e.target.value)}
+                      className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-0.5 py-px text-[7px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-full hover:border-[var(--accent-purple)] transition-colors"
+                      title="Начало периода"
+                    />
+                    <input 
+                      type="date"
+                      value={endDate}
+                      onChange={e => setEndDate(e.target.value)}
+                      className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-0.5 py-px text-[7px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-full hover:border-[var(--accent-purple)] transition-colors"
+                      title="Конец периода"
+                    />
+                    {(startDate || endDate) && (
+                      <button 
+                        onClick={() => { setStartDate(''); setEndDate(''); }}
+                        className="text-[var(--text-muted)] hover:text-red-400 transition-colors text-[7px] font-black text-center mt-0.5 block w-full"
+                        title="Сбросить даты"
+                      >
+                        Сбросить
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -837,7 +864,7 @@ const MerchPage = () => {
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-1 w-full">
+              <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-1.5 w-full">
                 <div>
                   <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Выручка за день</span>
                   <span className="text-xs md:text-sm font-black text-[var(--text-primary)] block mt-0.5">{stats.todaySalesRevenue.toLocaleString()} ₸</span>
@@ -846,9 +873,37 @@ const MerchPage = () => {
                   <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Выручка за месяц</span>
                   <span className="text-xs md:text-sm font-black text-[var(--text-primary)] block mt-0.5">{stats.monthSalesRevenue.toLocaleString()} ₸</span>
                 </div>
-                <div className="border-l border-[var(--border)] pl-3">
-                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Выручка {(startDate || endDate) ? 'за период' : 'за все время'}</span>
-                  <span className="text-xs md:text-sm font-black text-purple-400 block mt-0.5">{stats.periodSalesRevenue.toLocaleString()} ₸</span>
+                <div className="border-l border-[var(--border)] pl-3 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Выручка за период</span>
+                    <span className="text-xs md:text-sm font-black text-purple-400 block mt-0.5">{stats.periodSalesRevenue.toLocaleString()} ₸</span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <input 
+                      type="date"
+                      value={startDate}
+                      onChange={e => setStartDate(e.target.value)}
+                      className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-1 py-0.5 text-[8px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-[65px] hover:border-[var(--accent-purple)] transition-colors"
+                      title="Начало периода"
+                    />
+                    <span className="text-[var(--text-muted)] text-[8px] font-bold">—</span>
+                    <input 
+                      type="date"
+                      value={endDate}
+                      onChange={e => setEndDate(e.target.value)}
+                      className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-1 py-0.5 text-[8px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-[65px] hover:border-[var(--accent-purple)] transition-colors"
+                      title="Конец периода"
+                    />
+                    {(startDate || endDate) && (
+                      <button 
+                        onClick={() => { setStartDate(''); setEndDate(''); }}
+                        className="text-[var(--text-muted)] hover:text-red-400 p-0.5 transition-colors text-[8px] font-black"
+                        title="Сбросить даты"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
