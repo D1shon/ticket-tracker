@@ -1214,30 +1214,28 @@ const SchedulePage = () => {
       )}
 
       {/* ── Развозка summary card ── */}
-      {(() => {
-        return (
-          <div 
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:px-8 sm:py-6 border-[1.5px] border-[var(--accent-purple)] rounded-3xl shadow-xl"
-            style={{
-              background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)',
-              boxShadow: '0 4px 24px rgba(139,92,246,0.15)'
-            }}
-          >
-            <div className="flex items-start sm:items-center gap-3">
-              <span className="text-2xl flex-shrink-0">🚗</span>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-1">Развозка за месяц</p>
-                <p className="text-[11px] text-[var(--text-muted)] font-semibold leading-relaxed">
-                  1 500 ₸ за смену с началом в 6:30 или окончанием в 22:30 (3 000 ₸ за смену 6:30–22:30)
-                </p>
-              </div>
+      {canViewFull && (
+        <div 
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:px-8 sm:py-6 border-[1.5px] border-[var(--accent-purple)] rounded-3xl shadow-xl"
+          style={{
+            background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)',
+            boxShadow: '0 4px 24px rgba(139,92,246,0.15)'
+          }}
+        >
+          <div className="flex items-start sm:items-center gap-3">
+            <span className="text-2xl flex-shrink-0">🚗</span>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-1">Развозка за месяц</p>
+              <p className="text-[11px] text-[var(--text-muted)] font-semibold leading-relaxed">
+                1 500 ₸ за смену с началом в 6:30 или окончанием в 22:30 (3 000 ₸ за смену 6:30–22:30)
+              </p>
             </div>
-            <p className="text-2xl sm:text-3xl font-black text-[var(--accent-purple)] tracking-tight flex-shrink-0">
-              {clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()} ₸
-            </p>
           </div>
-        );
-      })()}
+          <p className="text-2xl sm:text-3xl font-black text-[var(--accent-purple)] tracking-tight flex-shrink-0">
+            {clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()} ₸
+          </p>
+        </div>
+      )}
 
       {showSettingsModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
