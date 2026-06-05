@@ -199,7 +199,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/settings" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
             <SettingsPage />
           </ProtectedLayout>
         } />

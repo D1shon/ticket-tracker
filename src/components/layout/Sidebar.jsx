@@ -46,7 +46,7 @@ const DesktopSidebar = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings';
     }
     return true;
   });
@@ -167,7 +167,7 @@ const MobileNav = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings';
     }
     return true;
   });
