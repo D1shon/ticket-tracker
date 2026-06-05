@@ -304,10 +304,22 @@ export const ScheduleProvider = ({ children }) => {
   // ─── Auto-inherit (clone) employees from previous month if empty ───────
   useEffect(() => {
     if (employeesLoading || loading) return;
-    if (employees.length > 0) return;
-    if (clonedMonthsRef.current.has(monthKey)) return;
 
-    clonedMonthsRef.current.add(monthKey);
+    const clubs = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+    
+    // Find clubs that have no employees in the current month
+    const emptyClubs = clubs.filter(club => {
+      const hasEmployees = employees.some(e => (e.club || '4YOU') === club);
+      const alreadyCloned = clonedMonthsRef.current.has(`${monthKey}_${club}`);
+      return !hasEmployees && !alreadyCloned;
+    });
+
+    if (emptyClubs.length === 0) return;
+
+    // Mark as cloned immediately to prevent concurrent triggers
+    emptyClubs.forEach(club => {
+      clonedMonthsRef.current.add(`${monthKey}_${club}`);
+    });
 
     const cloneFromPrevious = async () => {
       try {
@@ -315,6 +327,7 @@ export const ScheduleProvider = ({ children }) => {
         const prevMonth = subMonths(currentMonth, 1);
         const prevMonthKey = format(prevMonth, 'yyyy-MM');
         
+        // Fetch previous month's employees
         const q = query(collection(db, 'employees'), where('monthKey', '==', prevMonthKey));
         const snapshot = await getDocs(q);
         
@@ -323,27 +336,39 @@ export const ScheduleProvider = ({ children }) => {
           return;
         }
         
-        console.log(`Cloning ${snapshot.size} employees from ${prevMonthKey} to ${monthKey}`);
-        
+        const prevEmployees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         const batch = [];
-        snapshot.docs.forEach(d => {
-          const data = d.data();
-          const oldId = d.id;
-          const baseId = oldId.includes('_') ? oldId.split('_').slice(1).join('_') : oldId;
-          const newId = `${monthKey}_${baseId}`;
+        
+        // Only clone employees for clubs that are empty in the current month
+        emptyClubs.forEach(club => {
+          const clubPrevEmps = prevEmployees.filter(e => (e.club || '4YOU') === club);
+          if (clubPrevEmps.length === 0) {
+            console.log(`No employees to clone for club ${club} from previous month ${prevMonthKey}`);
+            return;
+          }
           
-          batch.push(
-            setDoc(doc(db, 'employees', newId), {
-              ...data,
-              id: newId,
-              monthKey: monthKey,
-              createdAt: new Date()
-            })
-          );
+          console.log(`Cloning ${clubPrevEmps.length} employees for club ${club} from ${prevMonthKey} to ${monthKey}`);
+          
+          clubPrevEmps.forEach(emp => {
+            const oldId = emp.id;
+            const baseId = oldId.includes('_') ? oldId.split('_').slice(1).join('_') : oldId;
+            const newId = `${monthKey}_${baseId}`;
+            
+            batch.push(
+              setDoc(doc(db, 'employees', newId), {
+                ...emp,
+                id: newId,
+                monthKey: monthKey,
+                createdAt: new Date()
+              })
+            );
+          });
         });
         
-        await Promise.all(batch);
-        toast.success(`Перенесены сотрудники из прошлого месяца (${prevMonthKey})`);
+        if (batch.length > 0) {
+          await Promise.all(batch);
+          toast.success(`Перенесены сотрудники для пустых клубов с прошлого месяца (${prevMonthKey})`);
+        }
       } catch (err) {
         console.error('Error cloning employees:', err);
         toast.error('Не удалось скопировать список сотрудников с прошлого месяца');

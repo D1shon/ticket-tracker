@@ -950,7 +950,24 @@ const SchedulePage = () => {
                     <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)', minWidth: 140, maxWidth: 280, width: 140 }} className="px-2 md:px-6 py-3 md:py-4">
                       <div className="w-full">
                         {editingEmpId === emp.id && canEditSchedule ? (
-                          <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-xs md:text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
+                          <input
+                            autoFocus
+                            className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-xs md:text-sm text-[var(--text-primary)] w-full outline-none"
+                            value={editNameValue}
+                            onChange={e => setEditNameValue(e.target.value)}
+                            onBlur={() => {
+                              updateEmployee(emp.id, editNameValue);
+                              setEditingEmpId(null);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                updateEmployee(emp.id, editNameValue);
+                                setEditingEmpId(null);
+                              } else if (e.key === 'Escape') {
+                                setEditingEmpId(null);
+                              }
+                            }}
+                          />
                         ) : (
                           <div className="flex flex-col gap-0.5">
                             <span
