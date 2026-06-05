@@ -45,6 +45,8 @@ const MerchPage = () => {
   
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   
   // Modals
   const [showProductModal, setShowProductModal] = useState(false);
@@ -532,9 +534,22 @@ const MerchPage = () => {
       const matchClub = selectedClub === 'ALL' || s.club === selectedClub;
       const matchSearch = s.productName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           s.cashierName.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchClub && matchSearch;
+      
+      let matchDate = true;
+      if (s.createdAt) {
+        const dateObj = s.createdAt.seconds ? new Date(s.createdAt.seconds * 1000) : new Date(s.createdAt);
+        if (startDate) {
+          const start = new Date(startDate + 'T00:00:00');
+          if (dateObj < start) matchDate = false;
+        }
+        if (endDate) {
+          const end = new Date(endDate + 'T23:59:59');
+          if (dateObj > end) matchDate = false;
+        }
+      }
+      return matchClub && matchSearch && matchDate;
     });
-  }, [sales, selectedClub, searchTerm]);
+  }, [sales, selectedClub, searchTerm, startDate, endDate]);
 
   const filteredLogs = useMemo(() => {
     return historyLogs.filter(log => {
@@ -542,9 +557,22 @@ const MerchPage = () => {
       const matchSearch = log.productName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           log.details?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           log.cashierName?.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchClub && matchSearch;
+      
+      let matchDate = true;
+      if (log.createdAt) {
+        const dateObj = log.createdAt.seconds ? new Date(log.createdAt.seconds * 1000) : new Date(log.createdAt);
+        if (startDate) {
+          const start = new Date(startDate + 'T00:00:00');
+          if (dateObj < start) matchDate = false;
+        }
+        if (endDate) {
+          const end = new Date(endDate + 'T23:59:59');
+          if (dateObj > end) matchDate = false;
+        }
+      }
+      return matchClub && matchSearch && matchDate;
     });
-  }, [historyLogs, selectedClub, searchTerm]);
+  }, [historyLogs, selectedClub, searchTerm, startDate, endDate]);
 
   // ─── Analytics Computations ────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -552,6 +580,14 @@ const MerchPage = () => {
     let totalInventoryCostValue = 0;
     let totalSalesRevenue = 0;
     let totalNetProfit = 0;
+
+    let todaySalesRevenue = 0;
+    let todayNetProfit = 0;
+    let monthSalesRevenue = 0;
+    let monthNetProfit = 0;
+    let periodSalesRevenue = 0;
+    let periodNetProfit = 0;
+
     let lowStockCount = 0;
 
     const activeProducts = products.filter(p => selectedClub === 'ALL' || p.club === selectedClub);
@@ -565,10 +601,48 @@ const MerchPage = () => {
       }
     });
 
+    const now = new Date();
+    const filterStart = startDate ? new Date(startDate + 'T00:00:00') : null;
+    const filterEnd = endDate ? new Date(endDate + 'T23:59:59') : null;
+
     activeSales.forEach(s => {
       if (s.qty > 0) {
-        totalSalesRevenue += (s.totalSum || 0);
-        totalNetProfit += (s.netProfit || 0);
+        const saleSum = s.totalSum || 0;
+        const saleProfit = s.netProfit || 0;
+
+        totalSalesRevenue += saleSum;
+        totalNetProfit += saleProfit;
+
+        // Parse date
+        const dateObj = s.createdAt?.seconds 
+          ? new Date(s.createdAt.seconds * 1000) 
+          : (s.createdAt ? new Date(s.createdAt) : new Date());
+
+        // 1. Check if today
+        const isToday = dateObj.getFullYear() === now.getFullYear() &&
+                        dateObj.getMonth() === now.getMonth() &&
+                        dateObj.getDate() === now.getDate();
+        if (isToday) {
+          todaySalesRevenue += saleSum;
+          todayNetProfit += saleProfit;
+        }
+
+        // 2. Check if this month
+        const isThisMonth = dateObj.getFullYear() === now.getFullYear() &&
+                            dateObj.getMonth() === now.getMonth();
+        if (isThisMonth) {
+          monthSalesRevenue += saleSum;
+          monthNetProfit += saleProfit;
+        }
+
+        // 3. Check if in selected period
+        let inPeriod = true;
+        if (filterStart && dateObj < filterStart) inPeriod = false;
+        if (filterEnd && dateObj > filterEnd) inPeriod = false;
+        if (inPeriod) {
+          periodSalesRevenue += saleSum;
+          periodNetProfit += saleProfit;
+        }
       }
     });
 
@@ -577,9 +651,15 @@ const MerchPage = () => {
       totalInventoryCostValue,
       totalSalesRevenue,
       totalNetProfit,
+      todaySalesRevenue,
+      todayNetProfit,
+      monthSalesRevenue,
+      monthNetProfit,
+      periodSalesRevenue,
+      periodNetProfit,
       lowStockCount
     };
-  }, [products, sales, selectedClub]);
+  }, [products, sales, selectedClub, startDate, endDate]);
 
   return (
     <div className="space-y-6 animate-fade">
@@ -666,34 +746,62 @@ const MerchPage = () => {
             </div>
 
             {/* Revenue */}
-            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Выручка продаж</span>
-                <span className="text-xl md:text-2xl font-black text-emerald-400 tracking-tight block mt-1">
-                  {stats.totalSalesRevenue.toLocaleString()} ₸
-                </span>
-                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
-                  Все проведенные чеки
-                </span>
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex flex-col justify-between">
+              <div className="flex items-center justify-between w-full">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Выручка продаж</span>
+                  <span className="text-xl md:text-2xl font-black text-emerald-400 tracking-tight block mt-1">
+                    {stats.totalSalesRevenue.toLocaleString()} ₸
+                  </span>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+                  <ArrowUpRight size={20} />
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                <ArrowUpRight size={20} />
+              
+              <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-1 w-full">
+                <div>
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">День</span>
+                  <span className="text-[11px] font-black text-[var(--text-primary)] block mt-0.5">{stats.todaySalesRevenue.toLocaleString()} ₸</span>
+                </div>
+                <div className="border-l border-[var(--border)] pl-1.5">
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Месяц</span>
+                  <span className="text-[11px] font-black text-[var(--text-primary)] block mt-0.5">{stats.monthSalesRevenue.toLocaleString()} ₸</span>
+                </div>
+                <div className="border-l border-[var(--border)] pl-1.5">
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">{(startDate || endDate) ? 'Период' : 'Все'}</span>
+                  <span className="text-[11px] font-black text-purple-400 block mt-0.5">{stats.periodSalesRevenue.toLocaleString()} ₸</span>
+                </div>
               </div>
             </div>
 
             {/* Net Profit (Chef only) */}
-            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Чистая прибыль</span>
-                <span className="text-xl md:text-2xl font-black text-purple-400 tracking-tight block mt-1">
-                  {stats.totalNetProfit.toLocaleString()} ₸
-                </span>
-                <span className="text-[9px] font-bold text-purple-400 uppercase tracking-widest block mt-1">
-                  Маржинальность учтена
-                </span>
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex flex-col justify-between">
+              <div className="flex items-center justify-between w-full">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Чистая прибыль</span>
+                  <span className="text-xl md:text-2xl font-black text-purple-400 tracking-tight block mt-1">
+                    {stats.totalNetProfit.toLocaleString()} ₸
+                  </span>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 shrink-0">
+                  <DollarSign size={20} />
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-                <DollarSign size={20} />
+
+              <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-1 w-full">
+                <div>
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">День</span>
+                  <span className="text-[11px] font-black text-[var(--text-primary)] block mt-0.5">{stats.todayNetProfit.toLocaleString()} ₸</span>
+                </div>
+                <div className="border-l border-[var(--border)] pl-1.5">
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Месяц</span>
+                  <span className="text-[11px] font-black text-[var(--text-primary)] block mt-0.5">{stats.monthNetProfit.toLocaleString()} ₸</span>
+                </div>
+                <div className="border-l border-[var(--border)] pl-1.5">
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">{(startDate || endDate) ? 'Период' : 'Все'}</span>
+                  <span className="text-[11px] font-black text-purple-400 block mt-0.5">{stats.periodNetProfit.toLocaleString()} ₸</span>
+                </div>
               </div>
             </div>
 
@@ -716,18 +824,32 @@ const MerchPage = () => {
         ) : (
           <>
             {/* Revenue card for manager */}
-            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between col-span-2 md:col-span-2">
-              <div>
-                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Выручка клуба ({selectedClub})</span>
-                <span className="text-xl md:text-2xl font-black text-emerald-400 tracking-tight block mt-1">
-                  {stats.totalSalesRevenue.toLocaleString()} ₸
-                </span>
-                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
-                  Ваши продажи по клубу
-                </span>
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex flex-col justify-between col-span-2 md:col-span-2">
+              <div className="flex items-center justify-between w-full">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Выручка клуба ({selectedClub})</span>
+                  <span className="text-xl md:text-2xl font-black text-emerald-400 tracking-tight block mt-1">
+                    {stats.totalSalesRevenue.toLocaleString()} ₸
+                  </span>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+                  <ArrowUpRight size={20} />
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                <ArrowUpRight size={20} />
+
+              <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-1 w-full">
+                <div>
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Выручка за день</span>
+                  <span className="text-xs md:text-sm font-black text-[var(--text-primary)] block mt-0.5">{stats.todaySalesRevenue.toLocaleString()} ₸</span>
+                </div>
+                <div className="border-l border-[var(--border)] pl-3">
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Выручка за месяц</span>
+                  <span className="text-xs md:text-sm font-black text-[var(--text-primary)] block mt-0.5">{stats.monthSalesRevenue.toLocaleString()} ₸</span>
+                </div>
+                <div className="border-l border-[var(--border)] pl-3">
+                  <span className="text-[8px] font-black uppercase text-[var(--text-muted)] block">Выручка {(startDate || endDate) ? 'за период' : 'за все время'}</span>
+                  <span className="text-xs md:text-sm font-black text-purple-400 block mt-0.5">{stats.periodSalesRevenue.toLocaleString()} ₸</span>
+                </div>
               </div>
             </div>
 
@@ -800,22 +922,50 @@ const MerchPage = () => {
         </div>
 
         {/* Search Input & CSV Export */}
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-80">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          {/* Date Range Selector */}
+          <div className="flex items-center gap-2 bg-[var(--bg-card)] px-3 py-2 rounded-2xl border border-[var(--border)] shadow-md h-[42px]">
+            <input 
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] w-[115px] cursor-pointer"
+              title="Начало периода"
+            />
+            <span className="text-[var(--text-muted)] text-xs">—</span>
+            <input 
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] w-[115px] cursor-pointer"
+              title="Конец периода"
+            />
+            {(startDate || endDate) && (
+              <button 
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                className="text-[var(--text-muted)] hover:text-red-400 p-0.5 transition-colors"
+                title="Сбросить даты"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="relative flex-1 sm:w-64">
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input 
               type="text"
-              placeholder={activeTab === 'inventory' ? 'Поиск товара или категории...' : 'Поиск чеков / кассира...'}
+              placeholder={activeTab === 'inventory' ? 'Поиск товара...' : 'Поиск чеков...'}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-purple)] transition-all"
+              className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-purple)] transition-all h-[42px]"
             />
           </div>
 
           <button
             onClick={handleExportCSV}
             title="Экспортировать отчет в CSV (Excel)"
-            className="p-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] rounded-2xl border border-[var(--border)] flex items-center justify-center transition-all shadow-md"
+            className="p-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] rounded-2xl border border-[var(--border)] flex items-center justify-center transition-all shadow-md h-[42px] w-[42px] shrink-0"
           >
             <Download size={18} />
           </button>
