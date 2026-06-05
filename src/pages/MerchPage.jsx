@@ -778,6 +778,7 @@ const MerchPage = () => {
                       type="date"
                       value={startDate}
                       onChange={e => setStartDate(e.target.value)}
+                      onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
                       className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-0.5 py-px text-[7px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-full hover:border-[var(--accent-purple)] transition-colors"
                       title="Начало периода"
                     />
@@ -785,6 +786,7 @@ const MerchPage = () => {
                       type="date"
                       value={endDate}
                       onChange={e => setEndDate(e.target.value)}
+                      onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
                       className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-0.5 py-px text-[7px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-full hover:border-[var(--accent-purple)] transition-colors"
                       title="Конец периода"
                     />
@@ -883,6 +885,7 @@ const MerchPage = () => {
                       type="date"
                       value={startDate}
                       onChange={e => setStartDate(e.target.value)}
+                      onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
                       className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-1 py-0.5 text-[8px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-[65px] hover:border-[var(--accent-purple)] transition-colors"
                       title="Начало периода"
                     />
@@ -891,6 +894,7 @@ const MerchPage = () => {
                       type="date"
                       value={endDate}
                       onChange={e => setEndDate(e.target.value)}
+                      onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
                       className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-1 py-0.5 text-[8px] font-black text-[var(--text-primary)] outline-none cursor-pointer w-[65px] hover:border-[var(--accent-purple)] transition-colors"
                       title="Конец периода"
                     />
@@ -984,6 +988,7 @@ const MerchPage = () => {
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
+              onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
               className="bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] w-[115px] cursor-pointer"
               title="Начало периода"
             />
@@ -992,6 +997,7 @@ const MerchPage = () => {
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
+              onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
               className="bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] w-[115px] cursor-pointer"
               title="Конец периода"
             />
