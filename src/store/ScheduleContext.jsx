@@ -547,7 +547,6 @@ export const ScheduleProvider = ({ children }) => {
 
   // ─── removeEmployee ───────────────────────────────────────────────────────
   const removeEmployee = async (id) => {
-    if (!window.confirm('Удалить сотрудника?')) return;
     try {
       setIsSaving(true);
       // Remove locally first

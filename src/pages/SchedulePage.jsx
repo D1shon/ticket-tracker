@@ -432,6 +432,7 @@ const SchedulePage = () => {
   
   const [editingEmpId, setEditingEmpId] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
+  const [deletingEmpId, setDeletingEmpId] = useState(null);
 
   const daysInMonth = useMemo(() => eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }), [currentMonth]);
 
@@ -981,16 +982,30 @@ const SchedulePage = () => {
                               <span className="text-[7px] font-black px-1 py-0.5 rounded self-start hidden md:inline" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>СЕР</span>
                             )}
                             {canEditSchedule && (
-                              <div className="flex items-center lg:opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 mt-0.5">
-                                <button onClick={() => moveEmployee(emp.id, 'up')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={11}/></button>
-                                <button onClick={() => moveEmployee(emp.id, 'down')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={11}/></button>
-                                <button
-                                  onClick={() => setEmployeeService(emp.id, !emp.isService)}
-                                  className={`p-0.5 transition-colors ${emp.isService ? 'text-amber-500' : 'text-[var(--text-muted)] hover:text-amber-400'}`}
-                                  title={emp.isService ? 'Снять статус сервисника' : 'Отметить как сервисника'}
-                                ><Wrench size={11}/></button>
-                                <button onClick={() => removeEmployee(emp.id)} className="p-0.5 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={11}/></button>
-                              </div>
+                              deletingEmpId === emp.id ? (
+                                <div className="flex items-center gap-1 mt-0.5 text-[8px] font-black uppercase tracking-wider">
+                                  <span className="text-red-500 font-extrabold">Удалить?</span>
+                                  <button
+                                    onClick={() => { removeEmployee(emp.id); setDeletingEmpId(null); }}
+                                    className="px-1.5 py-0.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors cursor-pointer"
+                                  >Да</button>
+                                  <button
+                                    onClick={() => setDeletingEmpId(null)}
+                                    className="px-1.5 py-0.5 bg-zinc-700 text-white rounded hover:bg-zinc-600 transition-colors cursor-pointer"
+                                  >Нет</button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center lg:opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 mt-0.5">
+                                  <button onClick={() => moveEmployee(emp.id, 'up')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={11}/></button>
+                                  <button onClick={() => moveEmployee(emp.id, 'down')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={11}/></button>
+                                  <button
+                                    onClick={() => setEmployeeService(emp.id, !emp.isService)}
+                                    className={`p-0.5 transition-colors ${emp.isService ? 'text-amber-500' : 'text-[var(--text-muted)] hover:text-amber-400'}`}
+                                    title={emp.isService ? 'Снять статус сервисника' : 'Отметить как сервисника'}
+                                  ><Wrench size={11}/></button>
+                                  <button onClick={() => setDeletingEmpId(emp.id)} className="p-0.5 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={11}/></button>
+                                </div>
+                              )
                             )}
                           </div>
                         )}
