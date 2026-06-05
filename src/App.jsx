@@ -62,7 +62,7 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex' }}>
       <Sidebar />
-      {!isMobile && <NotificationCorner />}
+      {!isMobile && user?.role !== 'admin' && <NotificationCorner />}
       <div
         className="main-content-wrapper"
         style={{

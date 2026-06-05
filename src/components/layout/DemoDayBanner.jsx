@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Zap, X, ExternalLink, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
+import { useTickets } from '../../store/TicketContext';
 
 const DemoDayBanner = () => {
+  const { user } = useTickets();
   const [isVisible, setIsVisible] = useState(false);
   const MEET_LINK = "https://meet.google.com/zur-yyin-zdm?time=18:00";
 
@@ -56,6 +58,7 @@ const DemoDayBanner = () => {
     setIsVisible(false);
   };
 
+  if (user?.role === 'admin') return null;
   if (!isVisible) return null;
 
   return (

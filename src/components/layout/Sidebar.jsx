@@ -71,6 +71,7 @@ const DesktopSidebar = () => {
       </nav>
 
       <div style={{ borderTop: '1px solid var(--sidebar-border)', paddingTop: 4, paddingBottom: 8, position: 'relative' }}>
+      {user?.role !== 'admin' && (
         <button
           className={`nav-item ${showNotifications ? 'active' : ''}`}
           onClick={() => {
@@ -89,8 +90,9 @@ const DesktopSidebar = () => {
           </div>
           <span>Уведомления</span>
         </button>
+      )}
 
-        {showNotifications && (
+        {user?.role !== 'admin' && showNotifications && (
           <div style={{ position: 'absolute', left: 230, bottom: 40, width: 320, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.2)', zIndex: 100, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 'bold', fontSize: 13, color: 'var(--text-primary)' }}>Новые сообщения</div>
             <div style={{ maxHeight: 300, overflowY: 'auto' }}>
@@ -203,17 +205,19 @@ const MobileNav = () => {
           HJTRACK
         </div>
         {/* Notification bell */}
-        <button
-          onClick={() => { setShowMore(false); setShowNotifications(v => !v); if (!showNotifications && unreadCount > 0) setTimeout(markAllRead, 800); }}
-          style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: 'var(--text-secondary)' }}
-        >
-          <Bell size={20} strokeWidth={1.8} />
-          {unreadCount > 0 && (
-            <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifycontent: 'center', fontWeight: 900 }}>
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
+        {user?.role !== 'admin' && (
+          <button
+            onClick={() => { setShowMore(false); setShowNotifications(v => !v); if (!showNotifications && unreadCount > 0) setTimeout(markAllRead, 800); }}
+            style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: 'var(--text-secondary)' }}
+          >
+            <Bell size={20} strokeWidth={1.8} />
+            {unreadCount > 0 && (
+              <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifycontent: 'center', fontWeight: 900 }}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* ── Bottom Tab Bar ── */}
@@ -344,7 +348,7 @@ const MobileNav = () => {
       )}
 
       {/* ── Notifications Bottom Sheet ── */}
-      {showNotifications && (
+      {user?.role !== 'admin' && showNotifications && (
         <>
           <div onClick={() => setShowNotifications(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 300 }} />
           <div
