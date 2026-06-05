@@ -352,6 +352,7 @@ const SchedulePage = () => {
   const canViewFull = isChef || isManager;
   // Only Chef and Manager can edit shift cells and manage employees — Admins are read-only
   const canEditSchedule = isChef || isManager;
+  const footerBottomOffset = canViewFull ? 44 : 0;
 
   // Restricted access for Managers and Admins
   const userClub = user?.club?.toUpperCase();
@@ -1104,7 +1105,7 @@ const SchedulePage = () => {
             </tbody>
             <tfoot>
               <tr>
-                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: 44, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">Итого:</td>
+                <td style={{ position: stickyNames ? 'sticky' : 'relative', bottom: footerBottomOffset, left: 0, zIndex: stickyNames ? 50 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 font-black text-[10px] text-[var(--text-muted)] uppercase tracking-widest min-w-[120px] md:min-w-[280px] max-w-[120px] md:max-w-[280px]">Итого:</td>
                 
                 {daysInMonth.map(day => {
                   const dayNum = format(day, 'd');
@@ -1127,17 +1128,17 @@ const SchedulePage = () => {
                   const dailyAmount = (!isWeekendDay && !isHolidayDay) ? workingCount * 1500 : 0;
  
                   return (
-                    <td key={day.toString()} style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-1 py-2 text-center font-black text-[10px] text-[var(--text-secondary)] min-w-[60px] md:min-w-[90px]">
+                    <td key={day.toString()} style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-1 py-2 text-center font-black text-[10px] text-[var(--text-secondary)] min-w-[60px] md:min-w-[90px]">
                       {dayTotalHours > 0 ? `${dayTotalHours.toFixed(1)}ч` : '—'}
                     </td>
                   );
                 })}
-                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
-                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 44, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
-                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: 44, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">
+                {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
+                {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.toPay && <td style={{ position: 'sticky', bottom: footerBottomOffset, right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 50 : 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="px-1 md:px-4 py-4 text-center font-black text-xs md:text-sm text-[var(--accent-purple)] min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]">
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <span>{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).toPay, 0).toLocaleString()}</span>
                     <span className="hidden md:inline" style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>в т.ч. {clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}₸ развозка</span>
