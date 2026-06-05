@@ -43,10 +43,10 @@ const Login = () => {
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
+                placeholder="email или имя пользователя"
                 className="w-full bg-muted/50 border border-border rounded-xl py-2.5 pl-10 pr-4 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
                 required
                 autoFocus

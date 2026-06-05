@@ -24,6 +24,7 @@ const ALL_NAV = [
 
 /* ─── Desktop Sidebar ────────────────────────────────────────── */
 const DesktopSidebar = () => {
+  const { user } = useTickets();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(() => localStorage.getItem('hjtrack-theme') === 'dark');
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
@@ -43,6 +44,13 @@ const DesktopSidebar = () => {
     return `${Math.floor(d / 86400)} д назад`;
   };
 
+  const allowedNav = ALL_NAV.filter(item => {
+    if (user?.role === 'admin') {
+      return item.path === '/schedule' || item.path === '/sales';
+    }
+    return true;
+  });
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -50,7 +58,7 @@ const DesktopSidebar = () => {
       </div>
 
       <nav style={{ flex: 1, paddingTop: 8 }}>
-        {ALL_NAV.map(item => (
+        {allowedNav.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -121,6 +129,7 @@ const DesktopSidebar = () => {
 
 /* ─── Mobile Layout ──────────────────────────────────────────── */
 const MobileNav = () => {
+  const { user } = useTickets();
   const navigate = useNavigate();
   const location = useLocation();
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
@@ -156,9 +165,16 @@ const MobileNav = () => {
     return `${Math.floor(d / 86400)} д`;
   };
 
+  const allowedNav = ALL_NAV.filter(item => {
+    if (user?.role === 'admin') {
+      return item.path === '/schedule' || item.path === '/sales';
+    }
+    return true;
+  });
+
   // Bottom nav: 4 primary tabs + "More" button
-  const primaryTabs = ALL_NAV.filter(n => n.primary);
-  const secondaryItems = ALL_NAV.filter(n => !n.primary);
+  const primaryTabs = allowedNav.filter(n => n.primary);
+  const secondaryItems = allowedNav.filter(n => !n.primary);
 
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
@@ -178,7 +194,7 @@ const MobileNav = () => {
         height: 52,
         background: 'var(--bg-card)',
         borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifycontent: 'space-between',
         padding: '0 16px',
         zIndex: 200,
         backdropFilter: 'blur(12px)',
@@ -193,7 +209,7 @@ const MobileNav = () => {
         >
           <Bell size={20} strokeWidth={1.8} />
           {unreadCount > 0 && (
-            <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+            <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifycontent: 'center', fontWeight: 900 }}>
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
@@ -219,7 +235,7 @@ const MobileNav = () => {
               key={item.path}
               onClick={() => handleTabClick(item.path)}
               style={{
-                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center',
                 gap: 3, border: 'none', background: 'transparent', cursor: 'pointer',
                 color: active ? 'var(--accent-purple)' : 'var(--text-muted)',
                 transition: 'color 0.2s',
@@ -241,21 +257,23 @@ const MobileNav = () => {
         })}
 
         {/* "More" tab */}
-        <button
-          onClick={() => { setShowNotifications(false); setShowMore(v => !v); }}
-          style={{
-            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            gap: 3, border: 'none', background: 'transparent', cursor: 'pointer',
-            color: (showMore || isMoreActive) ? 'var(--accent-purple)' : 'var(--text-muted)',
-            transition: 'color 0.2s', position: 'relative',
-          }}
-        >
-          {(showMore || isMoreActive) && (
-            <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />
-          )}
-          <MoreHorizontal size={20} strokeWidth={1.8} />
-          <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Ещё</span>
-        </button>
+        {secondaryItems.length > 0 && (
+          <button
+            onClick={() => { setShowNotifications(false); setShowMore(v => !v); }}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center',
+              gap: 3, border: 'none', background: 'transparent', cursor: 'pointer',
+              color: (showMore || isMoreActive) ? 'var(--accent-purple)' : 'var(--text-muted)',
+              transition: 'color 0.2s', position: 'relative',
+            }}
+          >
+            {(showMore || isMoreActive) && (
+              <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />
+            )}
+            <MoreHorizontal size={20} strokeWidth={1.8} />
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Ещё</span>
+          </button>
+        )}
       </div>
 
       {/* ── "More" Bottom Sheet ── */}

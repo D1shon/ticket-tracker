@@ -362,9 +362,10 @@ const SchedulePage = () => {
   // Filter clubs based on role
   const allowedClubs = useMemo(() => {
     if (isChef) return CLUBS;
+    if (isAdmin) return userClub ? [userClub] : CLUBS;
     if (userClub) return [userClub];
     return []; 
-  }, [isChef, userClub]);
+  }, [isChef, isAdmin, userClub]);
 
   // Auto-select if only one club is allowed or if user context updates
   useEffect(() => {
@@ -752,7 +753,7 @@ const SchedulePage = () => {
           </div>
 
           <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Выберите объект для просмотра и редактирования табеля
+            {canEditSchedule ? 'Выберите объект для просмотра и редактирования табеля' : 'Выберите объект для просмотра табеля'}
           </p>
         </div>
 
@@ -899,7 +900,9 @@ const SchedulePage = () => {
             <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl bg-[var(--bg-hover)] border border-[var(--border)] hover:bg-[var(--bg-hover)]/80 transition-all text-[var(--text-primary)]"><ChevronRight size={20} /></button>
           </div>
 
-          <button onClick={() => setShowSettingsModal(true)} className="p-2.5 bg-[var(--bg-hover)] hover:bg-[var(--bg-hover)]/80 border border-[var(--border)] rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center gap-2"><Settings size={16} /><span className="text-xs font-bold uppercase tracking-tight">Настройки</span></button>
+          {canEditSchedule && (
+            <button onClick={() => setShowSettingsModal(true)} className="p-2.5 bg-[var(--bg-hover)] hover:bg-[var(--bg-hover)]/80 border border-[var(--border)] rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center gap-2"><Settings size={16} /><span className="text-xs font-bold uppercase tracking-tight">Настройки</span></button>
+          )}
         </div>
       </div>
 
@@ -946,29 +949,31 @@ const SchedulePage = () => {
                   <tr key={emp.id} className="hover:bg-[var(--bg-hover)] group">
                     <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-card)', borderRight: '2px solid var(--border)', minWidth: 140, maxWidth: 280, width: 140 }} className="px-2 md:px-6 py-3 md:py-4">
                       <div className="w-full">
-                        {editingEmpId === emp.id ? (
+                        {editingEmpId === emp.id && canEditSchedule ? (
                           <input autoFocus className="bg-[var(--bg-hover)] border border-[var(--accent-purple)] rounded px-2 py-1 text-xs md:text-sm text-[var(--text-primary)] w-full outline-none" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onBlur={() => { updateEmployee(emp.id, editNameValue); setEditingEmpId(null); }} />
                         ) : (
                           <div className="flex flex-col gap-0.5">
                             <span
-                              onClick={() => { setEditingEmpId(emp.id); setEditNameValue(emp.name); }}
+                              onClick={() => { if (canEditSchedule) { setEditingEmpId(emp.id); setEditNameValue(emp.name); } }}
                               title={emp.name}
                               style={{ overflowWrap: 'break-word', wordBreak: 'break-word', hyphens: 'auto' }}
-                              className="text-xs md:text-sm font-bold text-[var(--text-primary)] cursor-pointer leading-tight block w-full"
+                              className={`text-xs md:text-sm font-bold text-[var(--text-primary)] leading-tight block w-full ${canEditSchedule ? 'cursor-pointer' : 'cursor-default'}`}
                             >{emp.name}</span>
                             {emp.isService && (
                               <span className="text-[7px] font-black px-1 py-0.5 rounded self-start hidden md:inline" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>СЕР</span>
                             )}
-                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 mt-0.5">
-                              <button onClick={() => moveEmployee(emp.id, 'up')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={11}/></button>
-                              <button onClick={() => moveEmployee(emp.id, 'down')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={11}/></button>
-                              <button
-                                onClick={() => setEmployeeService(emp.id, !emp.isService)}
-                                className={`p-0.5 transition-colors ${emp.isService ? 'text-amber-500' : 'text-[var(--text-muted)] hover:text-amber-400'}`}
-                                title={emp.isService ? 'Снять статус сервисника' : 'Отметить как сервисника'}
-                              ><Wrench size={11}/></button>
-                              <button onClick={() => removeEmployee(emp.id)} className="p-0.5 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={11}/></button>
-                            </div>
+                            {canEditSchedule && (
+                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 mt-0.5">
+                                <button onClick={() => moveEmployee(emp.id, 'up')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={11}/></button>
+                                <button onClick={() => moveEmployee(emp.id, 'down')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={11}/></button>
+                                <button
+                                  onClick={() => setEmployeeService(emp.id, !emp.isService)}
+                                  className={`p-0.5 transition-colors ${emp.isService ? 'text-amber-500' : 'text-[var(--text-muted)] hover:text-amber-400'}`}
+                                  title={emp.isService ? 'Снять статус сервисника' : 'Отметить как сервисника'}
+                                ><Wrench size={11}/></button>
+                                <button onClick={() => removeEmployee(emp.id)} className="p-0.5 text-[var(--text-muted)] hover:text-red-500"><Trash2 size={11}/></button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1071,12 +1076,14 @@ const SchedulePage = () => {
                   })}
                 </tr>
               ))}
-              <tr>
-                <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[160px] md:min-w-[280px] max-w-[160px] md:max-w-[280px]">
-                  <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
-                </td>
-                <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
-              </tr>
+              {canEditSchedule && (
+                <tr>
+                  <td style={{ position: stickyNames ? 'sticky' : 'relative', left: 0, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '2px solid var(--border)' }} className="px-2 md:px-6 py-4 min-w-[160px] md:min-w-[280px] max-w-[160px] md:max-w-[280px]">
+                    <button onClick={() => setPendingRows(p => [...p, { id: Math.random().toString(36).substr(2, 9), name: '' }])} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-[var(--accent-purple)] rounded-xl border border-purple-500/20 font-black text-[9px] uppercase tracking-widest transition-all"><Plus size={12}/> Добавить</button>
+                  </td>
+                  <td colSpan={daysInMonth.length + 10} style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}></td>
+                </tr>
+              )}
             </tbody>
             <tfoot>
               <tr>

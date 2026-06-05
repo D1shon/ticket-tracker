@@ -77,25 +77,26 @@ const ChecklistDetail = () => {
     
     if (!cardData.noTicket) {
       for (const idx of issueIndices) {
-        const problemDescription = itemIssues[idx];
+        const problemDescription = itemIssues[idx] || '';
         const itemTitle = cardData.items[idx];
         
-        if (problemDescription?.trim()) {
-          const newTicket = {
-            title: `${itemTitle} (${shift.time})`,
-            subtitle: inspectorName.trim()
-              ? `${problemDescription} (Проверил: ${inspectorName.trim()})`
-              : problemDescription,
-            inspectorName: inspectorName.trim() || '',
-            club: club,
-            priority: 'high',
-            status: 'new',
-            createdAt: 'Только что'
-          };
-          
-          if (addTicket) {
-            await addTicket(newTicket);
-          }
+        const descText = problemDescription.trim()
+          ? (inspectorName.trim() ? `${problemDescription.trim()} (Проверил: ${inspectorName.trim()})` : problemDescription.trim())
+          : (inspectorName.trim() ? `Проблема обнаружена (Проверил: ${inspectorName.trim()})` : 'Проблема обнаружена');
+
+        const newTicket = {
+          title: `${itemTitle} (${shift.time})`,
+          subtitle: descText,
+          description: descText,
+          inspectorName: inspectorName.trim() || '',
+          club: club,
+          priority: 'high',
+          status: 'new',
+          createdAt: 'Только что'
+        };
+        
+        if (addTicket) {
+          await addTicket(newTicket);
         }
       }
       if (issueIndices.length > 0) {

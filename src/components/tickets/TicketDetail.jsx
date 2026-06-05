@@ -474,7 +474,7 @@ const TicketDetail = () => {
               <BookOpen size={13} color="#4f8ef7" />
               <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Описание задачи</span>
             </div>
-            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.6 }}>{ticket.description}</p>
+            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.6 }}>{ticket.description || ticket.subtitle}</p>
           </div>
 
           {/* ──── TIMER CARD ──── */}
