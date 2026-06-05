@@ -554,6 +554,9 @@ export const ScheduleProvider = ({ children }) => {
       setEmployees(prev => prev.filter(e => e.id !== id));
       await deleteDoc(doc(db, 'employees', id));
       toast.success('Удалено');
+    } catch (err) {
+      console.error('Error removing employee:', err);
+      toast.error('Не удалось удалить сотрудника');
     } finally { setIsSaving(false); }
   };
 

@@ -350,8 +350,8 @@ const SchedulePage = () => {
   const isAdmin = user?.role === 'admin';
   // Only Chef and Manager can see salary/payroll columns
   const canViewFull = isChef || isManager;
-  // Only Chef and Manager can edit shift cells — Admins are read-only
-  const canEditSchedule = isChef || isManager;
+  // Chef, Manager and Admin can edit shift cells and manage employees — Admin sees no financial data
+  const canEditSchedule = isChef || isManager || isAdmin;
 
   // Restricted access for Managers and Admins
   const userClub = user?.club?.toUpperCase();
@@ -980,7 +980,7 @@ const SchedulePage = () => {
                               <span className="text-[7px] font-black px-1 py-0.5 rounded self-start hidden md:inline" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>СЕР</span>
                             )}
                             {canEditSchedule && (
-                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 mt-0.5">
+                              <div className="flex items-center lg:opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 mt-0.5">
                                 <button onClick={() => moveEmployee(emp.id, 'up')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowUp size={11}/></button>
                                 <button onClick={() => moveEmployee(emp.id, 'down')} className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-purple)]"><ArrowDown size={11}/></button>
                                 <button
