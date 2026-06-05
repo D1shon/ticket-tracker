@@ -350,8 +350,8 @@ const SchedulePage = () => {
   const isAdmin = user?.role === 'admin';
   // Only Chef and Manager can see salary/payroll columns
   const canViewFull = isChef || isManager;
-  // Chef, Manager and Admin can edit shift cells and manage employees — Admin sees no financial data
-  const canEditSchedule = isChef || isManager || isAdmin;
+  // Only Chef and Manager can edit shift cells and manage employees — Admins are read-only
+  const canEditSchedule = isChef || isManager;
 
   // Restricted access for Managers and Admins
   const userClub = user?.club?.toUpperCase();

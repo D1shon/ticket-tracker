@@ -10,21 +10,7 @@ export const useNotifications = () => useContext(NotificationContext);
 const STORAGE_KEY = 'app_notifications_v1';
 const READ_KEY = 'app_notifications_read_v1';
 
-// ─── Role map (mirrors TicketContext) ────────────────────────────────────────
-const USER_ROLES = {
-  'dilshat.r@hj.fit':     { role: 'chef',    club: null },
-  'magzhan@hj.fit':       { role: 'chef',    club: null },
-  'daewure@mail.ru':      { role: 'manager', club: 'COLIBRI' },
-  'ainura030594@gmail.com':{ role: 'manager', club: 'NURLY ORDA' },
-  'diassd9806@gmail.com': { role: 'manager', club: 'VILLA' },
-  'kurbanovtimur585@gmail.com': { role: 'manager', club: '4YOU' },
-  'kelessovaan@gmail.com': { role: 'manager', club: 'VILLA' },
-  'azimuus@gmail.com':    { role: 'manager', club: 'NURLY ORDA' },
-  '19.anastasiya.tkachenko.88@gmail.com': { role: 'manager', club: 'COLIBRI' },
-  'saniya@hj.fit':        { role: 'manager', club: '4YOU' },
-  'aziz@hj.fit':          { role: 'manager', club: 'COLIBRI' },
-  'saltanat@hj.fit':      { role: 'manager', club: 'NURLY ORDA' },
-};
+import { USER_ROLES } from './TicketContext';
 
 /** Returns the club of the currently logged-in session user, or null for chefs/unknown. */
 function getSessionUserClub() {
@@ -207,6 +193,20 @@ export const NotificationProvider = ({ children }) => {
 
         if (email) {
           const emailKey = email.toLowerCase().trim();
+          const profile = USER_ROLES[emailKey];
+          const isAdmin = profile?.role === 'admin';
+
+          if (isAdmin) {
+            setCurrentUserEmail(email);
+            setNotifications([]);
+            setReadIds(new Set());
+            if (unsubscribeTickets) {
+              unsubscribeTickets();
+              unsubscribeTickets = null;
+            }
+            return;
+          }
+
           setCurrentUserEmail(email);
 
           // Load notifications for this user
