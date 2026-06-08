@@ -25,6 +25,7 @@ import AttendancePage from './pages/AttendancePage';
 import CallOverlay from './components/layout/CallOverlay';
 import DemoDayBanner from './components/layout/DemoDayBanner';
 import MobileScanner from './pages/MobileScanner';
+import GuidebookPage from './pages/GuidebookPage';
 
 // Notification bell is fixed top-right on every authenticated page
 const NotificationCorner = () => (
@@ -196,6 +197,11 @@ const AppContent = () => {
         <Route path="/chat" element={
           <ProtectedLayout allowedRoles={['chef', 'manager']}>
             <div style={{ color: 'var(--text-muted)', padding: 40 }}>Чат — в разработке</div>
+          </ProtectedLayout>
+        } />
+        <Route path="/guidebook" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user']}>
+            <GuidebookPage />
           </ProtectedLayout>
         } />
         <Route path="/settings" element={

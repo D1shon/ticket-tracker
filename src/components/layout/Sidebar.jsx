@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Ticket, CheckSquare, Calendar, 
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
-  MoreHorizontal, X, ChevronRight, Package, TrendingUp
+  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen
 } from 'lucide-react';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
@@ -19,6 +19,7 @@ const ALL_NAV = [
   { icon: Archive,         label: 'Архив',       path: '/archive',     primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
+  { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
   { icon: Settings,        label: 'Настройки',   path: '/settings',    primary: false },
 ];
 
@@ -46,7 +47,7 @@ const DesktopSidebar = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook';
     }
     return true;
   });
@@ -169,7 +170,7 @@ const MobileNav = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook';
     }
     return true;
   });
