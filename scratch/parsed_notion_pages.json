@@ -1,0 +1,252 @@
+[
+  {
+    "id": "346ff702-d87b-80bb-a5d5-c02b1d06c744",
+    "title": "   1. Общие положения и роль администратора   ",
+    "section": "Introduction",
+    "subsection": "Роль админа, зона ответственности, стандарты поведения, внешний вид, субординация",
+    "description": "",
+    "status": "Not started",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "[dbZ",
+      "pkvJ",
+      "|NTi",
+      "title",
+      "dependency_0dfb8e2c-e1cd-4a14-bb4d-dc32d3cba4f8",
+      "dependency_7e24dbe6-05b7-4d17-b43f-d74f8f808c97",
+      "dependency_c908a8a9-8a6b-4841-a2d5-6ca5173ccdd1"
+    ]
+  },
+  {
+    "id": "346ff702-d87b-8082-a7f4-e47b21c2882c",
+    "title": "   2. Работа с клиентами (основа сервиса)   ",
+    "section": "Introduction",
+    "subsection": "Приветствие, прощание, тон общения, индивидуальный подход, “золотая середина” общения",
+    "description": "",
+    "status": "Not started",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "[dbZ",
+      "pkvJ",
+      "|NTi",
+      "title",
+      "dependency_0dfb8e2c-e1cd-4a14-bb4d-dc32d3cba4f8",
+      "dependency_7e24dbe6-05b7-4d17-b43f-d74f8f808c97",
+      "dependency_c908a8a9-8a6b-4841-a2d5-6ca5173ccdd1"
+    ]
+  },
+  {
+    "id": "346ff702-d87b-80cf-8055-cedd993b7872",
+    "title": "   3. Правила клуба ",
+    "section": "Introduction",
+    "subsection": "Доступ в клуб, вход по телефону, дети в клубе, поведение в зале, техника безопасности",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "346ff702-d87b-80bf-bec3-ff54cdf2bae8",
+    "title": "    4. Cкрипт №1 первое посещение",
+    "section": "Communication",
+    "subsection": "Открытие приложения и вход в клуб, Пульсометр, Навигация по клубу, Шкафчики",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "346ff702-d87b-8062-9e7e-f5be94e1ac21",
+    "title": "    5. Абонементы и продукты   ",
+    "section": "Critical Situations",
+    "subsection": "Виды абонементов, сертификаты, программы (Basecamp, Heroes Week и т.д.), RESTART, Freestyle",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "346ff702-d87b-8094-afdc-c4ea6b3f518a",
+    "title": "    6. Билеты и посещения",
+    "section": "Introduction",
+    "subsection": "Списание билетов, приоритет, сроки действия, посещения других клубов",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "346ff702-d87b-80d9-9130-f0a85bd8b3df",
+    "title": "        7.   Дополнительные услуги ",
+    "section": "Introduction",
+    "subsection": "Пульсометры, зарядки, замены, Reshape-билеты",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "346ff702-d87b-807c-aed8-dd3045ab63f3",
+    "title": " 8.   Внутренние термины",
+    "section": "Introduction",
+    "subsection": "Обучающая тренировка, ассесмент, различия между клубами",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-8011-83b8-f1b6bf168eda",
+    "title": "9. Нестандартные и проблемные ситуации",
+    "section": "Behavior",
+    "subsection": "Атлет без телефона, с ребенком, медицинские случаи, технические проблемыю",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-80d3-ba43-dd44f8a3d604",
+    "title": "10. Конфликтные ситуации ",
+    "section": "Critical Situations",
+    "subsection": "Жалобы,  агрессия, давление",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-8080-8299-dd3db60db8af",
+    "title": "11.  Работа с тех.поддержкой",
+    "section": "Communication",
+    "subsection": "Создание заявок в тех/поддержку при обращении на ресепшн",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-808d-a09e-dec0927c96a7",
+    "title": "12. Взаимодействие с командой",
+    "section": "Communication",
+    "subsection": "Коммуникация внутри команды",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-80d2-8d01-c5a36563128d",
+    "title": "13. ЧП и безопасность",
+    "section": "Critical Situations",
+    "subsection": "Экстренные ситуации, пожар, землетрясение.",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-800c-bf86-f3e4f67e755c",
+    "title": "14. Assessment center",
+    "section": "Introduction",
+    "subsection": "Что такое и как проходит assessment",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-8087-b3a1-c6b61e0386d0",
+    "title": "15. Reshape (Mind and Body)",
+    "section": "Introduction",
+    "subsection": "Подробнее о занятии Reshape",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  },
+  {
+    "id": "365ff702-d87b-8002-a170-f54165a7ffd5",
+    "title": "16.  Метрики и внутренняя логика клуба",
+    "section": "Introduction",
+    "subsection": "Очки, внутренняя геймификация, цели, Endgame",
+    "description": "",
+    "status": "",
+    "extraText": "",
+    "propertiesKeys": [
+      "IHcv",
+      "QYIs",
+      "pkvJ",
+      "title"
+    ]
+  }
+]

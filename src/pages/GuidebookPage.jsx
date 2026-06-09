@@ -1,155 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BookOpen, Search, HelpCircle, AlertTriangle, ShieldCheck, 
   Baby, Sparkles, ChevronDown, ChevronUp, Book, MessageSquare, 
-  Calendar, CheckCircle, Smartphone, Wifi, Wrench, Package, Info
+  Calendar, CheckCircle, Smartphone, Wifi, Wrench, Package, Info, Loader2,
+  ArrowLeft, Clock, Layers, FileText
 } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
+import { db } from '../lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 const SECTIONS = [
-  { id: 'general', label: 'Общие правила' },
-  { id: 'safety', label: 'Техника безопасности' },
-  { id: 'booking', label: 'Билеты и записи' },
-  { id: 'admin', label: 'Регламенты администратора' },
+  { id: 'Introduction', label: 'Введение и основы' },
+  { id: 'Communication', label: 'Коммуникация' },
+  { id: 'Critical Situations', label: 'Критические ситуации' },
+  { id: 'Behavior', label: 'Стандарты поведения' },
   { id: 'faq', label: 'Частые вопросы (FAQ)' }
 ];
-
-const GUIDEBOOK_DATA = {
-  general: [
-    {
-      icon: Baby,
-      title: '1. Возрастные ограничения и дети в клубе',
-      content: [
-        'Посещение клуба разрешено строго с 16 лет. Это правило применяется абсолютно ко всем клиентам без исключений.',
-        'Данное требование продиктовано требованиями безопасности при работе с профессиональными тренажерами и свободными весами.',
-        'Администратор обязан проверять документы, удостоверяющие личность (удостоверение личности, паспорт или свидетельство о рождении), при любых сомнениях относительно возраста гостя.'
-      ]
-    },
-    {
-      icon: MessageSquare,
-      title: '2. Поведение в зале и культура общения',
-      content: [
-        'На территории клуба категорически запрещены любые формы агрессии, разжигание конфликтов, оскорбления персонала или других участников, использование нецензурной лексики, а также чрезмерно громкие разговоры.',
-        'Администратор должен тактично и вежливо делать замечания нарушителям спокойствия в зале, используя только регламентированные стандартом фразы.',
-        'Пример фразы при громком шуме: «Я извиняюсь, что перебиваю вас. Пожалуйста, можно сделать ваши разговоры чуть-чуть потише? Большое спасибо за понимание!»'
-      ]
-    },
-    {
-      icon: Package,
-      title: '3. Правила приноса еды',
-      content: [
-        'Запрещено приносить и употреблять любую еду в тренировочных зонах клуба.',
-        'Единственными исключениями из этого правила являются: бананы, яблоки, протеиновые коктейли, а также специализированные протеиновые батончики.',
-        'Любые другие перекусы должны осуществляться строго в специально отведенной зоне отдыха или на рецепции.'
-      ]
-    },
-    {
-      icon: AlertTriangle,
-      title: '4. Животные и личные вещи',
-      content: [
-        'Нахождение на территории клуба с любыми домашними животными (даже ручными или в переносках) строго запрещено.',
-        'Проносить спортивные сумки, рюкзаки и иные крупные личные вещи в тренировочные зоны запрещено. Все вещи должны храниться в индивидуальных шкафчиках раздевалки.'
-      ]
-    }
-  ],
-  safety: [
-    {
-      icon: CheckCircle,
-      title: '1. Спортивная форма и обувь',
-      content: [
-        'Тренировки допускаются исключительно в чистой спортивной форме и закрытой сменной обуви (кроссовках).',
-        'Посещение тренировочных зон в сланцах, шлепках, открытой обуви, носках или босиком строго запрещено.',
-        'Тренировки без одежды (с обнаженным торсом) также категорически не допускаются.'
-      ]
-    },
-    {
-      icon: Smartphone,
-      title: '2. Мобильные телефоны на беговых дорожках',
-      content: [
-        'Во время непосредственного выполнения упражнений (особенно во время бега или ходьбы на беговых дорожках) пользоваться мобильным телефоном запрещено.',
-        'Использование гаджетов на движущихся полотнах кардио-тренажеров является частой причиной потери равновесия и получения серьезных травм.'
-      ]
-    },
-    {
-      icon: Info,
-      title: '3. Наушники и жевательная резинка',
-      content: [
-        'Использование наушников во время выполнения упражнений высокой интенсивности не рекомендуется, а жевание жвачки во время тренировки — строго запрещено.',
-        'Жвачка во время выполнения упражнений создает прямую угрозу перекрытия дыхательных путей при резком вдохе.',
-        'Администратор и тренеры должны своевременно просить клиентов избавиться от жевательной резинки перед началом занятия.'
-      ]
-    },
-    {
-      icon: Sparkles,
-      title: '4. Стаканчики и безопасность оборудования',
-      content: [
-        'В тренировочных зонах не рекомендуется использовать стаканчики с открытыми крышками (за исключением случаев приема лекарственных средств).',
-        'Это связано с большим количеством электронных компонентов, проводов и дорогостоящей техники под ногами в зале. Пролитая жидкость может привести к короткому замыканию и остановке работы зала.'
-      ]
-    }
-  ],
-  booking: [
-    {
-      icon: Smartphone,
-      title: '1. Доступ в клуб через QR-код',
-      content: [
-        'Доступ в тренировочные зоны и регистрация посещения осуществляются исключительно через официальное мобильное приложение по персональному QR-коду гостя.',
-        'Если у клиента не работает приложение, администратор должен помочь сбросить кэш, переустановить приложение или найти профиль вручную по номеру телефона, сверив фото профиля с гостем.'
-      ]
-    },
-    {
-      icon: CheckCircle,
-      title: '2. Списание билетов и бронирование',
-      content: [
-        'Один билет в абонементе клиента равен одному полноценному посещению.',
-        'При осуществлении записи на занятие билет автоматически резервируется (бронируется). Списание происходит в момент сканирования QR-кода на входе.'
-      ]
-    },
-    {
-      icon: AlertTriangle,
-      title: '3. Отмена записи и штрафные билеты',
-      content: [
-        'Отменить запись на тренировку без потери зарезервированного билета можно не позднее чем за 8 часов до фактического начала занятия.',
-        'При более поздней отмене или неявке на занятие (пропуске) билет сгорает безвозвратно.',
-        'Дополнительно клиенту начисляется 1 штрафной билет, ограничивающий возможность некоторых бронирований до его отработки.'
-      ]
-    },
-    {
-      icon: Calendar,
-      title: '4. Опоздания на тренировки',
-      content: [
-        'При опоздании клиента более чем на 10 минут от начала занятия, дежурный тренер имеет полное право не допустить гостя до тренировки.',
-        'Пропуск обязательной вводной разминки и суставного разогрева существенно повышает риск получения растяжений и травм во время основной части занятия.'
-      ]
-    },
-    {
-      icon: Info,
-      title: '5. Посещение других филиалов сети',
-      content: [
-        'Клиенты имеют право посещать другие филиалы сети, если это предусмотрено их типом абонемента.',
-        'Перед подтверждением посещения администратор на рецепции должен обязательно открыть карточку клиента и проверить условия действия текущего абонемента для сторонних локаций.'
-      ]
-    }
-  ],
-  admin: [
-    {
-      icon: Wrench,
-      title: '1. Регламент обращения в техническую поддержку',
-      content: [
-        'Клиенты должны самостоятельно отправлять любые технические запросы, жалобы и пожелания через встроенный раздел обратной связи в мобильном приложении.',
-        'Администратор клуба имеет право создать технический тикет со своего рабочего компьютера только в исключительном случае — когда клиент уже отправлял запрос сам, но не получил оперативного или корректного решения в течение регламентированного срока.'
-      ]
-    },
-    {
-      icon: Smartphone,
-      title: '2. Запрет на использование личных телефонов',
-      content: [
-        'Администраторам клуба категорически запрещено вести переписку или созваниваться с клиентами по рабочим вопросам со своих личных мобильных телефонов и аккаунтов в мессенджерах.',
-        'Все рабочие коммуникации должны осуществляться строго с использованием официального корпоративного телефона клуба и закрепленных за ним мессенджеров/каналов.'
-      ]
-    }
-  ]
-};
 
 const FAQ_ITEMS = [
   {
@@ -174,106 +40,486 @@ const FAQ_ITEMS = [
   }
 ];
 
+const getTopicIcon = (title) => {
+  const t = title.toLowerCase();
+  if (t.includes('общие') || t.includes('роль')) return BookOpen;
+  if (t.includes('клиент') || t.includes('сервис') || t.includes('общени')) return MessageSquare;
+  if (t.includes('правила') || t.includes('клуб') || t.includes('чп') || t.includes('безопасн')) return ShieldCheck;
+  if (t.includes('скрипт') || t.includes('телефон')) return Smartphone;
+  if (t.includes('абонемент') || t.includes('продукт')) return Package;
+  if (t.includes('билет') || t.includes('посещен')) return Calendar;
+  if (t.includes('термин') || t.includes('словар')) return Info;
+  if (t.includes('нестандарт') || t.includes('проблем')) return AlertTriangle;
+  if (t.includes('конфликт') || t.includes('жалоб')) return AlertTriangle;
+  if (t.includes('поддержк')) return Wrench;
+  if (t.includes('команд') || t.includes('взаимодейств')) return MessageSquare;
+  if (t.includes('assessment')) return Sparkles;
+  if (t.includes('reshape')) return Sparkles;
+  if (t.includes('метрик') || t.includes('геймификац')) return Sparkles;
+  return Book;
+};
+
 const GuidebookPage = () => {
   const { user } = useTickets();
-  const [activeSection, setActiveSection] = useState('general');
+  const [activeSection, setActiveSection] = useState('Introduction');
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
+  
+  // Data State
+  const [guidebookData, setGuidebookData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Responsive / Reading State
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileView, setMobileView] = useState('list'); // 'list' or 'detail'
+  const [selectedTopicId, setSelectedTopicId] = useState(null);
 
-  const toggleFaq = (idx) => {
-    setOpenFaqIdx(openFaqIdx === idx ? null : idx);
-  };
+  // Monitor screen resizing for layout adjustment
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
-  // Filter guidebook sections based on search query
+  // Fetch Guidebook
+  useEffect(() => {
+    const fetchGuidebook = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'guidebook'));
+        const data = querySnapshot.docs.map(doc => doc.data());
+        const sortedData = data.sort((a, b) => {
+          const matchA = a.title.match(/^\d+/);
+          const matchB = b.title.match(/^\d+/);
+          const numA = matchA ? parseInt(matchA[0], 10) : 999;
+          const numB = matchB ? parseInt(matchB[0], 10) : 999;
+          return numA - numB;
+        });
+        setGuidebookData(sortedData);
+      } catch (err) {
+        console.error('Error fetching guidebook:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchGuidebook();
+  }, []);
+
+  // Set initial selected topic when active section or data changes
+  useEffect(() => {
+    const sectionItems = guidebookData.filter(item => item.section === activeSection);
+    if (sectionItems.length > 0) {
+      setSelectedTopicId(sectionItems[0].id);
+    } else {
+      setSelectedTopicId(null);
+    }
+    setMobileView('list');
+  }, [activeSection, guidebookData]);
+
+  // Filter Guidebook Sections
   const getFilteredData = () => {
-    if (!searchQuery) return GUIDEBOOK_DATA[activeSection] || [];
+    const sectionItems = guidebookData.filter(item => item.section === activeSection);
+    if (!searchQuery) return sectionItems;
     
     const query = searchQuery.toLowerCase();
-    const results = [];
-    
-    // Search across all content in currently selected section
-    const currentSectionItems = GUIDEBOOK_DATA[activeSection] || [];
-    return currentSectionItems.filter(item => 
+    return sectionItems.filter(item => 
       item.title.toLowerCase().includes(query) || 
-      item.content.some(paragraph => paragraph.toLowerCase().includes(query))
+      (item.subsection && item.subsection.toLowerCase().includes(query)) ||
+      (item.blocks && item.blocks.some(block => block.text && block.text.toLowerCase().includes(query)))
     );
   };
 
   const filteredItems = getFilteredData();
 
-  // Filter FAQ items
+  // Handle auto-selection adjustment if filtered items change during search
+  useEffect(() => {
+    if (filteredItems.length > 0) {
+      const isSelectedInFiltered = filteredItems.some(item => item.id === selectedTopicId);
+      if (!isSelectedInFiltered) {
+        setSelectedTopicId(filteredItems[0].id);
+      }
+    }
+  }, [searchQuery, filteredItems, selectedTopicId]);
+
+  const activeTopic = useMemo(() => {
+    return guidebookData.find(item => item.id === selectedTopicId) || null;
+  }, [selectedTopicId, guidebookData]);
+
+  // Calculate reading time for the active topic
+  const activeTopicReadingStats = useMemo(() => {
+    if (!activeTopic || !activeTopic.blocks) return { words: 0, time: 1 };
+    const words = activeTopic.blocks.reduce((acc, b) => acc + (b.text ? b.text.split(/\s+/).length : 0), 0);
+    const time = Math.max(1, Math.ceil(words / 130)); // 130 wpm reading rate
+    return { words, time };
+  }, [activeTopic]);
+
   const filteredFaq = FAQ_ITEMS.filter(item => 
     item.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.answer.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const toggleFaq = (idx) => {
+    setOpenFaqIdx(openFaqIdx === idx ? null : idx);
+  };
+
+  // Modern Dynamic Notion Block Renderer
+  const renderBlocks = (blocks) => {
+    if (!blocks || blocks.length === 0) return null;
+
+    return blocks.map((block, idx) => {
+      const text = block.text || '';
+      
+      // Callout Check (Checks for specific emojis or rules warning symbols)
+      const isCalloutGreen = text.startsWith('✅') || text.startsWith('🟢');
+      const isCalloutYellow = text.startsWith('⚠️') || text.startsWith('💡') || text.startsWith('⚡');
+      const isCalloutRed = text.startsWith('‼️') || text.startsWith('❌') || text.startsWith('🔴');
+      
+      if (isCalloutGreen || isCalloutYellow || isCalloutRed) {
+        let bgColor = 'rgba(16, 185, 129, 0.05)';
+        let borderColor = 'rgba(16, 185, 129, 0.3)';
+        let textColor = 'var(--text-secondary)';
+        
+        if (isCalloutYellow) {
+          bgColor = 'rgba(245, 158, 11, 0.05)';
+          borderColor = 'rgba(245, 158, 11, 0.3)';
+        } else if (isCalloutRed) {
+          bgColor = 'rgba(239, 68, 68, 0.05)';
+          borderColor = 'rgba(239, 68, 68, 0.3)';
+        }
+        
+        return (
+          <div 
+            key={idx}
+            style={{
+              background: bgColor,
+              borderLeft: `4px solid ${borderColor}`,
+              padding: '16px 20px',
+              borderRadius: '0 16px 16px 0',
+              margin: '16px 0',
+              fontSize: '13.5px',
+              lineHeight: 1.7,
+              color: textColor,
+              fontWeight: 500,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            }}
+          >
+            {text}
+          </div>
+        );
+      }
+
+      // Headers Styling
+      if (block.type === 'header') {
+        return (
+          <h2 
+            key={idx} 
+            style={{ 
+              fontSize: '18px', 
+              fontWeight: 900, 
+              color: 'var(--text-primary)', 
+              marginTop: '28px', 
+              marginBottom: '12px',
+              paddingBottom: '8px',
+              borderBottom: '1px solid var(--border)',
+              letterSpacing: '-0.02em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <span style={{ width: 4, height: 16, background: 'var(--accent-purple)', borderRadius: 2 }} />
+            {text}
+          </h2>
+        );
+      }
+      if (block.type === 'sub_header') {
+        return (
+          <h3 
+            key={idx} 
+            style={{ 
+              fontSize: '15px', 
+              fontWeight: 800, 
+              color: 'var(--text-primary)', 
+              marginTop: '22px', 
+              marginBottom: '8px' 
+            }}
+          >
+            {text}
+          </h3>
+        );
+      }
+      if (block.type === 'sub_sub_header') {
+        return (
+          <h4 
+            key={idx} 
+            style={{ 
+              fontSize: '13.5px', 
+              fontWeight: 800, 
+              color: 'var(--text-primary)', 
+              marginTop: '18px', 
+              marginBottom: '6px' 
+            }}
+          >
+            {text}
+          </h4>
+        );
+      }
+
+      // Styled list items
+      if (block.type === 'bulleted_list' || block.type === 'numbered_list') {
+        return (
+          <div 
+            key={idx} 
+            style={{ 
+              display: 'flex', 
+              gap: 12, 
+              alignItems: 'flex-start',
+              margin: '8px 0',
+              fontSize: '13.5px', 
+              color: 'var(--text-secondary)', 
+              lineHeight: 1.7,
+              paddingLeft: '8px'
+            }}
+          >
+            <span 
+              style={{ 
+                width: 6, 
+                height: 6, 
+                borderRadius: '50%', 
+                background: 'var(--accent-purple)', 
+                marginTop: '10px',
+                flexShrink: 0,
+                boxShadow: '0 0 8px var(--accent-purple)'
+              }} 
+            />
+            <span>{text}</span>
+          </div>
+        );
+      }
+
+      // Dialogues / Script lines
+      const isDialogue = text.startsWith('—') || text.startsWith('«') || (text.includes(':') && text.indexOf(':') < 20 && /^[A-ZА-Я]/.test(text));
+      if (isDialogue) {
+        return (
+          <p 
+            key={idx} 
+            style={{ 
+              fontSize: '13.5px', 
+              color: 'var(--text-primary)', 
+              lineHeight: 1.7, 
+              margin: '10px 0',
+              fontStyle: 'italic',
+              background: 'rgba(123, 61, 255, 0.03)',
+              padding: '10px 16px',
+              borderRadius: '12px',
+              borderLeft: '3px solid var(--accent-purple)',
+              fontFamily: 'monospace, sans-serif'
+            }}
+          >
+            {text}
+          </p>
+        );
+      }
+
+      // Regular Paragraphs
+      return (
+        <p 
+          key={idx} 
+          style={{ 
+            fontSize: '13.5px', 
+            color: 'var(--text-secondary)', 
+            lineHeight: 1.7, 
+            margin: '10px 0',
+            letterSpacing: '0.01em'
+          }}
+        >
+          {text}
+        </p>
+      );
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16 }}>
+        <Loader2 className="animate-spin" size={32} style={{ color: 'var(--accent-purple)' }} />
+        <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>Загрузка гайдбука...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
       
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)' }}>
-            <span style={{ color: 'var(--text-muted)' }}>
-              <BookOpen size={20} strokeWidth={2.5} />
-            </span>
-            ГАЙДБУК АДМИНИСТРАТОРА
-          </h1>
-          <p className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            <span style={{ color: 'var(--accent-purple)' }}>📖</span> ВНУТРЕННИЕ РЕГЛАМЕНТЫ И СТАНДАРТЫ HERO'S JOURNEY
-          </p>
+      {/* Dynamic Scss/Css styles inside page */}
+      <style>{`
+        .guidebook-tab {
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .guidebook-tab:hover {
+          color: var(--text-primary) !important;
+          background: rgba(255, 255, 255, 0.02);
+        }
+        .topic-card {
+          transition: all 0.2s ease;
+        }
+        .topic-card:hover {
+          transform: translateY(-2px);
+          border-color: rgba(123, 61, 255, 0.25) !important;
+          background: rgba(123, 61, 255, 0.02) !important;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+        }
+        .topic-card.active {
+          background: rgba(123, 61, 255, 0.08) !important;
+          border-color: var(--accent-purple) !important;
+          box-shadow: 0 4px 15px rgba(123, 61, 255, 0.08);
+        }
+        .faq-card {
+          transition: all 0.2s ease;
+        }
+        .faq-card:hover {
+          border-color: rgba(123, 61, 255, 0.25) !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: var(--border);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: var(--text-muted);
+        }
+      `}</style>
+
+      {/* Modern Banner/Header Panel */}
+      <div 
+        style={{ 
+          background: 'linear-gradient(135deg, rgba(123, 61, 255, 0.05) 0%, rgba(123, 61, 255, 0.01) 100%)',
+          border: '1px solid var(--border)',
+          borderRadius: 24,
+          padding: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'between', alignItems: isMobile ? 'flex-start' : 'center', gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <h1 className="text-xl font-black italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)', margin: 0 }}>
+              <span style={{ color: 'var(--accent-purple)' }}>
+                <BookOpen size={22} strokeWidth={2.5} />
+              </span>
+              ГАЙДБУК АДМИНИСТРАТОРА
+            </h1>
+            <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--text-muted)' }}>
+              🎯 база знаний, стандарты обслуживания и регламенты безопасности
+            </p>
+          </div>
+
+          {/* Clean Search Input */}
+          <div style={{ position: 'relative', width: '100%', maxWidth: isMobile ? '100%' : 320 }}>
+            <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              className="input-app"
+              style={{ width: '100%', paddingLeft: 40, paddingRight: searchQuery ? 32 : 12, borderRadius: 14, fontSize: 13, height: 40 }}
+              placeholder="Поиск по регламентам..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 'bold'
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Search Input */}
-        <div style={{ position: 'relative', width: '100%', maxWidth: 300 }}>
-          <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            className="input-app"
-            style={{ width: '100%', paddingLeft: 36, borderRadius: 12, fontSize: 13 }}
-            placeholder="Поиск по регламентам..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        {/* Mini stats dashboard */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, pt: 16, borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Layers size={13} style={{ color: 'var(--accent-purple)' }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Тем: {guidebookData.length}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <FileText size={13} style={{ color: 'var(--accent-purple)' }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Категорий: 4
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Clock size={13} style={{ color: 'var(--accent-purple)' }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Среднее время чтения: ~5 мин
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Tabs Menu */}
+      {/* Tabs Pill Navigation */}
       <div 
         style={{ 
           display: 'flex', 
           gap: 8, 
           borderBottom: '1px solid var(--border)', 
-          paddingBottom: 4, 
+          paddingBottom: 8, 
           overflowX: 'auto',
           scrollbarWidth: 'none'
         }}
+        className="custom-scrollbar"
       >
-        {SECTIONS.map(sec => (
-          <button
-            key={sec.id}
-            onClick={() => { setActiveSection(sec.id); setOpenFaqIdx(null); }}
-            style={{
-              padding: '10px 16px',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: activeSection === sec.id ? '2px solid var(--accent-purple)' : '2px solid transparent',
-              color: activeSection === sec.id ? 'var(--text-primary)' : 'var(--text-muted)',
-              fontSize: 13,
-              fontWeight: activeSection === sec.id ? 800 : 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s'
-            }}
-          >
-            {sec.label}
-          </button>
-        ))}
+        {SECTIONS.map(sec => {
+          const isActive = activeSection === sec.id;
+          return (
+            <button
+              key={sec.id}
+              onClick={() => { setActiveSection(sec.id); setOpenFaqIdx(null); }}
+              style={{
+                padding: '8px 16px',
+                background: isActive ? 'var(--accent-purple)' : 'rgba(255, 255, 255, 0.01)',
+                border: '1px solid ' + (isActive ? 'var(--accent-purple)' : 'var(--border)'),
+                borderRadius: 12,
+                color: isActive ? '#fff' : 'var(--text-muted)',
+                fontSize: 13,
+                fontWeight: isActive ? 800 : 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                boxShadow: isActive ? '0 4px 10px rgba(123, 61, 255, 0.15)' : 'none'
+              }}
+              className="guidebook-tab"
+            >
+              {sec.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Content Render */}
+      {/* Split/Regular Layout Content Pane */}
       <div style={{ flex: 1 }}>
         {activeSection === 'faq' ? (
-          /* FAQ Section View */
+          /* FAQ Section Accordions */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 800 }}>
             {filteredFaq.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
@@ -287,11 +533,12 @@ const GuidebookPage = () => {
                     key={idx}
                     style={{
                       background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
+                      border: '1px solid ' + (isOpen ? 'var(--accent-purple)' : 'var(--border)'),
                       borderRadius: 16,
                       overflow: 'hidden',
-                      transition: 'border-color 0.2s'
+                      boxShadow: isOpen ? '0 4px 15px rgba(123, 61, 255, 0.04)' : 'none'
                     }}
+                    className="faq-card"
                   >
                     <button
                       onClick={() => toggleFaq(idx)}
@@ -300,7 +547,7 @@ const GuidebookPage = () => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '16px 20px',
+                        padding: '18px 24px',
                         background: 'transparent',
                         border: 'none',
                         textAlign: 'left',
@@ -310,19 +557,20 @@ const GuidebookPage = () => {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <HelpCircle size={16} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, fontWeight: 800 }}>{item.question}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 800 }}>{item.question}</span>
                       </div>
-                      {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      {isOpen ? <ChevronUp size={16} style={{ color: 'var(--accent-purple)' }} /> : <ChevronDown size={16} />}
                     </button>
 
                     {isOpen && (
                       <div 
                         style={{
-                          padding: '16px 20px 20px 48px',
-                          fontSize: 12,
+                          padding: '16px 24px 24px 52px',
+                          fontSize: 13,
                           color: 'var(--text-secondary)',
-                          lineHeight: 1.6,
+                          lineHeight: 1.7,
                           borderTop: '1px solid var(--border)',
+                          background: 'rgba(255, 255, 255, 0.005)'
                         }}
                       >
                         {item.answer}
@@ -334,80 +582,180 @@ const GuidebookPage = () => {
             )}
           </div>
         ) : (
-          /* Regulations Section View */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 850 }}>
+          /* Split layout for regulations: Left (topics list), Right (detailed reading pane) */
+          <div>
             {filteredItems.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
+              <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: 20 }}>
                 В данном разделе регламентов по запросу ничего не найдено.
               </div>
             ) : (
-              filteredItems.map((item, idx) => {
-                const IconComponent = item.icon || Book;
-                return (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '300px 1fr', gap: 24, alignItems: 'start' }}>
+                
+                {/* Left pane: list of topics */}
+                {(!isMobile || mobileView === 'list') && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }} className="custom-scrollbar">
+                    {filteredItems.map((item) => {
+                      const isSelected = item.id === selectedTopicId;
+                      const Icon = getTopicIcon(item.title);
+                      
+                      // Calculate short estimate of blocks
+                      const textBlockCount = item.blocks ? item.blocks.filter(b => b.type === 'text' || b.type === 'bulleted_list').length : 0;
+                      
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedTopicId(item.id);
+                            if (isMobile) setMobileView('detail');
+                          }}
+                          className={`topic-card ${isSelected ? 'active' : ''}`}
+                          style={{
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 16,
+                            padding: 16,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            gap: 12,
+                            alignItems: 'flex-start'
+                          }}
+                        >
+                          <div 
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 8,
+                              background: isSelected ? 'rgba(123, 61, 255, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                              color: isSelected ? 'var(--accent-purple)' : 'var(--text-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}
+                          >
+                            <Icon size={16} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h4 style={{ fontSize: 13, fontWeight: isSelected ? 800 : 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.4 }}>
+                              {item.title}
+                            </h4>
+                            <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginTop: 6 }}>
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'inline-block', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {item.subsection || 'Общее'}
+                              </span>
+                              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, background: 'rgba(255,255,255,0.03)', padding: '2px 6px', borderRadius: 4 }}>
+                                {textBlockCount} абз.
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Right pane: detailed article view */}
+                {(!isMobile || mobileView === 'detail') && activeTopic && (
                   <div 
-                    key={idx}
                     style={{
                       background: 'var(--bg-card)',
                       border: '1px solid var(--border)',
-                      borderRadius: 20,
-                      padding: 24,
+                      borderRadius: 24,
+                      padding: isMobile ? '20px' : '32px',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: 16
+                      gap: 20,
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div 
+                    {/* Header bar on mobile to return to list */}
+                    {isMobile && (
+                      <button
+                        onClick={() => setMobileView('list')}
                         style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 10,
-                          background: 'rgba(123, 61, 255, 0.08)',
-                          color: 'var(--accent-purple)',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
+                          gap: 6,
+                          background: 'rgba(255, 255, 255, 0.02)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          padding: '6px 12px',
+                          color: 'var(--text-secondary)',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          alignSelf: 'flex-start',
+                          marginBottom: 10
                         }}
                       >
-                        <IconComponent size={18} />
-                      </div>
-                      <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>
-                        {item.title}
-                      </h3>
-                    </div>
+                        <ArrowLeft size={14} /> Назад к списку
+                      </button>
+                    )}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 4 }}>
-                      {item.content.map((para, pIdx) => (
-                        <p 
-                          key={pIdx} 
-                          style={{ 
-                            fontSize: 13, 
-                            color: 'var(--text-secondary)', 
-                            lineHeight: 1.6, 
-                            position: 'relative',
-                            paddingLeft: 16
+                    {/* Article Info Header */}
+                    <div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                        <span 
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            background: 'rgba(123, 61, 255, 0.08)',
+                            color: 'var(--accent-purple)',
+                            padding: '4px 10px',
+                            borderRadius: 6,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em'
                           }}
                         >
-                          <span 
-                            style={{ 
-                              position: 'absolute', 
-                              left: 0, 
-                              top: 8, 
-                              width: 6, 
-                              height: 6, 
-                              borderRadius: '50%', 
-                              background: 'var(--accent-purple)',
-                              opacity: 0.7 
-                            }} 
-                          />
-                          {para}
+                          {SECTIONS.find(s => s.id === activeTopic.section)?.label || activeTopic.section}
+                        </span>
+                        
+                        <span 
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            color: 'var(--text-muted)',
+                            padding: '4px 10px',
+                            borderRadius: 6,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          <Clock size={11} /> {activeTopicReadingStats.time} мин чтения
+                        </span>
+                      </div>
+
+                      <h1 
+                        style={{ 
+                          fontSize: isMobile ? 18 : 22, 
+                          fontWeight: 900, 
+                          color: 'var(--text-primary)', 
+                          margin: 0, 
+                          lineHeight: 1.3,
+                          letterSpacing: '-0.02em'
+                        }}
+                      >
+                        {activeTopic.title}
+                      </h1>
+                      
+                      {activeTopic.subsection && (
+                        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '8px 0 0 0', fontWeight: 600 }}>
+                          Подраздел: {activeTopic.subsection}
                         </p>
-                      ))}
+                      )}
+                    </div>
+
+                    <div style={{ width: '100%', height: 1, background: 'var(--border)' }} />
+
+                    {/* Rendered Text Body */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {renderBlocks(activeTopic.blocks)}
                     </div>
                   </div>
-                );
-              })
+                )}
+              </div>
             )}
           </div>
         )}
