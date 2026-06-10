@@ -215,7 +215,7 @@ const SalesPage = () => {
                 style={{ width: '100%', paddingLeft: 28, paddingRight: 8, paddingTop: 6, paddingBottom: 6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, color: 'var(--text-primary)', outline: 'none' }} />
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', maxHeight: 600 }}>
+          <div style={{ flex: 1, overflowY: 'auto', maxHeight: 600, padding: 12 }}>
             {loadingProducts ? (
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Загрузка...</div>
             ) : clubProducts.length === 0 ? (
@@ -223,35 +223,63 @@ const SalesPage = () => {
                 <Package size={24} style={{ margin: '0 auto 6px', opacity: 0.3, display: 'block' }} />
                 <div style={{ fontSize: 11, fontWeight: 700 }}>Нет товаров для {activeClub}</div>
               </div>
-            ) : clubProducts.map(p => {
-              const isOut = p.stock <= 0;
-              const isSel = selectedProduct?.id === p.id;
-              return (
-                <button key={p.id} onClick={() => { if (!isOut) { setSelectedProduct(p); setQty(1); setCustomPrice(String(p.salePrice || 0)); setBuyerType('client'); setBuyerName(''); setNotes(''); } }} disabled={isOut}
-                  style={{
-                    width: '100%', textAlign: 'left', border: 'none', borderBottom: '1px solid var(--border)',
-                    padding: '10px 14px', cursor: isOut ? 'not-allowed' : 'pointer',
-                    background: isSel ? `${accentColor}10` : isOut ? 'var(--bg-hover)' : 'transparent',
-                    borderLeft: isSel ? `3px solid ${accentColor}` : '3px solid transparent',
-                    opacity: isOut ? 0.5 : 1, transition: 'all 0.12s',
-                  }}>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    {p.imageUrl ? (
-                      <img src={p.imageUrl} alt={p.name} style={{ width: 54, height: 54, borderRadius: 10, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
-                    ) : (
-                      <div style={{ width: 54, height: 54, borderRadius: 10, background: 'var(--bg-hover)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Package size={20} style={{ opacity: 0.3, color: 'var(--text-muted)' }} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+                {clubProducts.map(p => {
+                  const isOut = p.stock <= 0;
+                  const isSel = selectedProduct?.id === p.id;
+                  return (
+                    <button key={p.id} onClick={() => { if (!isOut) { setSelectedProduct(p); setQty(1); setCustomPrice(String(p.salePrice || 0)); setBuyerType('client'); setBuyerName(''); setNotes(''); } }} disabled={isOut}
+                      style={{
+                        textAlign: 'left', border: `1px solid ${isSel ? accentColor : 'var(--border)'}`,
+                        borderRadius: 12, overflow: 'hidden', padding: 0, cursor: isOut ? 'not-allowed' : 'pointer',
+                        background: isSel ? `${accentColor}08` : 'var(--bg-card)',
+                        boxShadow: isSel ? `0 0 0 1px ${accentColor}` : 'none',
+                        opacity: isOut ? 0.5 : 1, transition: 'all 0.15s',
+                        display: 'flex', flexDirection: 'column'
+                      }}>
+                      {/* Image container */}
+                      {p.imageUrl ? (
+                        <div style={{ width: '100%', height: 100, background: '#000', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                          <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          {isOut && (
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#fff', textTransform: 'uppercase' }}>Нет</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ width: '100%', height: 100, background: 'var(--bg-hover)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', position: 'relative' }}>
+                          <Package size={20} style={{ opacity: 0.25, color: 'var(--text-muted)' }} />
+                          <span style={{ fontSize: 8, color: 'var(--text-muted)', fontWeight: 650, marginTop: 4 }}>Нет фото</span>
+                          {isOut && (
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#fff', textTransform: 'uppercase' }}>Нет</div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Content */}
+                      <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '14px', minHeight: 28 }} title={p.name}>
+                            {p.name}
+                          </div>
+                          <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
+                            {p.category}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: p.stock <= 3 ? '#f59e0b' : 'var(--text-muted)' }}>
+                            {p.stock} шт
+                          </span>
+                          <span style={{ fontSize: 11, fontWeight: 900, color: accentColor }}>
+                            {(p.salePrice || 0).toLocaleString()} ₸
+                          </span>
+                        </div>
                       </div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{p.category} · {isOut ? '❌ Нет' : `${p.stock} шт`}</div>
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: accentColor, flexShrink: 0, marginLeft: 6 }}>{(p.salePrice || 0).toLocaleString()} ₸</div>
-                  </div>
-                </button>
-              );
-            })}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
