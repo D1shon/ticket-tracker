@@ -155,7 +155,7 @@ const SalesPage = () => {
   const accentColor = CLUB_COLORS[activeClub] || 'var(--accent-purple)';
 
   return (
-    <div className="animate-fade" style={{ maxWidth: 740, margin: '0 auto' }}>
+    <div className="animate-fade" style={{ maxWidth: 1280, margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{
@@ -203,10 +203,10 @@ const SalesPage = () => {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
 
         {/* LEFT — Product list */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-card)', display: 'flex', flexDirection: 'column' }}>
+        <div className="md:col-span-7" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-card)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 6 }}>Выбери товар</div>
             <div style={{ position: 'relative' }}>
@@ -215,7 +215,7 @@ const SalesPage = () => {
                 style={{ width: '100%', paddingLeft: 28, paddingRight: 8, paddingTop: 6, paddingBottom: 6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, color: 'var(--text-primary)', outline: 'none' }} />
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', maxHeight: 400 }}>
+          <div style={{ flex: 1, overflowY: 'auto', maxHeight: 600 }}>
             {loadingProducts ? (
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Загрузка...</div>
             ) : clubProducts.length === 0 ? (
@@ -256,7 +256,7 @@ const SalesPage = () => {
         </div>
 
         {/* RIGHT — Form + log */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="md:col-span-5" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
           {/* Form */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: 14, boxShadow: 'var(--shadow-card)' }}>
@@ -430,7 +430,7 @@ const SalesPage = () => {
             <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em' }}>
               Сегодня · {activeClub} ({clubTodaySales.length})
             </div>
-            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 350, overflowY: 'auto' }}>
               {clubTodaySales.length === 0 ? (
                 <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Продаж ещё нет</div>
               ) : clubTodaySales.map(s => (
