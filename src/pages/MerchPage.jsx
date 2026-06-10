@@ -47,6 +47,7 @@ const MerchPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState('default'); // 'default', 'date', 'alphabet'
   
   // Modals
   const [showProductModal, setShowProductModal] = useState(false);
@@ -521,13 +522,25 @@ const MerchPage = () => {
 
   // ─── Filtered Data ─────────────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    const list = products.filter(p => {
       const matchClub = selectedClub === 'ALL' || p.club === selectedClub;
       const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           p.category.toLowerCase().includes(searchTerm.toLowerCase());
       return matchClub && matchSearch;
     });
-  }, [products, selectedClub, searchTerm]);
+
+    if (sortBy === 'alphabet') {
+      return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortBy === 'date') {
+      return [...list].sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA; // Newer first
+      });
+    }
+
+    return list;
+  }, [products, selectedClub, searchTerm, sortBy]);
 
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
@@ -1011,6 +1024,18 @@ const MerchPage = () => {
               </button>
             )}
           </div>
+
+          {activeTab === 'inventory' && (
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              className="bg-[var(--bg-card)] px-3 py-2 rounded-2xl border border-[var(--border)] text-xs font-bold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] h-[42px] cursor-pointer"
+            >
+              <option value="default">Сортировка: По умолчанию</option>
+              <option value="date">Сортировка: По дате (новые)</option>
+              <option value="alphabet">Сортировка: По алфавиту</option>
+            </select>
+          )}
 
           <div className="relative flex-1 sm:w-64">
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
