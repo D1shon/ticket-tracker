@@ -235,12 +235,12 @@ const SalesPage = () => {
                     borderLeft: isSel ? `3px solid ${accentColor}` : '3px solid transparent',
                     opacity: isOut ? 0.5 : 1, transition: 'all 0.12s',
                   }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     {p.imageUrl ? (
-                      <img src={p.imageUrl} alt={p.name} style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
+                      <img src={p.imageUrl} alt={p.name} style={{ width: 54, height: 54, borderRadius: 10, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
                     ) : (
-                      <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-hover)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Package size={12} style={{ opacity: 0.3, color: 'var(--text-muted)' }} />
+                      <div style={{ width: 54, height: 54, borderRadius: 10, background: 'var(--bg-hover)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Package size={20} style={{ opacity: 0.3, color: 'var(--text-muted)' }} />
                       </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -267,13 +267,13 @@ const SalesPage = () => {
                 {/* Product chip */}
                 <div style={{ background: 'var(--bg-primary)', border: `1px solid var(--border)`, borderRadius: 12, overflow: 'hidden', marginBottom: 10, boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)' }}>
                   {selectedProduct.imageUrl ? (
-                    <div style={{ width: '100%', height: 130, background: '#000', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '100%', height: 240, background: '#08080c', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
                       <img src={selectedProduct.imageUrl} alt={selectedProduct.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </div>
                   ) : (
-                    <div style={{ width: '100%', height: 130, background: 'var(--bg-hover)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
-                      <Package size={24} style={{ opacity: 0.25, color: 'var(--text-muted)' }} />
-                      <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 650, marginTop: 4 }}>Нет фото</span>
+                    <div style={{ width: '100%', height: 240, background: 'var(--bg-hover)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
+                      <Package size={36} style={{ opacity: 0.25, color: 'var(--text-muted)' }} />
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 650, marginTop: 6 }}>Нет фото</span>
                     </div>
                   )}
                   <div style={{ padding: '10px 12px' }}>
