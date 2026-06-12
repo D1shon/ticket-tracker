@@ -72,7 +72,6 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
           flexDirection: 'column',
           minHeight: '100vh',
           minWidth: 0,
-          // On mobile: leave room for top bar + bottom tab bar
           paddingTop: isMobile ? 52 : 0,
           paddingBottom: isMobile ? 64 : 0,
         }}

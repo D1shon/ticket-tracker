@@ -33,6 +33,10 @@ import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
 import ScrollContainer from 'react-indiana-drag-scroll';
+import { collection, query, onSnapshot } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
+
+const COMMISSION_RATE = 0.02; // 2% merch sales commission rate
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
@@ -68,6 +72,7 @@ const SHIFT_OPTIONS = [
 const COLUMN_LABELS = {
   totalHours: 'Всего часов',
   salary: 'Зарплата',
+  salesCommission: '% продажи',
   razvozka: 'Развозка',
   advance: 'Аванс',
   correction: 'ФИКС',
@@ -380,6 +385,23 @@ const SchedulePage = () => {
   const [savingIds, setSavingIds] = useState(new Set());
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [stickyNames, setStickyNames] = useState(true);
+  
+  // ─── Merch Sales (for commission calculation) ────────────────────────────
+  const [merchSales, setMerchSales] = useState([]);
+  useEffect(() => {
+    let unsub = null;
+    const unsubAuth = auth.onAuthStateChanged(firebaseUser => {
+      if (firebaseUser) {
+        unsub = onSnapshot(query(collection(db, 'merch_sales')), snap => {
+          setMerchSales(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+      } else {
+        if (unsub) { unsub(); unsub = null; }
+        setMerchSales([]);
+      }
+    });
+    return () => { unsubAuth(); if (unsub) unsub(); };
+  }, []);
   // financialEdits: tracks in-progress edits for salary/razvozka/advance/correction
   // key: `${empId}-${field}`, value: current string being edited
   const [financialEdits, setFinancialEdits] = useState({});
@@ -437,10 +459,11 @@ const SchedulePage = () => {
   const daysInMonth = useMemo(() => eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }), [currentMonth]);
 
   const visibleCols = useMemo(() => {
-    const cols = settings?.visibleCols || { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true };
+    const cols = settings?.visibleCols || { totalHours: true, salary: true, salesCommission: true, razvozka: true, advance: true, correction: true, toPay: true };
     return {
       totalHours: cols.totalHours !== false,
       salary: cols.salary !== false,
+      salesCommission: cols.salesCommission !== false,
       razvozka: cols.razvozka !== false,
       advance: cols.advance !== false,
       correction: cols.correction !== false,
@@ -546,6 +569,95 @@ const SchedulePage = () => {
         }
       });
     });
+
+    // Calculate sales commissions for each employee
+    const salesCommissions = {};
+    employees.forEach(emp => {
+      salesCommissions[emp.id] = 0;
+    });
+
+    merchSales.forEach(sale => {
+      if ((sale.qty || 0) <= 0) return; // skip supplies / adjustments
+      if (!sale.createdAt) return;
+
+      const dateObj = sale.createdAt.seconds ? new Date(sale.createdAt.seconds * 1000) : new Date(sale.createdAt);
+      const saleMonthKey = format(dateObj, 'yyyy-MM');
+      if (saleMonthKey !== monthKey) return; // only current month
+
+      const dayNum = format(dateObj, 'd');
+      const saleClub = sale.club || '4YOU';
+
+      // 1. Direct salesperson match (especially for NURLY ORDA)
+      if (sale.salespersonName) {
+        const matchedEmp = employees.find(e => 
+          (e.club || '4YOU') === saleClub &&
+          e.name.trim().toLowerCase() === sale.salespersonName.trim().toLowerCase()
+        );
+        if (matchedEmp) {
+          const rateVal = matchedEmp.commissionRate !== undefined && matchedEmp.commissionRate !== null
+            ? (matchedEmp.commissionRate / 100)
+            : COMMISSION_RATE;
+          salesCommissions[matchedEmp.id] += (sale.totalSum || 0) * rateVal;
+          return;
+        }
+      }
+
+      // 2. Fallback to shift-based distribution
+      const saleTimeMin = dateObj.getHours() * 60 + dateObj.getMinutes();
+      const isMorningSale = saleTimeMin < (14 * 60 + 30); // before 14:30
+
+      // Find working employees of this club on this day
+      const workingEmps = employees.filter(e => {
+        if ((e.club || '4YOU') !== saleClub) return false;
+        const docId = e.id.includes('_') ? e.id : `${monthKey}_${e.id}`;
+        const data = scheduleData[docId] || {};
+        const val = data.days?.[dayNum] || '';
+        return isWorkingShift(val);
+      });
+
+      if (workingEmps.length === 0) return;
+
+      // Classify into morning / evening shifts
+      const morningEmps = [];
+      const eveningEmps = [];
+
+      workingEmps.forEach(e => {
+        const docId = e.id.includes('_') ? e.id : `${monthKey}_${e.id}`;
+        const data = scheduleData[docId] || {};
+        const val = data.days?.[dayNum] || '';
+        
+        // Parse shift start time (e.g., "8:30-14:30" -> starts at 8:30)
+        let startMin = 0;
+        const clean = String(val).trim().replace(/\s+/g, '').replace(/\./g, ':');
+        if (clean.includes('-')) {
+          const parts = clean.split('-');
+          const toMin = (s) => {
+            const c = s.trim();
+            if (!c.includes(':')) return (parseInt(c) || 0) * 60;
+            const [h, m] = c.split(':').map(Number);
+            return (h || 0) * 60 + (m || 0);
+          };
+          startMin = toMin(parts[0]);
+        }
+        
+        if (startMin < (14 * 60 + 30)) {
+          morningEmps.push(e);
+        } else {
+          eveningEmps.push(e);
+        }
+      });
+
+      const targets = isMorningSale 
+        ? (morningEmps.length > 0 ? morningEmps : workingEmps) 
+        : (eveningEmps.length > 0 ? eveningEmps : workingEmps);
+
+      if (targets.length > 0) {
+        const share = ((sale.totalSum || 0) * COMMISSION_RATE) / targets.length;
+        targets.forEach(e => {
+          salesCommissions[e.id] += share;
+        });
+      }
+    });
     
     employees.forEach(emp => {
       const docId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
@@ -607,7 +719,8 @@ const SchedulePage = () => {
 
       const advance = data.advance === '-' ? 0 : (parseFloat(data.advance) || 0);
       const correction = data.correction === '-' ? 0 : (parseFloat(data.correction) || 0);
-      const toPay = salary + finalRazvozka - advance + correction;
+      const salesCommission = salesCommissions[emp.id] || 0;
+      const toPay = salary + finalRazvozka - advance + correction + salesCommission;
       
       stats[emp.id] = { 
         totalHours, 
@@ -621,17 +734,19 @@ const SchedulePage = () => {
         advanceRaw: data.advance, 
         correction, 
         correctionRaw: data.correction, 
+        salesCommission,
         toPay 
       };
     });
     return stats;
-  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate, dailyRazvozka]);
+  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate, dailyRazvozka, merchSales]);
 
   const getEmployeeStats = (empId) => employeeStats[empId] || { 
     totalHours: 0, 
     salary: 0, 
     calculatedSalary: 0, 
     salaryOverride: 0, 
+    salesCommission: 0,
     razvozka: 0, 
     calculatedRazvozka: 0, 
     razvozkaOverride: 0, 
@@ -937,6 +1052,7 @@ const SchedulePage = () => {
                 
                 {visibleCols.totalHours && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[95px]">Всего ч.</th>}
                 {canViewFull && visibleCols.salary && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Зарплата</th>}
+                {canViewFull && visibleCols.salesCommission && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">% продажи</th>}
                 {canViewFull && visibleCols.razvozka && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Развозка</th>}
                 {canViewFull && visibleCols.advance && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Аванс</th>}
                 {canViewFull && visibleCols.correction && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">ФИКС</th>}
@@ -1033,6 +1149,13 @@ const SchedulePage = () => {
                         />
                       </td>
                     )}
+                    {canViewFull && visibleCols.salesCommission && (
+                      <td className="px-4 py-4 text-center text-xs font-bold border-r border-[var(--border)] bg-yellow-500/5">
+                        <span className={stats.salesCommission > 0 ? 'text-yellow-400 font-extrabold' : 'text-[var(--text-muted)]'}>
+                          {stats.salesCommission > 0 ? `${Math.round(stats.salesCommission).toLocaleString()} ₸` : '—'}
+                        </span>
+                      </td>
+                    )}
                     {canViewFull && visibleCols.razvozka && (
                       <td className="p-0 bg-emerald-500/5 border-r border-[var(--border)]">
                         <input
@@ -1101,7 +1224,7 @@ const SchedulePage = () => {
                   </td>
                   {daysInMonth.map(d => <td key={d.toString()} style={{ borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="text-[10px] text-[var(--text-muted)] text-center italic">—</td>)}
                   {Object.keys(visibleCols).map(k => {
-                    const isFin = ['salary', 'razvozka', 'advance', 'correction', 'toPay'].includes(k);
+                    const isFin = ['salary', 'salesCommission', 'razvozka', 'advance', 'correction', 'toPay'].includes(k);
                     if (isFin && !canViewFull) return null;
                     if (!visibleCols[k]) return null;
                     if (k === 'toPay') return <td key={k} style={{ position: stickyNames ? 'sticky' : 'relative', right: stickyNames ? 0 : undefined, zIndex: stickyNames ? 30 : 5, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderLeft: stickyNames ? '2px solid var(--border)' : undefined }} className="min-w-[75px] md:min-w-[130px] max-w-[75px] md:max-w-[130px]"></td>;
@@ -1150,6 +1273,7 @@ const SchedulePage = () => {
                 })}
                 {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
                 {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
+                {canViewFull && visibleCols.salesCommission && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-yellow-400">{Math.round(clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salesCommission, 0)).toLocaleString()}</td>}
                 {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-orange-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).advance, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).correction, 0).toLocaleString()}</td>}
@@ -1202,6 +1326,7 @@ const SchedulePage = () => {
                   })}
                   {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
+                  {canViewFull && visibleCols.salesCommission && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()} ₸</td>}
                   {canViewFull && visibleCols.advance && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.correction && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
@@ -1229,10 +1354,11 @@ const SchedulePage = () => {
       </div>
 
       {canViewFull && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 md:gap-4">
           {[ 
             { l: 'Всего ч',  v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
             { l: 'Зарплата', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary,     0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
+            { l: '% продажи', v: Math.round(clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salesCommission, 0)).toLocaleString() + ' ₸', c: 'text-yellow-400' },
             { l: 'Развозка', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).razvozka,   0).toLocaleString() + ' ₸', c: 'text-emerald-400' },
             { l: 'Аванс',    v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance,    0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
             { l: 'ФИКС',     v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 

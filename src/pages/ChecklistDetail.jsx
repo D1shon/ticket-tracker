@@ -84,11 +84,13 @@ const ChecklistDetail = () => {
           ? (inspectorName.trim() ? `${problemDescription.trim()} (Проверил: ${inspectorName.trim()})` : problemDescription.trim())
           : (inspectorName.trim() ? `Проблема обнаружена (Проверил: ${inspectorName.trim()})` : 'Проблема обнаружена');
 
+        const cleanInspector = inspectorName.trim();
         const newTicket = {
           title: `${itemTitle} (${shift.time})`,
           subtitle: descText,
           description: descText,
-          inspectorName: inspectorName.trim() || '',
+          inspectorName: cleanInspector,
+          assignee: cleanInspector ? `${cleanInspector} (${club})` : '',
           club: club,
           priority: 'high',
           status: 'new',

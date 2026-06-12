@@ -140,6 +140,19 @@ const MobileNav = () => {
   const [showMore, setShowMore] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const sheetRef = useRef(null);
+  const [isDemoDayActive, setIsDemoDayActive] = useState(false);
+
+  useEffect(() => {
+    const checkStatus = () => {
+      const now = new Date();
+      const isFriday = now.getDay() === 5; // 5 is Friday
+      const isBeforeSevenPM = now.getHours() < 19; // Stay visible until 19:00
+      setIsDemoDayActive(isFriday && isBeforeSevenPM);
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -197,27 +210,56 @@ const MobileNav = () => {
         height: 52,
         background: 'var(--bg-card)',
         borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifycontent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 16px',
         zIndex: 200,
         backdropFilter: 'blur(12px)',
       }}>
-        <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: '0.06em', color: 'var(--accent-purple)', fontStyle: 'italic' }}>
-          HJTRACK
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: '0.06em', color: 'var(--accent-purple)', fontStyle: 'italic' }}>
+            HJTRACK
+          </div>
+          {/* Notification bell */}
+          {user?.role !== 'admin' && (
+            <button
+              onClick={() => { setShowMore(false); setShowNotifications(v => !v); if (!showNotifications && unreadCount > 0) setTimeout(markAllRead, 800); }}
+              style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: 'var(--text-secondary)' }}
+            >
+              <Bell size={20} strokeWidth={1.8} />
+              {unreadCount > 0 && (
+                <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
         </div>
-        {/* Notification bell */}
-        {user?.role !== 'admin' && (
-          <button
-            onClick={() => { setShowMore(false); setShowNotifications(v => !v); if (!showNotifications && unreadCount > 0) setTimeout(markAllRead, 800); }}
-            style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: 'var(--text-secondary)' }}
+
+        {/* Demo Day Link in Header */}
+        {isDemoDayActive && (
+          <a
+            href="https://meet.google.com/zur-yyin-zdm?time=18:00"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '5px 10px',
+              borderRadius: 10,
+              background: 'rgba(123, 61, 255, 0.12)',
+              border: '1px solid rgba(123, 61, 255, 0.35)',
+              color: '#c084fc',
+              textDecoration: 'none',
+              fontSize: 10,
+              fontWeight: 900,
+              letterSpacing: '0.05em',
+              animation: 'pulse-header-border 2s infinite',
+            }}
           >
-            <Bell size={20} strokeWidth={1.8} />
-            {unreadCount > 0 && (
-              <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifycontent: 'center', fontWeight: 900 }}>
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
+            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#a855f7', animation: 'pulse-header-dot 1.5s infinite' }}></span>
+            DEMO DAY 18:00
+          </a>
         )}
       </div>
 
@@ -408,6 +450,16 @@ const MobileNav = () => {
         @keyframes slideUp {
           from { transform: translateY(100%); opacity: 0; }
           to   { transform: translateY(0);    opacity: 1; }
+        }
+        @keyframes pulse-header-dot {
+          0% { transform: scale(0.9); opacity: 0.6; }
+          50% { transform: scale(1.2); opacity: 1; }
+          100% { transform: scale(0.9); opacity: 0.6; }
+        }
+        @keyframes pulse-header-border {
+          0% { border-color: rgba(123, 61, 255, 0.35); box-shadow: 0 0 0 0 rgba(123, 61, 255, 0.2); }
+          50% { border-color: rgba(123, 61, 255, 0.7); box-shadow: 0 0 8px 2px rgba(123, 61, 255, 0.15); }
+          100% { border-color: rgba(123, 61, 255, 0.35); box-shadow: 0 0 0 0 rgba(123, 61, 255, 0.2); }
         }
       `}</style>
     </>

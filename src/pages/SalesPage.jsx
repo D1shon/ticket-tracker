@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, increment, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, increment, serverTimestamp, where } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
-import { TrendingUp, ShoppingCart, Package, Search, Check, X, AlertTriangle, RotateCcw, Gift } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Package, Search, Check, X, AlertTriangle, RotateCcw, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
@@ -43,6 +43,9 @@ const SalesPage = () => {
   const [buyerType, setBuyerType] = useState('client');
   const [customPrice, setCustomPrice] = useState('');
   const [buyerName, setBuyerName] = useState('');
+  // NURLY ORDA: today's working employees from schedule
+  const [todayNurlyEmployees, setTodayNurlyEmployees] = useState([]);
+  const [selectedSalesperson, setSelectedSalesperson] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -69,12 +72,45 @@ const SalesPage = () => {
     return unsub;
   }, []);
 
+  // NURLY ORDA: Load all employees from schedule and show their shift (or выходной)
+  useEffect(() => {
+    if (activeClub !== 'NURLY ORDA') { setTodayNurlyEmployees([]); return; }
+    const monthKey = format(new Date(), 'yyyy-MM');
+    const todayDay = String(new Date().getDate()); // day number as string '1'..'31'
+
+    let unsub = null;
+    const unsubAuth = auth.onAuthStateChanged(firebaseUser => {
+      if (!firebaseUser) return;
+      const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', 'NURLY ORDA'));
+      unsub = onSnapshot(q, async snap => {
+        const empList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.isService);
+        if (empList.length === 0) { setTodayNurlyEmployees([]); return; }
+        // Fetch schedule docs for today
+        const { getDocs, doc: fsDoc, getDoc } = await import('firebase/firestore');
+        const allEmpList = [];
+        await Promise.all(empList.map(async emp => {
+          const schedDocRef = fsDoc(db, 'schedules', emp.id);
+          const schedSnap = await getDoc(schedDocRef);
+          let shiftVal = '';
+          if (schedSnap.exists()) {
+            shiftVal = schedSnap.data()?.days?.[todayDay] || '';
+          }
+          // We include every employee, showing their shift value or 'выходной'
+          allEmpList.push({ id: emp.id, name: emp.name, shift: shiftVal || 'выходной' });
+        }));
+        setTodayNurlyEmployees(allEmpList);
+      });
+    });
+    return () => { unsubAuth(); if (unsub) unsub(); };
+  }, [activeClub]);
+
   // Products for active club only
   const clubProducts = useMemo(() =>
     products.filter(p => p.club === activeClub && (
       !search.trim() ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.category?.toLowerCase().includes(search.toLowerCase())
+      p.category?.toLowerCase().includes(search.toLowerCase()) ||
+      (p.sku && p.sku.toLowerCase().includes(search.toLowerCase()))
     )),
     [products, activeClub, search]
   );
@@ -92,6 +128,9 @@ const SalesPage = () => {
     if (!selectedProduct) return toast.error('Выберите товар');
     if (qty <= 0) return toast.error('Укажите количество');
     if (qty > selectedProduct.stock) return toast.error(`Недостаточно товара (в наличии: ${selectedProduct.stock} шт)`);
+    if (activeClub === 'NURLY ORDA' && todayNurlyEmployees.length > 0 && !selectedSalesperson) {
+      return toast.error('Выберите сотрудника, кому идёт продажа');
+    }
     setSubmitting(true);
     try {
       const finalSalePrice = isFree ? 0 : (customPrice !== '' ? (parseFloat(customPrice) || 0) : (selectedProduct.salePrice || 0));
@@ -99,6 +138,7 @@ const SalesPage = () => {
         productId: selectedProduct.id,
         productName: selectedProduct.name,
         category: selectedProduct.category || '',
+        sku: selectedProduct.sku || '',
         club: activeClub,
         qty,
         costPrice: selectedProduct.costPrice || 0,
@@ -111,6 +151,7 @@ const SalesPage = () => {
         clientName: buyerName.trim() || (buyerType === 'employee' ? 'Сотрудник' : 'Гость'),
         notes: notes.trim() || null,
         cashierName: user?.name || user?.email || 'Менеджер',
+        salespersonName: activeClub === 'NURLY ORDA' ? (selectedSalesperson || null) : null,
         createdAt: serverTimestamp(),
       });
       await updateDoc(doc(db, 'merch_products', selectedProduct.id), {
@@ -126,6 +167,7 @@ const SalesPage = () => {
       setBuyerType('client');
       setBuyerName('');
       setNotes('');
+      setSelectedSalesperson('');
     } catch (err) {
       console.error(err);
       toast.error('Ошибка при проведении');
@@ -262,8 +304,13 @@ const SalesPage = () => {
                           <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '14px', minHeight: 28 }} title={p.name}>
                             {p.name}
                           </div>
-                          <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
-                            {p.category}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{p.category}</span>
+                            {p.sku && (
+                              <span style={{ fontSize: 8, fontWeight: 800, color: accentColor, background: `${accentColor}10`, padding: '1px 4px', borderRadius: 4 }}>
+                                {p.sku}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
@@ -410,6 +457,45 @@ const SalesPage = () => {
                   <textarea rows="2" placeholder="Укажите детали..." value={notes} onChange={e => setNotes(e.target.value)}
                     style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 11, color: 'var(--text-primary)', outline: 'none', resize: 'none' }} />
                 </div>
+
+                {/* NURLY ORDA: Salesperson selector */}
+                {activeClub === 'NURLY ORDA' && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.07em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Users size={11} />
+                      Кому идёт продажа
+                    </div>
+                    {todayNurlyEmployees.length === 0 ? (
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '8px 10px', background: 'var(--bg-hover)', borderRadius: 9, border: '1px solid var(--border)' }}>
+                        ⚠️ Нет работающих сегодня сотрудников в графике
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {todayNurlyEmployees.map(emp => {
+                          const isSel = selectedSalesperson === emp.name;
+                          return (
+                            <button
+                              key={emp.id}
+                              type="button"
+                              onClick={() => setSelectedSalesperson(isSel ? '' : emp.name)}
+                              style={{
+                                padding: '6px 12px', borderRadius: 10, fontSize: 11, fontWeight: 800,
+                                border: `1px solid ${isSel ? '#8b5cf6' : 'var(--border)'}`,
+                                background: isSel ? 'rgba(139,92,246,0.15)' : 'var(--bg-hover)',
+                                color: isSel ? '#8b5cf6' : 'var(--text-secondary)',
+                                cursor: 'pointer', transition: 'all 0.15s',
+                                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
+                              }}
+                            >
+                              <span>{emp.name.split(' ')[0]}</span>
+                              <span style={{ fontSize: 8, opacity: 0.7, fontWeight: 600 }}>{emp.shift}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Total */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 10, marginBottom: 10 }}>

@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { 
   collection, query, onSnapshot, setDoc, doc, deleteDoc, 
-  serverTimestamp, addDoc, updateDoc, increment
+  serverTimestamp, addDoc, updateDoc, increment, where
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
 import { 
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
   Trash2, Edit3, CheckCircle, AlertTriangle, ArrowUpRight, 
   ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet, Download, ClipboardList,
-  Image, Camera, UploadCloud
+  Image, Camera, UploadCloud, Users
 } from 'lucide-react';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
@@ -25,8 +26,10 @@ const MerchPage = () => {
 
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'resort'
   const [selectedClub, setSelectedClub] = useState(() => (!isChef && managerClub) ? managerClub : 'ALL');
+  const [selectedSku, setSelectedSku] = useState('ALL');
   const [resortValues, setResortValues] = useState({}); // productId -> actual count string
   const [savingResort, setSavingResort] = useState(false);
+  const [commissionRates, setCommissionRates] = useState({}); // salespersonName -> rate string
   
   // Sync selectedClub if user updates
   useEffect(() => {
@@ -69,6 +72,7 @@ const MerchPage = () => {
   // Form States (New / Edit Product)
   const [productForm, setProductForm] = useState({
     name: '',
+    sku: '',
     club: '4YOU',
     category: 'Худи',
     costPrice: '',
@@ -87,8 +91,46 @@ const MerchPage = () => {
     customPrice: '',
     notes: '',
     isFree: false,
-    freeReason: 'Бартер'
+    freeReason: 'Бартер',
+    salespersonName: ''
   });
+
+  const [todayNurlyEmployees, setTodayNurlyEmployees] = useState([]);
+
+  // Load all employees for NURLY ORDA from schedule (showing shift or выходной)
+  useEffect(() => {
+    const monthKey = new Date().toISOString().slice(0, 7); // yyyy-MM
+    const todayDay = String(new Date().getDate()); // day number '1'..'31'
+
+    let unsub = null;
+    const unsubAuth = auth.onAuthStateChanged(firebaseUser => {
+      if (!firebaseUser) return;
+      const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', 'NURLY ORDA'));
+      unsub = onSnapshot(q, async snap => {
+        const empList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.isService);
+        if (empList.length === 0) { setTodayNurlyEmployees([]); return; }
+        
+        const { doc: fsDoc, getDoc } = await import('firebase/firestore');
+        const allEmpList = [];
+        const newRates = {};
+        await Promise.all(empList.map(async emp => {
+          const schedDocRef = fsDoc(db, 'schedules', emp.id);
+          const schedSnap = await getDoc(schedDocRef);
+          let shiftVal = '';
+          if (schedSnap.exists()) {
+            shiftVal = schedSnap.data()?.days?.[todayDay] || '';
+          }
+          allEmpList.push({ id: emp.id, name: emp.name, shift: shiftVal || 'выходной', commissionRate: emp.commissionRate });
+          if (emp.commissionRate !== undefined && emp.commissionRate !== null) {
+            newRates[emp.name] = String(emp.commissionRate);
+          }
+        }));
+        setTodayNurlyEmployees(allEmpList);
+        setCommissionRates(prev => ({ ...newRates, ...prev }));
+      });
+    });
+    return () => { unsubAuth(); if (unsub) unsub(); };
+  }, []);
 
   // Form States (Supply / Restock)
   const [supplyForm, setSupplyForm] = useState({
@@ -220,6 +262,7 @@ const MerchPage = () => {
 
     const data = {
       name: productForm.name.trim(),
+      sku: productForm.sku.trim(),
       club: productForm.club,
       category: productForm.category,
       costPrice: cost,
@@ -255,7 +298,7 @@ const MerchPage = () => {
           productId: docRef.id,
           productName: data.name,
           club: data.club,
-          details: `Добавлен новый товар: "${data.name}" (Начальный остаток: ${data.stock} шт, Цена: ${data.salePrice} ₸)`,
+          details: `Добавлен новый товар: "${data.name}"${data.sku ? ` [Арт: ${data.sku}]` : ''} (Начальный остаток: ${data.stock} шт, Цена: ${data.salePrice} ₸)`,
           cashierName: user?.name || user?.email || 'Менеджер',
           createdAt: serverTimestamp()
         });
@@ -266,7 +309,7 @@ const MerchPage = () => {
       setPhotoFile(null);
       setPhotoPreview(null);
       setPhotoBase64(null);
-      setProductForm({ name: '', club: managerClub || '4YOU', category: 'Худи', costPrice: '', salePrice: '', stock: '', minStock: '5' });
+      setProductForm({ name: '', sku: '', club: managerClub || '4YOU', category: 'Худи', costPrice: '', salePrice: '', employeePrice: '', stock: '', minStock: '5' });
     } catch (err) {
       console.error(err);
       toast.error('Ошибка сохранения товара');
@@ -285,7 +328,7 @@ const MerchPage = () => {
         productId: id,
         productName: product.name,
         club: product.club,
-        details: `Удален товар: "${product.name}" (Остаток: ${product.stock} шт, Цена: ${product.salePrice} ₸)`,
+        details: `Удален товар: "${product.name}"${product.sku ? ` [Арт: ${product.sku}]` : ''} (Остаток: ${product.stock} шт, Цена: ${product.salePrice} ₸)`,
         cashierName: user?.name || user?.email || 'Менеджер',
         createdAt: serverTimestamp()
       });
@@ -303,6 +346,9 @@ const MerchPage = () => {
     const qty = parseInt(saleForm.qty) || 0;
     if (qty <= 0) return toast.error('Укажите корректное количество');
     if (qty > selectedProductForSale.stock) return toast.error(`Недостаточно товара на складе (в наличии: ${selectedProductForSale.stock} шт)`);
+    if (selectedProductForSale.club === 'NURLY ORDA' && todayNurlyEmployees.length > 0 && !saleForm.salespersonName) {
+      return toast.error('Выберите сотрудника, кому идёт продажа');
+    }
 
     const isFree = !!saleForm.isFree;
     const salePrice = isFree ? 0 : (parseFloat(saleForm.customPrice) >= 0 ? parseFloat(saleForm.customPrice) : selectedProductForSale.salePrice);
@@ -316,6 +362,7 @@ const MerchPage = () => {
       await addDoc(collection(db, 'merch_sales'), {
         productId: selectedProductForSale.id,
         productName: selectedProductForSale.name,
+        sku: selectedProductForSale.sku || null,
         category: selectedProductForSale.category,
         club: selectedProductForSale.club,
         qty,
@@ -329,6 +376,7 @@ const MerchPage = () => {
         clientName: saleForm.clientName.trim() || (saleForm.buyerType === 'employee' && !isFree ? 'Сотрудник' : 'Гость'),
         notes: saleForm.notes.trim() || null,
         cashierName: user?.name || user?.email || 'Менеджер',
+        salespersonName: selectedProductForSale.club === 'NURLY ORDA' ? (saleForm.salespersonName || null) : null,
         createdAt: serverTimestamp()
       });
 
@@ -341,7 +389,7 @@ const MerchPage = () => {
       toast.success(isFree ? 'Товар выдан бесплатно!' : 'Продажа успешно проведена!');
       setShowSaleModal(false);
       setSelectedProductForSale(null);
-      setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '', buyerType: 'client', customPrice: '', notes: '', isFree: false, freeReason: 'Бартер' });
+      setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '', buyerType: 'client', customPrice: '', notes: '', isFree: false, freeReason: 'Бартер', salespersonName: '' });
     } catch (err) {
       console.error(err);
       toast.error('Ошибка проведения продажи');
@@ -387,7 +435,7 @@ const MerchPage = () => {
         productId: product.id,
         productName: product.name,
         club: product.club,
-        details: `Поставка товара "${product.name}": +${qty} шт (примечание: ${supplyForm.notes.trim() || 'нет'})`,
+        details: `Поставка товара "${product.name}"${product.sku ? ` [Арт: ${product.sku}]` : ''}: +${qty} шт (примечание: ${supplyForm.notes.trim() || 'нет'})`,
         cashierName: user?.name || user?.email || 'Менеджер',
         createdAt: serverTimestamp()
       });
@@ -443,7 +491,7 @@ const MerchPage = () => {
           productId: id,
           productName: prod.name,
           club: prod.club,
-          details: `Корректировка остатка товара "${prod.name}": факт ${actual} шт (было ${prod.stock} шт, разница: ${diff > 0 ? '+' : ''}${diff} шт)`,
+          details: `Корректировка остатка товара "${prod.name}"${prod.sku ? ` [Арт: ${prod.sku}]` : ''}: факт ${actual} шт (было ${prod.stock} шт, разница: ${diff > 0 ? '+' : ''}${diff} шт)`,
           cashierName: user?.name || user?.email || 'Менеджер',
           createdAt: serverTimestamp()
         });
@@ -466,14 +514,14 @@ const MerchPage = () => {
     
     if (activeTab === 'inventory') {
       if (isChef) {
-        headers = ['Название', 'Категория', 'Клуб', 'Себестоимость', 'Цена продажи', 'Остаток', 'Мин. остаток'];
+        headers = ['Артикул', 'Название', 'Категория', 'Клуб', 'Себестоимость', 'Цена продажи', 'Остаток', 'Мин. остаток'];
         rows = filteredProducts.map(p => [
-          p.name, p.category, p.club, p.costPrice, p.salePrice, p.stock, p.minStock
+          p.sku || '', p.name, p.category, p.club, p.costPrice, p.salePrice, p.stock, p.minStock
         ]);
       } else {
-        headers = ['Название', 'Категория', 'Клуб', 'Цена продажи', 'Остаток'];
+        headers = ['Артикул', 'Название', 'Категория', 'Клуб', 'Цена продажи', 'Остаток'];
         rows = filteredProducts.map(p => [
-          p.name, p.category, p.club, p.salePrice, p.stock
+          p.sku || '', p.name, p.category, p.club, p.salePrice, p.stock
         ]);
       }
     } else if (activeTab === 'logs') {
@@ -486,19 +534,19 @@ const MerchPage = () => {
       });
     } else {
       if (isChef) {
-        headers = ['Дата', 'Клуб', 'Товар', 'Категория', 'Количество', 'Себестоимость', 'Цена продажи', 'Сумма чека', 'Прибыль', 'Оплата', 'Клиент', 'Провел'];
+        headers = ['Дата', 'Клуб', 'Товар', 'Артикул', 'Категория', 'Количество', 'Себестоимость', 'Цена продажи', 'Сумма чека', 'Прибыль', 'Оплата', 'Клиент', 'Провел'];
         rows = filteredSales.map(s => {
           const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
           return [
-            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.category, s.qty, s.costPrice, s.salePrice, s.totalSum, s.netProfit, s.paymentMethod, s.clientName, s.cashierName
+            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.sku || '', s.category, s.qty, s.costPrice, s.salePrice, s.totalSum, s.netProfit, s.paymentMethod, s.clientName, s.cashierName
           ];
         });
       } else {
-        headers = ['Дата', 'Клуб', 'Товар', 'Категория', 'Количество', 'Цена продажи', 'Сумма чека', 'Оплата', 'Клиент', 'Провел'];
+        headers = ['Дата', 'Клуб', 'Товар', 'Артикул', 'Категория', 'Количество', 'Цена продажи', 'Сумма чека', 'Оплата', 'Клиент', 'Провел'];
         rows = filteredSales.map(s => {
           const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
           return [
-            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.category, s.qty, s.salePrice, s.totalSum, s.paymentMethod, s.clientName, s.cashierName
+            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.sku || '', s.category, s.qty, s.salePrice, s.totalSum, s.paymentMethod, s.clientName, s.cashierName
           ];
         });
       }
@@ -520,13 +568,23 @@ const MerchPage = () => {
     toast.success('Экспорт успешно завершен!');
   };
 
+  const uniqueSkus = useMemo(() => {
+    const skus = new Set();
+    products.forEach(p => {
+      if (p.sku) skus.add(p.sku);
+    });
+    return Array.from(skus).sort();
+  }, [products]);
+
   // ─── Filtered Data ─────────────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
     const list = products.filter(p => {
       const matchClub = selectedClub === 'ALL' || p.club === selectedClub;
+      const matchSku = selectedSku === 'ALL' || p.sku === selectedSku;
       const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.category.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchClub && matchSearch;
+                          p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchClub && matchSku && matchSearch;
     });
 
     if (sortBy === 'alphabet') {
@@ -540,13 +598,15 @@ const MerchPage = () => {
     }
 
     return list;
-  }, [products, selectedClub, searchTerm, sortBy]);
+  }, [products, selectedClub, selectedSku, searchTerm, sortBy]);
 
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
       const matchClub = selectedClub === 'ALL' || s.club === selectedClub;
+      const matchSku = selectedSku === 'ALL' || s.sku === selectedSku;
       const matchSearch = s.productName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          s.cashierName.toLowerCase().includes(searchTerm.toLowerCase());
+                          s.cashierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (s.sku && s.sku.toLowerCase().includes(searchTerm.toLowerCase()));
       
       let matchDate = true;
       if (s.createdAt) {
@@ -560,13 +620,14 @@ const MerchPage = () => {
           if (dateObj > end) matchDate = false;
         }
       }
-      return matchClub && matchSearch && matchDate;
+      return matchClub && matchSku && matchSearch && matchDate;
     });
-  }, [sales, selectedClub, searchTerm, startDate, endDate]);
+  }, [sales, selectedClub, selectedSku, searchTerm, startDate, endDate]);
 
   const filteredLogs = useMemo(() => {
     return historyLogs.filter(log => {
       const matchClub = selectedClub === 'ALL' || log.club === selectedClub;
+      const matchSku = selectedSku === 'ALL' || (log.details && log.details.includes(`[Арт: ${selectedSku}]`));
       const matchSearch = log.productName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           log.details?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           log.cashierName?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -583,9 +644,9 @@ const MerchPage = () => {
           if (dateObj > end) matchDate = false;
         }
       }
-      return matchClub && matchSearch && matchDate;
+      return matchClub && matchSku && matchSearch && matchDate;
     });
-  }, [historyLogs, selectedClub, searchTerm, startDate, endDate]);
+  }, [historyLogs, selectedClub, selectedSku, searchTerm, startDate, endDate]);
 
   // ─── Analytics Computations ────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -603,8 +664,16 @@ const MerchPage = () => {
 
     let lowStockCount = 0;
 
-    const activeProducts = products.filter(p => selectedClub === 'ALL' || p.club === selectedClub);
-    const activeSales = sales.filter(s => selectedClub === 'ALL' || s.club === selectedClub);
+    const activeProducts = products.filter(p => {
+      const matchClub = selectedClub === 'ALL' || p.club === selectedClub;
+      const matchSku = selectedSku === 'ALL' || p.sku === selectedSku;
+      return matchClub && matchSku;
+    });
+    const activeSales = sales.filter(s => {
+      const matchClub = selectedClub === 'ALL' || s.club === selectedClub;
+      const matchSku = selectedSku === 'ALL' || s.sku === selectedSku;
+      return matchClub && matchSku;
+    });
 
     activeProducts.forEach(p => {
       totalStockItems += (p.stock || 0);
@@ -672,7 +741,7 @@ const MerchPage = () => {
       periodNetProfit,
       lowStockCount
     };
-  }, [products, sales, selectedClub, startDate, endDate]);
+  }, [products, sales, selectedClub, selectedSku, startDate, endDate]);
 
   return (
     <div className="space-y-6 animate-fade">
@@ -721,12 +790,28 @@ const MerchPage = () => {
             )}
           </div>
 
+          {/* SKU / Article Filter */}
+          {uniqueSkus.length > 0 && (
+            <div className="flex bg-[var(--bg-primary)] p-1 rounded-xl border border-[var(--border)]">
+              <select
+                value={selectedSku}
+                onChange={e => setSelectedSku(e.target.value)}
+                className="bg-transparent border-none outline-none text-xs font-bold text-[var(--text-secondary)] px-2 py-1.5 cursor-pointer focus:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)] transition-all"
+              >
+                <option value="ALL">Все артикулы</option>
+                {uniqueSkus.map(sku => (
+                  <option key={sku} value={sku}>{sku}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Add Product Button */}
           {(isChef || !!managerClub) && (
             <button
               onClick={() => {
                 setEditingProduct(null);
-                setProductForm({ name: '', club: selectedClub === 'ALL' ? '4YOU' : selectedClub, category: 'Худи', costPrice: '', salePrice: '', stock: '', minStock: '5' });
+                setProductForm({ name: '', sku: '', club: selectedClub === 'ALL' ? '4YOU' : selectedClub, category: 'Худи', costPrice: '', salePrice: '', employeePrice: '', stock: '', minStock: '5' });
                 setShowProductModal(true);
               }}
               className="flex items-center gap-2 bg-[var(--accent-purple)] hover:bg-purple-600 text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl border border-purple-400/20 shadow-lg shadow-purple-500/10 transition-all"
@@ -991,6 +1076,15 @@ const MerchPage = () => {
           >
             <ClipboardList size={14} /> Логи операций
           </button>
+          {/* NURLY ORDA exclusive: sales totals tab */}
+          {(selectedClub === 'NURLY ORDA' || (!isChef && managerClub === 'NURLY ORDA')) && (
+            <button
+              onClick={() => setActiveTab('nurly-sales')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nurly-sales' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+            >
+              <TrendingUp size={14} /> Итого продаж
+            </button>
+          )}
         </div>
 
         {/* Search Input & CSV Export */}
@@ -1059,7 +1153,135 @@ const MerchPage = () => {
       </div>
 
       {/* Content Body */}
-      {activeTab === 'logs' ? (
+      {activeTab === 'nurly-sales' ? (
+        /* --- NURLY ORDA SALES TOTALS TAB --- */
+        (() => {
+          const nurlySales = sales.filter(s => s.club === 'NURLY ORDA' && (s.qty || 0) > 0);
+          // Filter by date range if set
+          const filtered = nurlySales.filter(s => {
+            if (!s.createdAt?.seconds) return true;
+            const d = new Date(s.createdAt.seconds * 1000);
+            const dateStr = d.toISOString().slice(0, 10);
+            if (startDate && dateStr < startDate) return false;
+            if (endDate && dateStr > endDate) return false;
+            return true;
+          });
+          // Group by salespersonName
+          const byPerson = {};
+          filtered.forEach(s => {
+            const name = s.salespersonName || 'Не указан';
+            if (!byPerson[name]) byPerson[name] = { sales: [], total: 0, count: 0 };
+            byPerson[name].sales.push(s);
+            byPerson[name].total += s.totalSum || 0;
+            byPerson[name].count += s.qty || 0;
+          });
+          const grandTotal = filtered.reduce((a, s) => a + (s.totalSum || 0), 0);
+          const sortedPersons = Object.entries(byPerson).sort((a, b) => b[1].total - a[1].total);
+          return (
+            <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-xl overflow-hidden">
+              {/* Grand total banner */}
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02))' }}>
+                <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.08em', marginBottom: 4 }}>NURLY ORDA · Общая сумма продаж</div>
+                <div style={{ fontSize: 32, fontWeight: 950, color: '#8b5cf6' }}>{grandTotal.toLocaleString('ru-RU')} ₸</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{filtered.length} продаж · {Object.keys(byPerson).length} сотрудников{startDate || endDate ? ` · фильтр: ${startDate || '...'} — ${endDate || '...сейчас'}` : ''}</div>
+              </div>
+              {sortedPersons.length === 0 ? (
+                <div className="py-20 text-center text-[var(--text-muted)]">
+                  <TrendingUp size={48} className="mx-auto opacity-35 mb-4 text-purple-400" />
+                  <p className="text-sm font-bold uppercase tracking-wider">Нет данных о продажах</p>
+                  <p className="text-xs mt-1">Проведите продажи через страницу «Продажи», чтобы видеть итоги</p>
+                </div>
+              ) : (
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {sortedPersons.map(([name, data], idx) => {
+                    const pct = grandTotal > 0 ? Math.round((data.total / grandTotal) * 100) : 0;
+                    // Products breakdown for this person
+                    const byProduct = {};
+                    data.sales.forEach(s => {
+                      const pName = s.productName || 'Товар';
+                      if (!byProduct[pName]) byProduct[pName] = { qty: 0, total: 0 };
+                      byProduct[pName].qty += s.qty || 0;
+                      byProduct[pName].total += s.totalSum || 0;
+                    });
+                    const rate = commissionRates[name] || '';
+                    const parsedRate = parseFloat(rate) || 0;
+                    const award = Math.round((data.total * parsedRate) / 100);
+                    return (
+                      <div key={name} style={{ background: 'var(--bg-hover)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(139,92,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, color: '#8b5cf6' }}>
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{name}</div>
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{data.sales.length} продаж · {data.count} шт</div>
+                            </div>
+                          </div>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {/* Commission rate input */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 8px', height: '36px' }}>
+                              <input 
+                                type="number" 
+                                placeholder="0" 
+                                min="0"
+                                max="100"
+                                value={rate}
+                                onChange={async (e) => {
+                                  const val = e.target.value;
+                                  setCommissionRates(prev => ({ ...prev, [name]: val }));
+                                  
+                                  const emp = todayNurlyEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
+                                  if (emp) {
+                                    try {
+                                      const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
+                                      await fsUpdateDoc(fsDoc(db, 'employees', emp.id), {
+                                        commissionRate: val === '' ? null : parseFloat(val)
+                                      });
+                                    } catch (err) {
+                                      console.error('Error saving commission rate:', err);
+                                    }
+                                  }
+                                }}
+                                style={{ width: 36, background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 800, outline: 'none', textAlign: 'center' }} 
+                              />
+                              <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)' }}>%</span>
+                            </div>
+                            
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: 15, fontWeight: 950, color: '#8b5cf6' }}>{data.total.toLocaleString('ru-RU')} ₸</div>
+                              {parsedRate > 0 && (
+                                <div style={{ fontSize: 11, fontWeight: 900, color: '#10b981', marginTop: 1 }}>
+                                  Награда: {award.toLocaleString('ru-RU')} ₸
+                                </div>
+                              )}
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}% от общего</div>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div style={{ height: 4, background: 'var(--border)', borderRadius: 4, marginBottom: 10, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', borderRadius: 4, transition: 'width 0.6s ease' }} />
+                        </div>
+                        {/* Products list */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {Object.entries(byProduct).sort((a, b) => b[1].total - a[1].total).map(([pName, pData]) => (
+                            <div key={pName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-secondary)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{pName}</span>
+                              <span style={{ fontWeight: 700, flexShrink: 0 }}>{pData.qty} шт · {pData.total.toLocaleString('ru-RU')} ₸</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()
+      ) : activeTab === 'logs' ? (
         /* --- HISTORY AUDIT LOGS TAB --- */
         <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-xl overflow-hidden">
           {loadingHistory ? (
@@ -1171,7 +1393,15 @@ const MerchPage = () => {
                     <tr key={p.id} className={`border-b border-[var(--border)] transition-colors ${hasDiff ? 'bg-orange-500/5' : 'hover:bg-[var(--bg-hover)]/30'}`}>
                       <td className="px-6 py-3">
                         <span className="font-extrabold text-sm text-[var(--text-primary)] block">{p.name}</span>
-                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">{p.category}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">{p.category}</span>
+                          {p.sku && (
+                            <>
+                              <div className="w-1.5 h-1.5 rounded-full bg-orange-500/30" />
+                              <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Арт: {p.sku}</span>
+                            </>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-3">
                         <span className="px-2 py-0.5 text-[10px] font-black bg-purple-500/10 text-purple-400 rounded-lg border border-purple-500/20 uppercase">{p.club}</span>
@@ -1264,7 +1494,15 @@ const MerchPage = () => {
                             )}
                             <div>
                               <span className="font-extrabold text-sm text-[var(--text-primary)] block">{p.name}</span>
-                              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mt-0.5 block">{p.category}</span>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest block">{p.category}</span>
+                                {p.sku && (
+                                  <>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-purple-500/20" />
+                                    <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Арт: {p.sku}</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -1347,6 +1585,7 @@ const MerchPage = () => {
                                     setPhotoBase64(null);
                                     setProductForm({
                                       name: p.name,
+                                      sku: p.sku || '',
                                       club: p.club,
                                       category: p.category,
                                       costPrice: String(p.costPrice || ''),
@@ -1435,7 +1674,15 @@ const MerchPage = () => {
                         </td>
                         <td className="px-6 py-4">
                           <span className="font-extrabold text-sm text-[var(--text-primary)] block">{s.productName}</span>
-                          <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">{s.category}</span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">{s.category}</span>
+                            {s.sku && (
+                              <>
+                                <div className="w-1.5 h-1.5 rounded-full bg-purple-500/20" />
+                                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Арт: {s.sku}</span>
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-center font-bold text-sm">
                           {isSale ? (
@@ -1488,9 +1735,9 @@ const MerchPage = () => {
       )}
 
       {/* ─── MODAL: ADD / EDIT PRODUCT ─── */}
-      {showProductModal && (isChef || !!managerClub) && (
+      {showProductModal && (isChef || !!managerClub) && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md relative flex flex-col" style={{maxHeight: '90vh'}}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <Store size={18} className="text-[var(--accent-purple)]" />
@@ -1504,17 +1751,29 @@ const MerchPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="p-5 space-y-4">
+            <form onSubmit={handleSaveProduct} className="p-5 space-y-4 overflow-y-auto">
               
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Название товара</label>
-                <input 
-                  type="text"
-                  placeholder="Худи Black Edition XL"
-                  value={productForm.name}
-                  onChange={e => setProductForm({...productForm, name: e.target.value})}
-                  className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
-                />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Название товара</label>
+                  <input 
+                    type="text"
+                    placeholder="Худи Black Edition XL"
+                    value={productForm.name}
+                    onChange={e => setProductForm({...productForm, name: e.target.value})}
+                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Артикул</label>
+                  <input 
+                    type="text"
+                    placeholder="H-BLK-XL"
+                    value={productForm.sku}
+                    onChange={e => setProductForm({...productForm, sku: e.target.value})}
+                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1707,12 +1966,12 @@ const MerchPage = () => {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* ─── MODAL: RECORD A SALE ─── */}
-      {showSaleModal && selectedProductForSale && (
+      {showSaleModal && selectedProductForSale && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={{maxHeight: '90vh'}}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <ShoppingCart size={18} className="text-emerald-400" />
@@ -1726,7 +1985,7 @@ const MerchPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateSale} className="p-5 space-y-4">
+            <form onSubmit={handleCreateSale} className="p-5 space-y-4 overflow-y-auto">
               
               <div className="bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] overflow-hidden">
                 {/* Product image banner */}
@@ -1892,6 +2151,38 @@ const MerchPage = () => {
                 />
               </div>
 
+              {/* NURLY ORDA: Salesperson selector inside modal */}
+              {selectedProductForSale.club === 'NURLY ORDA' && (
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[#8b5cf6] block mb-1.5 flex items-center gap-1.5">
+                    <Users size={12} />
+                    Кому идет продажа
+                  </label>
+                  {todayNurlyEmployees.length === 0 ? (
+                    <div className="text-[10px] text-[var(--text-muted)] p-2.5 bg-[var(--bg-primary)] rounded-xl border border-[var(--border)]">
+                      ⚠️ Нет работающих сегодня сотрудников в графике
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {todayNurlyEmployees.map(emp => {
+                        const isSel = saleForm.salespersonName === emp.name;
+                        return (
+                          <button
+                            key={emp.id}
+                            type="button"
+                            onClick={() => setSaleForm({ ...saleForm, salespersonName: isSel ? '' : emp.name })}
+                            className={`py-1.5 px-2.5 rounded-xl text-[10px] font-black transition-all border text-left flex flex-col ${isSel ? 'bg-purple-600/15 text-[#8b5cf6] border-[#8b5cf6]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                          >
+                            <span>{emp.name.split(' ')[0]}</span>
+                            <span className="text-[8px] opacity-70 font-semibold">{emp.shift}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Total Calculation Display */}
               <div className="pt-2 flex items-center justify-between border-t border-[var(--border)]">
                 <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Итого к оплате:</span>
@@ -1919,12 +2210,12 @@ const MerchPage = () => {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* ─── MODAL: SUPPLY / RESTOCK ─── */}
-      {showSupplyModal && selectedProductForSupply && (isChef || (managerClub && selectedProductForSupply.club === managerClub)) && (
+      {showSupplyModal && selectedProductForSupply && (isChef || (managerClub && selectedProductForSupply.club === managerClub)) && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={{maxHeight: '90vh'}}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <Plus size={18} className="text-blue-400" />
@@ -1938,7 +2229,7 @@ const MerchPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleAddSupply} className="p-5 space-y-4">
+            <form onSubmit={handleAddSupply} className="p-5 space-y-4 overflow-y-auto">
               
               <div className="p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)]">
                 <span className="text-[10px] font-black uppercase text-blue-400 tracking-widest">{selectedProductForSupply.category} • {selectedProductForSupply.club}</span>
@@ -1990,7 +2281,7 @@ const MerchPage = () => {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
     </div>
   );

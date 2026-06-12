@@ -1,0 +1,307 @@
+commit 2a83d51573b9a98adffde4174b65b0894663844d
+Author: Admin <admin@herotrack.com>
+Date:   Thu May 21 16:24:08 2026 +0500
+
+    feat: add 3 fixed service staff salary inputs and integrate into grand total
+
+diff --git a/dist/index.html b/dist/index.html
+index 50cd3e9..e7ffe29 100644
+--- a/dist/index.html
++++ b/dist/index.html
+@@ -6,8 +6,8 @@
+     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <title>HJTRACK — Операционный трекер заявок</title>
+-    <script type="module" crossorigin src="/assets/index-C_Lbh00W.js"></script>
+-    <link rel="stylesheet" crossorigin href="/assets/index-CpwcmQp6.css">
++    <script type="module" crossorigin src="/assets/index-CmLHBiIj.js"></script>
++    <link rel="stylesheet" crossorigin href="/assets/index-DUPc4MgI.css">
+   </head>
+   <body>
+     <div id="root"></div>
+diff --git a/src/pages/SchedulePage.jsx b/src/pages/SchedulePage.jsx
+index 5724a63..1095006 100644
+--- a/src/pages/SchedulePage.jsx
++++ b/src/pages/SchedulePage.jsx
+@@ -268,10 +268,45 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
+   );
+ };
+ 
++const ServiceSalaryInput = ({ monthKey, club, field, label, type = 'text', value, onChange }) => {
++  const [localVal, setLocalVal] = useState(value);
++
++  useEffect(() => {
++    setLocalVal(value);
++  }, [value]);
++
++  const handleBlur = () => {
++    if (localVal !== value) {
++      onChange(monthKey, club, field, type === 'number' ? (parseFloat(localVal) || 0) : localVal);
++    }
++  };
++
++  const handleKeyDown = (e) => {
++    if (e.key === 'Enter') {
++      e.target.blur();
++    }
++  };
++
++  return (
++    <input
++      type={type}
++      value={localVal}
++      onChange={e => setLocalVal(e.target.value)}
++      onBlur={handleBlur}
++      onKeyDown={handleKeyDown}
++      placeholder={type === 'number' ? '0' : label}
++      className={type === 'number' 
++        ? "bg-[var(--bg-hover)] border border-[var(--border)] focus:border-[var(--accent-purple)] rounded-xl px-3 py-2 text-sm text-pink-400 font-bold text-center outline-none w-32 transition-all"
++        : "bg-[var(--bg-hover)] border border-[var(--border)] focus:border-[var(--accent-purple)] rounded-xl px-3 py-2 text-sm text-[var(--text-primary)] outline-none flex-1 min-w-[120px] transition-all"
++      }
++    />
++  );
++};
++
+ 
+ const SchedulePage = () => {
+   const [currentMonth, setCurrentMonth] = useState(new Date());
+-  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, reorderEmployees, settings, updateSettings } = useSchedule();
++  const { scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateAdvance, updateCorrection, moveEmployee, reorderEmployees, settings, updateSettings, serviceSalaries, updateServiceSalary } = useSchedule();
+   const { user } = useTickets();
+ 
+   // Identify CHEF role — only these two emails have full chef access
+@@ -450,7 +485,11 @@ const SchedulePage = () => {
+ 
+   const getClubTotal = (clubName) => {
+     const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
+-    return clubEmps.reduce((sum, emp) => sum + getEmployeeStats(emp.id).toPay, 0);
++    const empsTotal = clubEmps.reduce((sum, emp) => sum + getEmployeeStats(emp.id).toPay, 0);
++    const clubDocId = `${monthKey}_${clubName}`;
++    const clubService = serviceSalaries?.[clubDocId] || {};
++    const serviceTotal = (Number(clubService.s1_salary) || 0) + (Number(clubService.s2_salary) || 0) + (Number(clubService.s3_salary) || 0);
++    return empsTotal + serviceTotal;
+   };
+ 
+   const formatCurrency = (val) => {
+@@ -490,6 +529,18 @@ const SchedulePage = () => {
+     }, 0);
+   }, [daysInMonth, clubEmployees, scheduleData, monthKey]);
+ 
++  const clubServiceSalaries = useMemo(() => {
++    const docId = `${monthKey}_${selectedClub}`;
++    return serviceSalaries?.[docId] || {};
++  }, [serviceSalaries, monthKey, selectedClub]);
++
++  const serviceSalariesTotal = useMemo(() => {
++    const s1 = Number(clubServiceSalaries.s1_salary) || 0;
++    const s2 = Number(clubServiceSalaries.s2_salary) || 0;
++    const s3 = Number(clubServiceSalaries.s3_salary) || 0;
++    return s1 + s2 + s3;
++  }, [clubServiceSalaries]);
++
+ 
+   const handleKeyDown = (e, row, col) => {
+     let tr = row, tc = col;
+@@ -836,23 +887,23 @@ const SchedulePage = () => {
+       </div>
+ 
+       {canViewFull && (
+-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
++        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+           {[ 
+             { l: 'Всего ч', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).totalHours, 0).toFixed(1) + ' ч', c: 'text-[var(--text-primary)]' }, 
+             { l: 'Зарплата', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).salary, 0).toLocaleString() + ' ₸', c: 'text-blue-400' }, 
+             { l: 'Развозка', v: razvozkaTotal.toLocaleString() + ' ₸', c: 'text-emerald-400' },
+             { l: 'Аванс', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).advance, 0).toLocaleString() + ' ₸', c: 'text-orange-400' }, 
+             { l: 'ФИКС', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).correction, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' }, 
+-            { l: 'К выдаче', v: clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay, 0).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
++            { l: 'Сервисники', v: serviceSalariesTotal.toLocaleString() + ' ₸', c: 'text-pink-400' }, 
++            { l: 'К выдаче', v: (clubEmployees.reduce((a, e) => a + getEmployeeStats(e.id).toPay, 0) + serviceSalariesTotal).toLocaleString() + ' ₸', c: 'text-[var(--accent-purple)]' } 
+           ].map((s, i) => (
+             <div key={i} className="bg-[var(--bg-card)] p-6 rounded-3xl border border-[var(--border)] shadow-xl"><p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">{s.l}</p><p className={`text-2xl font-black ${s.c}`}>{s.v}</p></div>
+           ))}
+         </div>
+       )}
+ 
+-      {/* ── Развозка summary card ── */}
+-      {(() => {
+-        return (
++      {canViewFull && (
++        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+           <div style={{
+             background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)',
+             border: '1.5px solid var(--accent-purple)',
+@@ -874,8 +925,64 @@ const SchedulePage = () => {
+               {razvozkaTotal.toLocaleString()} ₸
+             </p>
+           </div>
+-        );
+-      })()}
++
++          <div style={{
++            background: 'linear-gradient(135deg, rgba(236,72,153,0.12) 0%, rgba(236,72,153,0.04) 100%)',
++            border: '1.5px solid rgb(236, 72, 153)',
++            borderRadius: 24,
++            padding: '20px 32px',
++            display: 'flex',
++            flexDirection: 'column',
++            gap: 16,
++            boxShadow: '0 4px 24px rgba(236,72,153,0.15)'
++          }}>
++            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
++              <span style={{ fontSize: 24 }}>🛠️</span>
++              <div>
++                <p style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Зарплата сервисников (Фикс)</p>
++                <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Фиксированная оплата сотрудников сервисной службы за месяц</p>
++              </div>
++            </div>
++            
++            <div className="space-y-3">
++              {[1, 2, 3].map(idx => {
++                const nameField = `s${idx}_name`;
++                const salaryField = `s${idx}_salary`;
++                return (
++                  <div key={idx} className="flex items-center gap-3">
++                    <span className="text-xs font-bold text-[var(--text-muted)] min-w-[80px]">Сервисник {idx}:</span>
++                    <ServiceSalaryInput 
++                      monthKey={monthKey}
++                      club={selectedClub}
++                      field={nameField}
++                      label={`Имя сервисника ${idx}`}
++                      type="text"
++                      value={clubServiceSalaries[nameField] || ''}
++                      onChange={updateServiceSalary}
++                    />
++                    <span className="text-[var(--text-muted)]">➔</span>
++                    <ServiceSalaryInput 
++                      monthKey={monthKey}
++                      club={selectedClub}
++                      field={salaryField}
++                      label="0"
++                      type="number"
++                      value={clubServiceSalaries[salaryField] || ''}
++                      onChange={updateServiceSalary}
++                    />
++                    <span className="text-xs font-black text-pink-400">₸</span>
++                  </div>
++                );
++              })}
++            </div>
++            
++            <div className="pt-2 border-t border-pink-500/20 flex justify-between items-center">
++              <span className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">Итого сервисники:</span>
++              <span className="text-xl font-black text-pink-400">{serviceSalariesTotal.toLocaleString()} ₸</span>
++            </div>
++          </div>
++        </div>
++      )}
+ 
+       {showSettingsModal && (
+         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+diff --git a/src/store/ScheduleContext.jsx b/src/store/ScheduleContext.jsx
+index 93e0d5f..b334931 100644
+--- a/src/store/ScheduleContext.jsx
++++ b/src/store/ScheduleContext.jsx
+@@ -29,6 +29,12 @@ export const ScheduleProvider = ({ children }) => {
+       return saved ? JSON.parse(saved) : {};
+     } catch { return {}; }
+   });
++  const [serviceSalaries, setServiceSalaries] = useState(() => {
++    try {
++      const saved = localStorage.getItem('service_salaries_v3');
++      return saved ? JSON.parse(saved) : {};
++    } catch { return {}; }
++  });
+   const [employees, setEmployees] = useState(() => {
+     try {
+       const saved = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
+@@ -76,6 +82,9 @@ export const ScheduleProvider = ({ children }) => {
+   useEffect(() => {
+     try { localStorage.setItem(STORAGE_KEYS.DATA, JSON.stringify(scheduleData)); } catch {}
+   }, [scheduleData]);
++  useEffect(() => {
++    try { localStorage.setItem('service_salaries_v3', JSON.stringify(serviceSalaries)); } catch {}
++  }, [serviceSalaries]);
+   useEffect(() => {
+     try { localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees)); } catch {}
+   }, [employees]);
+@@ -95,6 +104,7 @@ export const ScheduleProvider = ({ children }) => {
+     let unsubSchedules = null;
+     let unsubSettings = null;
+     let unsubEmployees = null;
++    let unsubServiceSalaries = null;
+ 
+     const unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
+       if (firebaseUser) {
+@@ -186,11 +196,22 @@ export const ScheduleProvider = ({ children }) => {
+             console.error('[ScheduleContext] employees load error:', error);
+           });
+         }
++
++        if (!unsubServiceSalaries) {
++          unsubServiceSalaries = onSnapshot(query(collection(db, 'service_salaries')), (snapshot) => {
++            const remoteData = {};
++            snapshot.docs.forEach(d => { remoteData[d.id] = d.data(); });
++            setServiceSalaries(remoteData);
++          }, (error) => {
++            console.error('[ScheduleContext] service_salaries load error:', error);
++          });
++        }
+       } else {
+         // Clean up listeners on sign-out
+         if (unsubSchedules) { unsubSchedules(); unsubSchedules = null; }
+         if (unsubSettings) { unsubSettings(); unsubSettings = null; }
+         if (unsubEmployees) { unsubEmployees(); unsubEmployees = null; }
++        if (unsubServiceSalaries) { unsubServiceSalaries(); unsubServiceSalaries = null; }
+       }
+     });
+ 
+@@ -199,6 +220,7 @@ export const ScheduleProvider = ({ children }) => {
+       if (unsubSchedules) unsubSchedules();
+       if (unsubSettings) unsubSettings();
+       if (unsubEmployees) unsubEmployees();
++      if (unsubServiceSalaries) unsubServiceSalaries();
+     };
+   }, []);
+ 
+@@ -357,12 +379,39 @@ export const ScheduleProvider = ({ children }) => {
+     try { await setDoc(doc(db, 'settings', 'schedule'), s, { merge: true }); } catch {}
+   };
+ 
++  // ─── updateServiceSalary ──────────────────────────────────────────────────
++  const updateServiceSalary = async (monthKey, club, field, value) => {
++    const docId = `${monthKey}_${club}`;
++    setServiceSalaries(prev => {
++      const current = prev[docId] || {};
++      return {
++        ...prev,
++        [docId]: {
++          ...current,
++          [field]: value
++        }
++      };
++    });
++    try {
++      setIsSaving(true);
++      await setDoc(doc(db, 'service_salaries', docId), {
++        [field]: value,
++        monthKey,
++        club,
++        updatedAt: serverTimestamp()
++      }, { merge: true });
++    } finally {
++      setIsSaving(false);
++    }
++  };
++
+   return (
+     <ScheduleContext.Provider value={{
+       scheduleData, employees, loading, isSaving,
+       updateCell, addEmployee, removeEmployee, updateEmployee,
+       updateAdvance, updateCorrection, moveEmployee, reorderEmployees,
+-      settings, updateSettings
++      settings, updateSettings,
++      serviceSalaries, updateServiceSalary
+     }}>
+       {children}
+     </ScheduleContext.Provider>

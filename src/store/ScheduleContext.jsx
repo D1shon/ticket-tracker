@@ -383,10 +383,16 @@ export const ScheduleProvider = ({ children }) => {
   const getScheduleDocId = (mKey, empId) => empId.includes('_') ? empId : `${mKey}_${empId}`;
 
   // ─── updateCell ───────────────────────────────────────────────────────────
+  // BUG FIX: Previously used updateDoc → setDoc fallback which caused a race
+  // condition: if two cells were saved simultaneously on a new document, the
+  // second setDoc would overwrite (not merge) the first, losing the first day.
+  // FIX: Always use setDoc with mergeFields targeting only the specific day
+  // field (e.g. "days.5"). This is atomic: creates the doc if missing, or
+  // merges just that one day field if the doc already exists — no data loss.
   const updateCell = async (monthKey, employeeId, day, value) => {
     const docId = getScheduleDocId(monthKey, employeeId);
 
-    // 1. Instant local save FIRST — Local Storage is source of truth
+    // 1. Instant local save FIRST — optimistic update for immediate UI response
     setScheduleData(prev => ({
       ...prev,
       [docId]: {
@@ -397,31 +403,19 @@ export const ScheduleProvider = ({ children }) => {
       }
     }));
 
-    // 2. Then sync to cloud
+    // 2. Atomic cloud sync — mergeFields ensures ONLY this day is written.
+    // Works whether the document exists or not. No race condition possible.
     try {
       setIsSaving(true);
-      const docRef = doc(db, 'schedules', docId);
-      await updateDoc(docRef, {
-        [`days.${day}`]: value,
+      await setDoc(doc(db, 'schedules', docId), {
+        employeeId,
+        monthKey,
+        days: { [day]: value },
         updatedAt: serverTimestamp()
-      });
+      }, { mergeFields: [`days.${day}`, 'employeeId', 'monthKey', 'updatedAt'] });
     } catch (e) {
-      if (e.code === 'not-found') {
-        try {
-          await setDoc(doc(db, 'schedules', docId), {
-            employeeId,
-            monthKey,
-            days: { [day]: value },
-            updatedAt: serverTimestamp()
-          });
-        } catch (err) {
-          console.error('Критическая ошибка создания:', err);
-          toast.error('ОШИБКА: Нет доступа к базе. Данные сохранены только на этом устройстве.');
-        }
-      } else {
-        console.error('Ошибка обновления:', e);
-        toast.error('ОШИБКА СИНХРОНИЗАЦИИ: ' + e.message);
-      }
+      console.error('Ошибка сохранения смены:', e);
+      toast.error('ОШИБКА СИНХРОНИЗАЦИИ: ' + e.message);
     } finally {
       setIsSaving(false);
     }
