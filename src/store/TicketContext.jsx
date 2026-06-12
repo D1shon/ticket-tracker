@@ -35,6 +35,9 @@ export const USER_ROLES = {
   'admin-villa':     { role: 'admin', club: 'VILLA',       displayName: 'Админ Villa'      },
   'admin-4you':      { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'       },
   'admin-nurlyorda': { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda' },
+
+  // ── Marketing (restricted warehouse views, all clubs) ─────────────────────
+  'guldana.k@hj.fit': { role: 'marketing', club: null, displayName: 'Гульдана' },
 };
 
 function isEmailAllowed(email) {

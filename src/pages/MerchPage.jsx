@@ -22,10 +22,12 @@ const MerchPage = () => {
   
   // Role & Permissions check
   const isChef = useMemo(() => user?.role === 'chef', [user]);
+  const isMarketing = useMemo(() => user?.role === 'marketing', [user]);
   const managerClub = useMemo(() => user?.club || null, [user]);
+  const canSelectAllClubs = useMemo(() => isChef || isMarketing, [isChef, isMarketing]);
 
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'resort'
-  const [selectedClub, setSelectedClub] = useState(() => (!isChef && managerClub) ? managerClub : 'ALL');
+  const [selectedClub, setSelectedClub] = useState(() => (!canSelectAllClubs && managerClub) ? managerClub : 'ALL');
   const [selectedSku, setSelectedSku] = useState('ALL');
   const [resortValues, setResortValues] = useState({}); // productId -> actual count string
   const [savingResort, setSavingResort] = useState(false);
@@ -34,10 +36,10 @@ const MerchPage = () => {
   
   // Sync selectedClub if user updates
   useEffect(() => {
-    if (!isChef && managerClub) {
+    if (!canSelectAllClubs && managerClub) {
       setSelectedClub(managerClub);
     }
-  }, [isChef, managerClub]);
+  }, [canSelectAllClubs, managerClub]);
 
   // Data States
   const [products, setProducts] = useState([]);
@@ -798,7 +800,7 @@ const MerchPage = () => {
         <div className="flex flex-wrap items-center gap-3">
           {/* Club Filter */}
           <div className="flex bg-[var(--bg-primary)] p-1 rounded-xl border border-[var(--border)]">
-            {isChef ? (
+            {canSelectAllClubs ? (
               <>
                 <button 
                   onClick={() => setSelectedClub('ALL')}
@@ -840,7 +842,7 @@ const MerchPage = () => {
           )}
 
           {/* Add Product Button */}
-          {(isChef || !!managerClub) && (
+          {(isChef || !!managerClub) && !isMarketing && (
             <button
               onClick={() => {
                 setEditingProduct(null);
@@ -858,7 +860,41 @@ const MerchPage = () => {
       {/* Analytics Dashboard Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         
-        {isChef ? (
+        {isMarketing ? (
+          <>
+            {/* Total items count for marketing */}
+            <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between col-span-2">
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Товары на складе</span>
+                <span className="text-xl md:text-2xl font-black text-[var(--text-primary)] tracking-tight block mt-1">
+                  {stats.totalStockItems} шт.
+                </span>
+                <span className="text-[9px] font-bold text-blue-400 uppercase tracking-widest block mt-1">
+                  Всего единиц в наличии
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                <Store size={20} />
+              </div>
+            </div>
+
+            {/* Low stock alerts for marketing */}
+            <div className={`bg-[var(--bg-card)] p-5 rounded-3xl border shadow-md flex items-center justify-between transition-all col-span-2 ${stats.lowStockCount > 0 ? 'border-orange-500/30 bg-orange-500/5' : 'border-[var(--border)]'}`}>
+              <div>
+                <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Мало на складе</span>
+                <span className={`text-xl md:text-2xl font-black tracking-tight block mt-1 ${stats.lowStockCount > 0 ? 'text-orange-400' : 'text-[var(--text-primary)]'}`}>
+                  {stats.lowStockCount} позиций
+                </span>
+                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block mt-1">
+                  В наличии в клубах
+                </span>
+              </div>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stats.lowStockCount > 0 ? 'bg-orange-500/10 text-orange-400' : 'bg-[var(--bg-hover)] text-[var(--text-muted)]'}`}>
+                <AlertTriangle size={20} />
+              </div>
+            </div>
+          </>
+        ) : isChef ? (
           <>
             {/* Total Cost Value (Chef only) */}
             <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
@@ -1089,34 +1125,38 @@ const MerchPage = () => {
           >
             <Store size={14} /> Склад
           </button>
-          <button
-            onClick={() => setActiveTab('sales')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'sales' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
-          >
-            <History size={14} /> История продаж
-          </button>
-          {(isChef || !!managerClub) && (
-            <button
-              onClick={() => { setActiveTab('resort'); setResortValues({}); }}
-              className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'resort' ? 'bg-orange-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
-            >
-              <ClipboardList size={14} /> Пересорт
-            </button>
-          )}
-          <button
-            onClick={() => setActiveTab('logs')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'logs' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
-          >
-            <ClipboardList size={14} /> Логи операций
-          </button>
-          {/* NURLY ORDA exclusive: sales totals tab */}
-          {(selectedClub === 'NURLY ORDA' || (!isChef && managerClub === 'NURLY ORDA')) && (
-            <button
-              onClick={() => setActiveTab('nurly-sales')}
-              className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nurly-sales' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
-            >
-              <TrendingUp size={14} /> Итого продаж
-            </button>
+          {!isMarketing && (
+            <>
+              <button
+                onClick={() => setActiveTab('sales')}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'sales' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+              >
+                <History size={14} /> История продаж
+              </button>
+              {(isChef || !!managerClub) && (
+                <button
+                  onClick={() => { setActiveTab('resort'); setResortValues({}); }}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'resort' ? 'bg-orange-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                  <ClipboardList size={14} /> Пересорт
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab('logs')}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'logs' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+              >
+                <ClipboardList size={14} /> Логи операций
+              </button>
+              {/* NURLY ORDA exclusive: sales totals tab */}
+              {(selectedClub === 'NURLY ORDA' || (!isChef && managerClub === 'NURLY ORDA')) && (
+                <button
+                  onClick={() => setActiveTab('nurly-sales')}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nurly-sales' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                  <TrendingUp size={14} /> Итого продаж
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -1612,28 +1652,30 @@ const MerchPage = () => {
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2.5">
                             {/* Sell Button */}
-                            <button
-                              disabled={isOut}
-                              onClick={() => {
-                                setSelectedProductForSale(p);
-                                setSaleForm({
-                                  qty: '1',
-                                  paymentMethod: 'Kaspi',
-                                  clientName: '',
-                                  buyerType: 'client',
-                                  customPrice: String(p.salePrice),
-                                  notes: '',
-                                  isFree: false,
-                                  freeReason: 'Бартер'
-                                });
-                                setShowSaleModal(true);
-                              }}
-                              className={`flex items-center gap-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase border transition-all ${isOut ? 'bg-gray-500/10 text-gray-500 border-gray-500/10 cursor-not-allowed' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'}`}
-                            >
-                              <ShoppingCart size={11} /> Продать
-                            </button>
+                            {!isMarketing && (
+                              <button
+                                disabled={isOut}
+                                onClick={() => {
+                                  setSelectedProductForSale(p);
+                                  setSaleForm({
+                                    qty: '1',
+                                    paymentMethod: 'Kaspi',
+                                    clientName: '',
+                                    buyerType: 'client',
+                                    customPrice: String(p.salePrice),
+                                    notes: '',
+                                    isFree: false,
+                                    freeReason: 'Бартер'
+                                  });
+                                  setShowSaleModal(true);
+                                }}
+                                className={`flex items-center gap-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase border transition-all ${isOut ? 'bg-gray-500/10 text-gray-500 border-gray-500/10 cursor-not-allowed' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'}`}
+                              >
+                                <ShoppingCart size={11} /> Продать
+                              </button>
+                            )}
 
-                            {(isChef || (managerClub && p.club === managerClub)) && (
+                            {!isMarketing && (isChef || (managerClub && p.club === managerClub)) && (
                               <>
                                 {/* Restock Button */}
                                 <button

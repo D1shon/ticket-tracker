@@ -49,6 +49,9 @@ const DesktopSidebar = () => {
     if (user?.role === 'admin') {
       return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook';
     }
+    if (user?.role === 'marketing') {
+      return item.path === '/merch';
+    }
     return true;
   });
 
@@ -184,6 +187,9 @@ const MobileNav = () => {
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
       return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook';
+    }
+    if (user?.role === 'marketing') {
+      return item.path === '/merch';
     }
     return true;
   });

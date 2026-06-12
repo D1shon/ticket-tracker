@@ -57,7 +57,7 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to={user.role === 'admin' ? '/schedule' : '/tickets'} replace />;
+    return <Navigate to={user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : '/tickets'} replace />;
   }
 
   return (
@@ -96,7 +96,7 @@ const AppContent = () => {
 
   const RootRedirect = () => {
     if (!user) return <Navigate to="/login" replace />;
-    return <Navigate to={user.role === 'admin' ? '/schedule' : '/tickets'} replace />;
+    return <Navigate to={user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : '/tickets'} replace />;
   };
 
   return (
@@ -118,7 +118,7 @@ const AppContent = () => {
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/schedule' : '/tickets'} replace /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : '/tickets'} replace /> : <Login />} />
         
         <Route path="/scan" element={
           <ProtectedLayout allowedRoles={['chef', 'manager']}>
@@ -167,7 +167,7 @@ const AppContent = () => {
         } />
 
         <Route path="/merch" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'marketing']}>
             <MerchPage />
           </ProtectedLayout>
         } />
