@@ -25,7 +25,7 @@ const ALL_NAV = [
 
 /* ─── Desktop Sidebar ────────────────────────────────────────── */
 const DesktopSidebar = () => {
-  const { user } = useTickets();
+  const { user, logout } = useTickets();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(() => localStorage.getItem('hjtrack-theme') === 'dark');
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
@@ -128,6 +128,15 @@ const DesktopSidebar = () => {
           <span style={{ flex: 1 }}>{isDark ? 'Тёмная' : 'Светлая'}</span>
           <div className="theme-toggle-icon" />
         </button>
+
+        <button 
+          onClick={logout}
+          className="nav-item"
+          style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', color: 'var(--accent-red)', cursor: 'pointer' }}
+        >
+          <LogOut size={17} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+          <span>Выйти</span>
+        </button>
       </div>
     </aside>
   );
@@ -135,7 +144,7 @@ const DesktopSidebar = () => {
 
 /* ─── Mobile Layout ──────────────────────────────────────────── */
 const MobileNav = () => {
-  const { user } = useTickets();
+  const { user, logout } = useTickets();
   const navigate = useNavigate();
   const location = useLocation();
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
@@ -390,6 +399,21 @@ const MobileNav = () => {
                   ? <><Moon size={15} style={{ color: '#7B3DFF' }} /> Тёмная</>
                   : <><Sun size={15} style={{ color: '#FB8F41' }} /> Светлая</>
                 }
+              </button>
+            </div>
+
+            <div style={{ margin: '12px 24px 0', paddingTop: 12, display: 'flex', justifyContent: 'center' }}>
+              <button
+                onClick={logout}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '10px 14px', borderRadius: 12,
+                  background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
+                  cursor: 'pointer', color: 'var(--accent-red)', fontSize: 13, fontWeight: 700,
+                }}
+              >
+                <LogOut size={15} />
+                <span>Выйти из системы</span>
               </button>
             </div>
           </div>
