@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, Clock, ChevronDown, Calendar, MoreHorizontal } from 'lucide-react';
-import { CLUBS, SHIFTS_DATA, CHECK_ITEMS } from '../data/checklistData';
+import { CLUBS, SHIFTS_DATA, CHECK_ITEMS, getShiftsForDate } from '../data/checklistData';
 import { format, addDays, subDays, startOfToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useChecklist } from '../store/ChecklistContext';
@@ -104,7 +104,7 @@ const ChecklistPage = () => {
             <h1 className="text-xl font-bold tracking-tight uppercase" style={{ letterSpacing: '0.02em' }}>Мониторинг клуба</h1>
           </div>
           <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-            Регулярные проверки по расписанию: 6:30 - 11:30 - 16:30 - 21:30
+            Регулярные проверки по расписанию: {getShiftsForDate(activeDate).map(s => s.time).join(' - ')}
           </p>
         </div>
       </div>
@@ -186,7 +186,7 @@ const ChecklistPage = () => {
 
       {/* Shifts List */}
       <div className="flex flex-col gap-6">
-        {SHIFTS_DATA.map(shift => (
+        {getShiftsForDate(activeDate).map(shift => (
           <div 
             key={shift.id} 
             className={`relative rounded-2xl transition-all ${

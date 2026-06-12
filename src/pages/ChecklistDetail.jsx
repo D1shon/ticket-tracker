@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, ChevronLeft, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { useChecklist } from '../store/ChecklistContext';
-import { CHECK_ITEMS, SHIFTS_DATA } from '../data/checklistData';
+import { CHECK_ITEMS, SHIFTS_DATA, getShiftsForDate } from '../data/checklistData';
 import { format, startOfToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -19,7 +19,15 @@ const ChecklistDetail = () => {
   const club = searchParams.get('club') || '4YOU';
   const docId = `${dateKey}_${club}_${shiftId}_${cardId}`;
   
-  const shift = SHIFTS_DATA.find(s => s.id === shiftId);
+  const getDateObj = () => {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m - 1, d);
+    }
+    return new Date();
+  };
+  const activeDate = getDateObj();
+  const shift = getShiftsForDate(activeDate).find(s => s.id === shiftId) || SHIFTS_DATA.find(s => s.id === shiftId);
   const cardData = CHECK_ITEMS[cardId];
   
   const [itemStates, setItemStates] = useState({});

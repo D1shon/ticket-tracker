@@ -97,3 +97,111 @@ export const SHIFTS_DATA = [
     cards: ['equipment', 'cleaning', 'tech', 'closing']
   },
 ];
+
+export const getShiftsForDate = (date) => {
+  const d = date instanceof Date ? date : new Date(date);
+  const day = d.getDay();
+  const isWeekend = day === 0 || day === 6; // 0 is Sunday, 6 is Saturday
+
+  // Calculate isCurrent if we are looking at the current day
+  const isToday = new Date().toDateString() === d.toDateString();
+  const currentHour = new Date().getHours();
+  const currentMinute = new Date().getMinutes();
+  const totalMinutes = currentHour * 60 + currentMinute;
+
+  if (isWeekend) {
+    // Weekend shifts: 9:00, 14:00, 19:00
+    // morning: 9:00 (540 mins) to 14:00 (840 mins)
+    // day: 14:00 (840 mins) to 19:00 (1140 mins)
+    // evening: 19:00 (1140 mins) to 9:00 (540 mins next day)
+    let activeShiftId = 'evening';
+    if (totalMinutes >= 540 && totalMinutes < 840) {
+      activeShiftId = 'morning';
+    } else if (totalMinutes >= 840 && totalMinutes < 1140) {
+      activeShiftId = 'day';
+    }
+
+    return [
+      { 
+        id: 'morning', 
+        time: '9:00', 
+        name: 'Утренняя смена', 
+        icon: Coffee, 
+        color: '#f97316', 
+        isCurrent: isToday && activeShiftId === 'morning',
+        cards: ['equipment', 'cleaning', 'tech', 'opening']
+      },
+      { 
+        id: 'day', 
+        time: '14:00', 
+        name: 'Дневная смена', 
+        icon: Sun, 
+        color: '#facc15', 
+        isCurrent: isToday && activeShiftId === 'day',
+        cards: ['equipment', 'cleaning', 'tech']
+      },
+      { 
+        id: 'evening', 
+        time: '19:00', 
+        name: 'Вечерняя смена', 
+        icon: Moon, 
+        color: '#6366f1', 
+        isCurrent: isToday && activeShiftId === 'evening',
+        cards: ['equipment', 'cleaning', 'tech', 'closing']
+      }
+    ];
+  }
+
+  // Weekday shifts: 6:30, 11:30, 16:30, 21:30
+  // morning: 6:30 (390 mins) to 11:30 (690 mins)
+  // day: 11:30 (690 mins) to 16:30 (990 mins)
+  // evening: 16:30 (990 mins) to 21:30 (1290 mins)
+  // night: 21:30 (1290 mins) to 6:30 (390 mins next day)
+  let activeShiftId = 'night';
+  if (totalMinutes >= 390 && totalMinutes < 690) {
+    activeShiftId = 'morning';
+  } else if (totalMinutes >= 690 && totalMinutes < 990) {
+    activeShiftId = 'day';
+  } else if (totalMinutes >= 990 && totalMinutes < 1290) {
+    activeShiftId = 'evening';
+  }
+
+  return [
+    { 
+      id: 'morning', 
+      time: '6:30', 
+      name: 'Утренняя смена', 
+      icon: Coffee, 
+      color: '#f97316', 
+      isCurrent: isToday && activeShiftId === 'morning',
+      cards: ['equipment', 'cleaning', 'tech', 'opening']
+    },
+    { 
+      id: 'day', 
+      time: '11:30', 
+      name: 'Дневная смена', 
+      icon: Sun, 
+      color: '#facc15', 
+      isCurrent: isToday && activeShiftId === 'day',
+      cards: ['equipment', 'cleaning', 'tech']
+    },
+    { 
+      id: 'evening', 
+      time: '16:30', 
+      name: 'Вечерняя смена', 
+      icon: Moon, 
+      color: '#6366f1', 
+      isCurrent: isToday && activeShiftId === 'evening',
+      cards: ['equipment', 'cleaning', 'tech']
+    },
+    { 
+      id: 'night', 
+      time: '21:30', 
+      name: 'Ночная смена', 
+      icon: Moon, 
+      color: '#a855f7', 
+      isCurrent: isToday && activeShiftId === 'night',
+      cards: ['equipment', 'cleaning', 'tech', 'closing']
+    },
+  ];
+};
