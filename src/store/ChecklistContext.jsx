@@ -67,7 +67,7 @@ export const ChecklistProvider = ({ children }) => {
     };
   }, []);
 
-  const updateCheckState = async (dateKey, shiftId, cardId, club, itemStates, itemIssues, itemTimestamps) => {
+  const updateCheckState = async (dateKey, shiftId, cardId, club, itemStates, itemIssues, itemTimestamps, itemRepeats) => {
     try {
       const docId = `${dateKey}_${club}_${shiftId}_${cardId}`;
       await setDoc(doc(db, 'checklists', docId), {
@@ -78,6 +78,7 @@ export const ChecklistProvider = ({ children }) => {
         states: itemStates,
         issues: itemIssues,
         timestamps: itemTimestamps || {},
+        repeats: itemRepeats || {},
         updatedAt: serverTimestamp(),
         updatedBy: user?.email || 'system'
       });

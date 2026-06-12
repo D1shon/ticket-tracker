@@ -25,6 +25,7 @@ const ChecklistDetail = () => {
   const [itemStates, setItemStates] = useState({});
   const [itemIssues, setItemIssues] = useState({});
   const [itemTimestamps, setItemTimestamps] = useState({});
+  const [itemRepeats, setItemRepeats] = useState({});
 
   const isMorningSession = shiftId === 'morning' || shiftId === 'day';
   const sessionGroupId = isMorningSession ? 'morning_day' : 'evening_night';
@@ -46,6 +47,7 @@ const ChecklistDetail = () => {
       setItemStates(data.states || {});
       setItemIssues(data.issues || {});
       setItemTimestamps(data.timestamps || {});
+      setItemRepeats(data.repeats || {});
     }
   }, [docId, checklistData]);
 
@@ -58,13 +60,19 @@ const ChecklistDetail = () => {
 
     setItemStates(newStates);
     setItemTimestamps(newTimestamps);
-    updateCheckState(dateKey, shiftId, cardId, club, newStates, itemIssues, newTimestamps);
+    updateCheckState(dateKey, shiftId, cardId, club, newStates, itemIssues, newTimestamps, itemRepeats);
   };
 
   const handleIssueChange = (index, text) => {
     const newIssues = { ...itemIssues, [index]: text };
     setItemIssues(newIssues);
-    updateCheckState(dateKey, shiftId, cardId, club, itemStates, newIssues, itemTimestamps);
+    updateCheckState(dateKey, shiftId, cardId, club, itemStates, newIssues, itemTimestamps, itemRepeats);
+  };
+
+  const handleRepeatChange = (index, isRepeat) => {
+    const newRepeats = { ...itemRepeats, [index]: isRepeat };
+    setItemRepeats(newRepeats);
+    updateCheckState(dateKey, shiftId, cardId, club, itemStates, itemIssues, itemTimestamps, newRepeats);
   };
 
   const handleComplete = async () => {
@@ -76,7 +84,10 @@ const ChecklistDetail = () => {
     }
     
     if (!cardData.noTicket) {
+      let createdCount = 0;
       for (const idx of issueIndices) {
+        if (itemRepeats[idx] === true) continue;
+
         const problemDescription = itemIssues[idx] || '';
         const itemTitle = cardData.items[idx];
         
@@ -99,10 +110,11 @@ const ChecklistDetail = () => {
         
         if (addTicket) {
           await addTicket(newTicket);
+          createdCount++;
         }
       }
-      if (issueIndices.length > 0) {
-        toast.success(`${issueIndices.length} заявок создано автоматически`);
+      if (createdCount > 0) {
+        toast.success(`${createdCount} заявок создано автоматически`);
       }
     }
     
@@ -198,16 +210,56 @@ const ChecklistDetail = () => {
 
                 {/* Conditional Issue Input */}
                 {state === 'issue' && (
-                  <div className="animate-slide-down px-2">
+                  <div className="animate-slide-down px-2 flex flex-col gap-2.5">
                     <textarea 
                       value={itemIssues[i] || ''}
                       onChange={(e) => handleIssueChange(i, e.target.value)}
                       placeholder="Опишите проблему подробно..."
                       className="w-full bg-[var(--bg-card)] border border-red-500/20 rounded-2xl p-4 text-sm text-[var(--text-primary)] focus:border-red-500/40 outline-none transition-all resize-none h-24"
                     />
+                    
+                    <div className="flex items-center justify-between p-3.5 bg-red-500/5 border border-red-500/10 rounded-2xl">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-bold text-[var(--text-secondary)]">Это повторная проблема?</span>
+                        <span className="text-[10px] text-[var(--text-muted)] font-medium">Если да, автоматическая заявка не будет создана</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleRepeatChange(i, true)}
+                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                            itemRepeats[i] === true
+                              ? 'bg-red-500 border-red-500 text-white shadow-md shadow-red-500/20'
+                              : 'bg-[var(--bg-hover)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                          }`}
+                        >
+                          Да
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRepeatChange(i, false)}
+                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                            itemRepeats[i] !== true
+                              ? 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-primary)] shadow-sm'
+                              : 'bg-[var(--bg-hover)] border-[var(--border)] text-[var(--text-muted)]'
+                          }`}
+                        >
+                          Нет
+                        </button>
+                      </div>
+                    </div>
+
                     {!cardData.noTicket && (
-                      <p className="text-[9px] text-red-400/50 mt-2 ml-2 uppercase font-bold tracking-widest flex items-center gap-1">
-                        <AlertCircle size={10} /> Автоматически создаст заявку
+                      <p className="text-[9px] mt-1 ml-2 uppercase font-bold tracking-widest flex items-center gap-1">
+                        {itemRepeats[i] === true ? (
+                          <span className="text-[var(--text-muted)] flex items-center gap-1 opacity-70">
+                            🚫 Заявка не будет создана (повторная проблема)
+                          </span>
+                        ) : (
+                          <span className="text-red-400/50 flex items-center gap-1">
+                            <AlertCircle size={10} /> Автоматически создаст заявку
+                          </span>
+                        )}
                       </p>
                     )}
                   </div>
