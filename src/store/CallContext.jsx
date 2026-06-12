@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
+import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc, onSnapshot, collection, increment, getDoc } from 'firebase/firestore';
@@ -19,6 +20,7 @@ function getChannel(displayName) {
 }
 
 export const CallProvider = ({ children }) => {
+  const { user } = useTickets();
   const [isInCall, setIsInCall]             = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [roomName, setRoomName]             = useState('');
@@ -147,7 +149,11 @@ export const CallProvider = ({ children }) => {
         setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
       });
 
-      const uid = await clientRef.current.join(APP_ID, channel, null, null);
+      const mainUid = user?.email
+        ? user.email.replace(/[^a-zA-Z0-9]/g, '_')
+        : `user_${Math.floor(Math.random() * 1000000)}`;
+
+      const uid = await clientRef.current.join(APP_ID, channel, null, mainUid);
       uidRef.current = uid;
 
       let audioTrack = null;
