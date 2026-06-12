@@ -96,6 +96,15 @@ const CallOverlay = () => {
     };
   }, [isDragging]);
 
+  // Auto-maximize to fullscreen when screen sharing is active (local or remote)
+  useEffect(() => {
+    const activeScreenShareUser = remoteUsers.find(u => u.isScreen && u.videoTrack);
+    const activeScreenTrack = isScreenSharing ? screenTrack : (activeScreenShareUser ? activeScreenShareUser.videoTrack : null);
+    if (activeScreenTrack) {
+      setIsFullPage(true);
+    }
+  }, [isScreenSharing, screenTrack, remoteUsers]);
+
   const toggleMic = async () => {
     if (localAudioTrack) {
       try {
