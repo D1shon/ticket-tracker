@@ -30,6 +30,7 @@ const MerchPage = () => {
   const [resortValues, setResortValues] = useState({}); // productId -> actual count string
   const [savingResort, setSavingResort] = useState(false);
   const [commissionRates, setCommissionRates] = useState({}); // salespersonName -> rate string
+  const [expandedPersons, setExpandedPersons] = useState({}); // salespersonName -> boolean
   
   // Sync selectedClub if user updates
   useEffect(() => {
@@ -393,6 +394,38 @@ const MerchPage = () => {
     } catch (err) {
       console.error(err);
       toast.error('Ошибка проведения продажи');
+    }
+  };
+
+  const handleDeleteSale = async (sale) => {
+    const canManage = isChef || (managerClub && sale.club === managerClub);
+    if (!canManage) return toast.error('Доступ запрещен');
+    if (!window.confirm(`Вы уверены, что хотите удалить эту операцию (${sale.productName}, ${sale.qty} шт)?`)) return;
+    
+    try {
+      await deleteDoc(doc(db, 'merch_sales', sale.id));
+      
+      if (sale.productId) {
+        await updateDoc(doc(db, 'merch_products', sale.productId), {
+          stock: increment(sale.qty), // Reverts sale (adds qty back to stock) or supply (subtracts negative qty from stock)
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      await addDoc(collection(db, 'merch_history'), {
+        type: 'delete_sale',
+        productId: sale.productId || null,
+        productName: sale.productName,
+        club: sale.club,
+        details: `Удалена операция: "${sale.productName}" (${sale.qty} шт, Сумма: ${sale.totalSum} ₸, Продавец: ${sale.salespersonName || 'нет'})`,
+        cashierName: user?.name || user?.email || 'Менеджер',
+        createdAt: serverTimestamp()
+      });
+
+      toast.success('Операция успешно удалена');
+    } catch (err) {
+      console.error(err);
+      toast.error('Ошибка при удалении операции');
     }
   };
 
@@ -1265,13 +1298,50 @@ const MerchPage = () => {
                           <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', borderRadius: 4, transition: 'width 0.6s ease' }} />
                         </div>
                         {/* Products list */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 12 }}>
                           {Object.entries(byProduct).sort((a, b) => b[1].total - a[1].total).map(([pName, pData]) => (
                             <div key={pName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-secondary)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{pName}</span>
                               <span style={{ fontWeight: 700, flexShrink: 0 }}>{pData.qty} шт · {pData.total.toLocaleString('ru-RU')} ₸</span>
                             </div>
                           ))}
+                        </div>
+
+                        {/* Collapsible individual sales list */}
+                        <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 10 }}>
+                          <button 
+                            onClick={() => setExpandedPersons(prev => ({ ...prev, [name]: !prev[name] }))}
+                            className="flex items-center justify-between w-full text-[10px] font-black uppercase text-[var(--accent-purple)] tracking-wider hover:opacity-80 transition-opacity"
+                          >
+                            <span>{expandedPersons[name] ? '▼ Скрыть транзакции' : '▶ Показать транзакции'}</span>
+                            <span>{data.sales.length} шт</span>
+                          </button>
+                          
+                          {expandedPersons[name] && (
+                            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 6, borderLeft: '2px solid rgba(139,92,246,0.2)' }}>
+                              {data.sales.map(s => {
+                                const sDate = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
+                                return (
+                                  <div key={s.id} className="flex items-center justify-between text-xs py-1 hover:bg-[var(--bg-primary)] rounded px-1">
+                                    <div className="flex flex-col">
+                                      <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({s.qty} шт)</span>
+                                      <span className="text-[9px] text-[var(--text-muted)]">{sDate.toLocaleDateString('ru-RU')} в {sDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · {s.paymentMethod}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-emerald-400">{(s.totalSum || 0).toLocaleString()} ₸</span>
+                                      <button 
+                                        onClick={() => handleDeleteSale(s)}
+                                        className="p-1 hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 rounded transition-all"
+                                        title="Удалить продажу"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1657,6 +1727,7 @@ const MerchPage = () => {
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Сумма чека</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Оплата</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Провел</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1723,6 +1794,15 @@ const MerchPage = () => {
                         </td>
                         <td className="px-6 py-4 text-xs font-bold text-[var(--text-secondary)]">
                           {s.cashierName}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => handleDeleteSale(s)}
+                            className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-red-500 rounded-lg border border-[var(--border)] transition-all"
+                            title="Удалить операцию"
+                          >
+                            <Trash2 size={12} />
+                          </button>
                         </td>
                       </tr>
                     );
