@@ -43,8 +43,8 @@ const SalesPage = () => {
   const [buyerType, setBuyerType] = useState('client');
   const [customPrice, setCustomPrice] = useState('');
   const [buyerName, setBuyerName] = useState('');
-  // NURLY ORDA: today's working employees from schedule
-  const [todayNurlyEmployees, setTodayNurlyEmployees] = useState([]);
+  // Club employees from schedule
+  const [todayClubEmployees, setTodayClubEmployees] = useState([]);
   const [selectedSalesperson, setSelectedSalesperson] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -72,21 +72,21 @@ const SalesPage = () => {
     return unsub;
   }, []);
 
-  // NURLY ORDA: Load all employees from schedule and show their shift (or выходной)
+  // Load employees from schedule for activeClub
   useEffect(() => {
-    if (activeClub !== 'NURLY ORDA') { setTodayNurlyEmployees([]); return; }
+    if (!activeClub) { setTodayClubEmployees([]); return; }
     const monthKey = format(new Date(), 'yyyy-MM');
     const todayDay = String(new Date().getDate()); // day number as string '1'..'31'
 
     let unsub = null;
     const unsubAuth = auth.onAuthStateChanged(firebaseUser => {
       if (!firebaseUser) return;
-      const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', 'NURLY ORDA'));
+      const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', activeClub));
       unsub = onSnapshot(q, async snap => {
         const empList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.isService);
-        if (empList.length === 0) { setTodayNurlyEmployees([]); return; }
+        if (empList.length === 0) { setTodayClubEmployees([]); return; }
         // Fetch schedule docs for today
-        const { getDocs, doc: fsDoc, getDoc } = await import('firebase/firestore');
+        const { doc: fsDoc, getDoc } = await import('firebase/firestore');
         const allEmpList = [];
         await Promise.all(empList.map(async emp => {
           const schedDocRef = fsDoc(db, 'schedules', emp.id);
@@ -98,11 +98,21 @@ const SalesPage = () => {
           // We include every employee, showing their shift value or 'выходной'
           allEmpList.push({ id: emp.id, name: emp.name, shift: shiftVal || 'выходной' });
         }));
-        setTodayNurlyEmployees(allEmpList);
+        setTodayClubEmployees(allEmpList);
       });
     });
     return () => { unsubAuth(); if (unsub) unsub(); };
   }, [activeClub]);
+
+  const filteredEmployees = useMemo(() => {
+    return todayClubEmployees.filter(emp => {
+      if (activeClub === 'NURLY ORDA') {
+        return true; // Show all for Nurly Orda
+      }
+      const cleanShift = (emp.shift || '').trim().toLowerCase();
+      return cleanShift && cleanShift !== 'выходной'; // Only show working employees for other clubs
+    });
+  }, [todayClubEmployees, activeClub]);
 
   // Products for active club only
   const clubProducts = useMemo(() =>
@@ -128,7 +138,7 @@ const SalesPage = () => {
     if (!selectedProduct) return toast.error('Выберите товар');
     if (qty <= 0) return toast.error('Укажите количество');
     if (qty > selectedProduct.stock) return toast.error(`Недостаточно товара (в наличии: ${selectedProduct.stock} шт)`);
-    if (activeClub === 'NURLY ORDA' && todayNurlyEmployees.length > 0 && !selectedSalesperson) {
+    if (filteredEmployees.length > 0 && !selectedSalesperson) {
       return toast.error('Выберите сотрудника, кому идёт продажа');
     }
     setSubmitting(true);
@@ -151,7 +161,7 @@ const SalesPage = () => {
         clientName: buyerName.trim() || (buyerType === 'employee' ? 'Сотрудник' : 'Гость'),
         notes: notes.trim() || null,
         cashierName: user?.name || user?.email || 'Менеджер',
-        salespersonName: activeClub === 'NURLY ORDA' ? (selectedSalesperson || null) : null,
+        salespersonName: selectedSalesperson || null,
         createdAt: serverTimestamp(),
       });
       await updateDoc(doc(db, 'merch_products', selectedProduct.id), {
@@ -458,26 +468,42 @@ const SalesPage = () => {
                     style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 11, color: 'var(--text-primary)', outline: 'none', resize: 'none' }} />
                 </div>
 
-                {/* NURLY ORDA: Salesperson selector */}
-                {activeClub === 'NURLY ORDA' && (
+                {/* Salesperson selector */}
+                {todayClubEmployees.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.07em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
                       <Users size={11} />
-                      Кому идёт продажа
+                      Кому идёт продажа (выберите до 2 админов)
                     </div>
-                    {todayNurlyEmployees.length === 0 ? (
+                    {filteredEmployees.length === 0 ? (
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '8px 10px', background: 'var(--bg-hover)', borderRadius: 9, border: '1px solid var(--border)' }}>
                         ⚠️ Нет работающих сегодня сотрудников в графике
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {todayNurlyEmployees.map(emp => {
-                          const isSel = selectedSalesperson === emp.name;
+                        {filteredEmployees.map(emp => {
+                          const selectedNames = selectedSalesperson 
+                            ? selectedSalesperson.split(',').map(n => n.trim()).filter(Boolean) 
+                            : [];
+                          const isSel = selectedNames.includes(emp.name);
                           return (
                             <button
                               key={emp.id}
                               type="button"
-                              onClick={() => setSelectedSalesperson(isSel ? '' : emp.name)}
+                              onClick={() => {
+                                let nextNames;
+                                if (isSel) {
+                                  nextNames = selectedNames.filter(n => n !== emp.name);
+                                } else {
+                                  if (selectedNames.length < 2) {
+                                    nextNames = [...selectedNames, emp.name];
+                                  } else {
+                                    toast.error('Можно выбрать не более 2 сотрудников');
+                                    return;
+                                  }
+                                }
+                                setSelectedSalesperson(nextNames.join(', '));
+                              }}
                               style={{
                                 padding: '6px 12px', borderRadius: 10, fontSize: 11, fontWeight: 800,
                                 border: `1px solid ${isSel ? '#8b5cf6' : 'var(--border)'}`,

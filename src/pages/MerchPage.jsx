@@ -98,20 +98,25 @@ const MerchPage = () => {
     salespersonName: ''
   });
 
-  const [todayNurlyEmployees, setTodayNurlyEmployees] = useState([]);
+  const [todayClubEmployees, setTodayClubEmployees] = useState([]);
 
-  // Load all employees for NURLY ORDA from schedule (showing shift or выходной)
+  // Load employees for currently selected club from schedule
   useEffect(() => {
+    const activeClubForEmployees = selectedProductForSale?.club || (selectedClub !== 'ALL' ? selectedClub : null);
+    if (!activeClubForEmployees) {
+      setTodayClubEmployees([]);
+      return;
+    }
     const monthKey = new Date().toISOString().slice(0, 7); // yyyy-MM
     const todayDay = String(new Date().getDate()); // day number '1'..'31'
 
     let unsub = null;
     const unsubAuth = auth.onAuthStateChanged(firebaseUser => {
       if (!firebaseUser) return;
-      const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', 'NURLY ORDA'));
+      const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', activeClubForEmployees));
       unsub = onSnapshot(q, async snap => {
         const empList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.isService);
-        if (empList.length === 0) { setTodayNurlyEmployees([]); return; }
+        if (empList.length === 0) { setTodayClubEmployees([]); return; }
         
         const { doc: fsDoc, getDoc } = await import('firebase/firestore');
         const allEmpList = [];
@@ -128,12 +133,23 @@ const MerchPage = () => {
             newRates[emp.name] = String(emp.commissionRate);
           }
         }));
-        setTodayNurlyEmployees(allEmpList);
+        setTodayClubEmployees(allEmpList);
         setCommissionRates(prev => ({ ...newRates, ...prev }));
       });
     });
     return () => { unsubAuth(); if (unsub) unsub(); };
-  }, []);
+  }, [selectedProductForSale?.club, selectedClub]);
+
+  const filteredEmployees = useMemo(() => {
+    const activeClubName = selectedProductForSale?.club || (selectedClub !== 'ALL' ? selectedClub : null);
+    return todayClubEmployees.filter(emp => {
+      if (activeClubName === 'NURLY ORDA') {
+        return true; // Show all for Nurly Orda
+      }
+      const cleanShift = (emp.shift || '').trim().toLowerCase();
+      return cleanShift && cleanShift !== 'выходной'; // Only show working employees for other clubs
+    });
+  }, [todayClubEmployees, selectedProductForSale?.club, selectedClub]);
 
   // Form States (Supply / Restock)
   const [supplyForm, setSupplyForm] = useState({
@@ -349,7 +365,7 @@ const MerchPage = () => {
     const qty = parseInt(saleForm.qty) || 0;
     if (qty <= 0) return toast.error('Укажите корректное количество');
     if (qty > selectedProductForSale.stock) return toast.error(`Недостаточно товара на складе (в наличии: ${selectedProductForSale.stock} шт)`);
-    if (selectedProductForSale.club === 'NURLY ORDA' && todayNurlyEmployees.length > 0 && !saleForm.salespersonName) {
+    if (filteredEmployees.length > 0 && !saleForm.salespersonName) {
       return toast.error('Выберите сотрудника, кому идёт продажа');
     }
 
@@ -379,7 +395,7 @@ const MerchPage = () => {
         clientName: saleForm.clientName.trim() || (saleForm.buyerType === 'employee' && !isFree ? 'Сотрудник' : 'Гость'),
         notes: saleForm.notes.trim() || null,
         cashierName: user?.name || user?.email || 'Менеджер',
-        salespersonName: selectedProductForSale.club === 'NURLY ORDA' ? (saleForm.salespersonName || null) : null,
+        salespersonName: saleForm.salespersonName || null,
         createdAt: serverTimestamp()
       });
 
@@ -1147,8 +1163,8 @@ const MerchPage = () => {
               >
                 <ClipboardList size={14} /> Логи операций
               </button>
-              {/* NURLY ORDA exclusive: sales totals tab */}
-              {(selectedClub === 'NURLY ORDA' || (!isChef && managerClub === 'NURLY ORDA')) && (
+              {/* Sales totals tab */}
+              {selectedClub !== 'ALL' && (
                 <button
                   onClick={() => setActiveTab('nurly-sales')}
                   className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nurly-sales' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
@@ -1227,9 +1243,10 @@ const MerchPage = () => {
 
       {/* Content Body */}
       {activeTab === 'nurly-sales' ? (
-        /* --- NURLY ORDA SALES TOTALS TAB --- */
+        /* --- SALES TOTALS TAB --- */
         (() => {
-          const nurlySales = sales.filter(s => s.club === 'NURLY ORDA' && (s.qty || 0) > 0);
+          const activeClubForSales = selectedClub;
+          const nurlySales = sales.filter(s => s.club === activeClubForSales && (s.qty || 0) > 0);
           // Filter by date range if set
           const filtered = nurlySales.filter(s => {
             if (!s.createdAt?.seconds) return true;
@@ -1239,14 +1256,22 @@ const MerchPage = () => {
             if (endDate && dateStr > endDate) return false;
             return true;
           });
-          // Group by salespersonName
+          // Group by salespersonName (supporting up to 2 admins per sale)
           const byPerson = {};
           filtered.forEach(s => {
-            const name = s.salespersonName || 'Не указан';
-            if (!byPerson[name]) byPerson[name] = { sales: [], total: 0, count: 0 };
-            byPerson[name].sales.push(s);
-            byPerson[name].total += s.totalSum || 0;
-            byPerson[name].count += s.qty || 0;
+            const rawName = s.salespersonName || 'Не указан';
+            const names = rawName.split(',').map(n => n.trim()).filter(Boolean);
+            if (names.length === 0) names.push('Не указан');
+            
+            const shareTotal = (s.totalSum || 0) / names.length;
+            const shareCount = (s.qty || 0) / names.length;
+            
+            names.forEach(name => {
+              if (!byPerson[name]) byPerson[name] = { sales: [], total: 0, count: 0 };
+              byPerson[name].sales.push(s);
+              byPerson[name].total += shareTotal;
+              byPerson[name].count += shareCount;
+            });
           });
           const grandTotal = filtered.reduce((a, s) => a + (s.totalSum || 0), 0);
           const sortedPersons = Object.entries(byPerson).sort((a, b) => b[1].total - a[1].total);
@@ -1254,7 +1279,7 @@ const MerchPage = () => {
             <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-xl overflow-hidden">
               {/* Grand total banner */}
               <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02))' }}>
-                <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.08em', marginBottom: 4 }}>NURLY ORDA · Общая сумма продаж</div>
+                <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.08em', marginBottom: 4 }}>{activeClubForSales} · Общая сумма продаж</div>
                 <div style={{ fontSize: 32, fontWeight: 950, color: '#8b5cf6' }}>{grandTotal.toLocaleString('ru-RU')} ₸</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{filtered.length} продаж · {Object.keys(byPerson).length} сотрудников{startDate || endDate ? ` · фильтр: ${startDate || '...'} — ${endDate || '...сейчас'}` : ''}</div>
               </div>
@@ -1305,7 +1330,7 @@ const MerchPage = () => {
                                   const val = e.target.value;
                                   setCommissionRates(prev => ({ ...prev, [name]: val }));
                                   
-                                  const emp = todayNurlyEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
+                                  const emp = todayClubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
                                   if (emp) {
                                     try {
                                       const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
@@ -2273,26 +2298,43 @@ const MerchPage = () => {
                 />
               </div>
 
-              {/* NURLY ORDA: Salesperson selector inside modal */}
-              {selectedProductForSale.club === 'NURLY ORDA' && (
+              {/* Salesperson selector inside modal for all clubs */}
+              {todayClubEmployees.length > 0 && (
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-wider text-[#8b5cf6] block mb-1.5 flex items-center gap-1.5">
                     <Users size={12} />
-                    Кому идет продажа
+                    Кому идет продажа (выберите до 2 админов)
                   </label>
-                  {todayNurlyEmployees.length === 0 ? (
+                  {filteredEmployees.length === 0 ? (
                     <div className="text-[10px] text-[var(--text-muted)] p-2.5 bg-[var(--bg-primary)] rounded-xl border border-[var(--border)]">
                       ⚠️ Нет работающих сегодня сотрудников в графике
                     </div>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
-                      {todayNurlyEmployees.map(emp => {
-                        const isSel = saleForm.salespersonName === emp.name;
+                      {filteredEmployees.map(emp => {
+                        const selectedNames = saleForm.salespersonName 
+                          ? saleForm.salespersonName.split(',').map(n => n.trim()).filter(Boolean) 
+                          : [];
+                        const isSel = selectedNames.includes(emp.name);
+                        
                         return (
                           <button
                             key={emp.id}
                             type="button"
-                            onClick={() => setSaleForm({ ...saleForm, salespersonName: isSel ? '' : emp.name })}
+                            onClick={() => {
+                              let nextNames;
+                              if (isSel) {
+                                nextNames = selectedNames.filter(n => n !== emp.name);
+                              } else {
+                                if (selectedNames.length < 2) {
+                                  nextNames = [...selectedNames, emp.name];
+                                } else {
+                                  toast.error('Можно выбрать не более 2 сотрудников');
+                                  return;
+                                }
+                              }
+                              setSaleForm({ ...saleForm, salespersonName: nextNames.join(', ') });
+                            }}
                             className={`py-1.5 px-2.5 rounded-xl text-[10px] font-black transition-all border text-left flex flex-col ${isSel ? 'bg-purple-600/15 text-[#8b5cf6] border-[#8b5cf6]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
                           >
                             <span>{emp.name.split(' ')[0]}</span>
