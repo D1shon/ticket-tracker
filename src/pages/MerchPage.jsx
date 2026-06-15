@@ -1433,13 +1433,14 @@ const MerchPage = () => {
                       byProduct[pName].qty += s.qty || 0;
                       byProduct[pName].total += s.totalSum || 0;
                     });
-                    const rate = commissionRates[name] || '';
-                    const parsedRate = parseFloat(rate) || 0;
-                    const award = Math.round((data.total * parsedRate) / 100);
                     // Check if this person is a service employee — no commission for them
                     const empRecord = clubEmployees.find(e => e.name.trim().toLowerCase() === name.trim().toLowerCase());
                     const nLower = name.trim().toLowerCase();
                     const isServicePerson = empRecord?.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
+
+                    const rate = commissionRates[name] || '';
+                    const parsedRate = isServicePerson ? 0 : (rate !== '' ? (parseFloat(rate) || 0) : 2);
+                    const award = Math.round((data.total * parsedRate) / 100);
                     return (
                       <div key={name} style={{ background: 'var(--bg-hover)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1489,7 +1490,7 @@ const MerchPage = () => {
                               <div style={{ fontSize: 15, fontWeight: 950, color: '#8b5cf6' }}>{data.total.toLocaleString('ru-RU')} ₸</div>
                               {!isServicePerson && parsedRate > 0 && (
                                 <div style={{ fontSize: 11, fontWeight: 900, color: '#10b981', marginTop: 1 }}>
-                                  Награда: {award.toLocaleString('ru-RU')} ₸
+                                  Награда: {award.toLocaleString('ru-RU')} ₸ ({parsedRate}%)
                                 </div>
                               )}
                               <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}% от общего</div>

@@ -667,10 +667,10 @@ const SchedulePage = () => {
                          (matchedEmp.name || '').toLowerCase().includes('техник') || 
                          (matchedEmp.name || '').toLowerCase().includes('стажер');
           if (!isServ) {
-            // Use commissionRate from employee record (no fallback to default COMMISSION_RATE)
+            // Use commissionRate from employee record (default to COMMISSION_RATE, i.e., 2% if not set)
             const rateVal = (matchedEmp.commissionRate !== undefined && matchedEmp.commissionRate !== null)
               ? (matchedEmp.commissionRate / 100)
-              : 0;
+              : COMMISSION_RATE;
             salesCommissions[matchedEmp.id] += shareTotal * rateVal;
           }
         }
