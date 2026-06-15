@@ -570,10 +570,10 @@ const SchedulePage = () => {
       });
     });
 
-    // Calculate sales commissions for each employee
-    const salesCommissions = {};
+    // Sum total sales revenue share for each employee
+    const salesRevenueShares = {};
     employees.forEach(emp => {
-      salesCommissions[emp.id] = 0;
+      salesRevenueShares[emp.id] = 0;
     });
 
     merchSales.forEach(sale => {
@@ -667,11 +667,7 @@ const SchedulePage = () => {
                          (matchedEmp.name || '').toLowerCase().includes('техник') || 
                          (matchedEmp.name || '').toLowerCase().includes('стажер');
           if (!isServ) {
-            // Use commissionRate from employee record (default to COMMISSION_RATE, i.e., 2% if not set)
-            const rateVal = (matchedEmp.commissionRate !== undefined && matchedEmp.commissionRate !== null)
-              ? (matchedEmp.commissionRate / 100)
-              : COMMISSION_RATE;
-            salesCommissions[matchedEmp.id] += shareTotal * rateVal;
+            salesRevenueShares[matchedEmp.id] += shareTotal;
           }
         }
       });
@@ -741,7 +737,11 @@ const SchedulePage = () => {
                            (emp.name || '').toLowerCase().includes('сервис') || 
                            (emp.name || '').toLowerCase().includes('техник') || 
                            (emp.name || '').toLowerCase().includes('стажер');
-      const salesCommission = isServiceEmp ? 0 : (salesCommissions[emp.id] || 0);
+      const rateVal = (emp.commissionRate !== undefined && emp.commissionRate !== null)
+        ? (emp.commissionRate / 100)
+        : COMMISSION_RATE;
+      const rawCommission = (salesRevenueShares[emp.id] || 0) * rateVal;
+      const salesCommission = isServiceEmp ? 0 : Math.round(rawCommission);
       const toPay = salary + finalRazvozka - advance + correction + salesCommission;
       
       stats[emp.id] = { 
