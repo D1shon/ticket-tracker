@@ -83,7 +83,12 @@ const SalesPage = () => {
       if (!firebaseUser) return;
       const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', activeClub));
       unsub = onSnapshot(q, async snap => {
-        const empList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.isService);
+        const empList = snap.docs.map(d => {
+          const data = d.data();
+          const nLower = (data.name || '').toLowerCase();
+          const isServ = data.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
+          return { id: d.id, ...data, isService: isServ };
+        }).filter(e => !e.isService);
         if (empList.length === 0) { setTodayClubEmployees([]); return; }
         // Fetch schedule docs for today
         const { doc: fsDoc, getDoc } = await import('firebase/firestore');

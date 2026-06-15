@@ -10,7 +10,8 @@ import {
   updateDoc,
   where,
   getDocs,
-  getDoc
+  getDoc,
+  deleteField
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useTickets } from './TicketContext';
@@ -563,8 +564,25 @@ export const ScheduleProvider = ({ children }) => {
   // Marks/unmarks an employee as a service worker (сервисник).
   // Service workers appear in the schedule but are excluded from hours/salary totals.
   const setEmployeeService = async (id, isService) => {
-    setEmployees(prev => prev.map(e => e.id === id ? { ...e, isService } : e));
-    try { await updateDoc(doc(db, 'employees', id), { isService }); } catch {}
+    setEmployees(prev => prev.map(e => {
+      if (e.id === id) {
+        const updated = { ...e, isService };
+        if (isService) {
+          delete updated.commissionRate;
+        }
+        return updated;
+      }
+      return e;
+    }));
+    try { 
+      const updateData = { isService };
+      if (isService) {
+        updateData.commissionRate = deleteField();
+      }
+      await updateDoc(doc(db, 'employees', id), updateData); 
+    } catch (err) {
+      console.error('Error updating service worker status:', err);
+    }
   };
 
   // ─── moveEmployee ─────────────────────────────────────────────────────────

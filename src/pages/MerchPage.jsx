@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { 
   collection, query, onSnapshot, setDoc, doc, deleteDoc, 
-  serverTimestamp, addDoc, updateDoc, increment, where
+  serverTimestamp, addDoc, updateDoc, increment, where, getDoc
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
@@ -33,6 +33,113 @@ const MerchPage = () => {
   const [savingResort, setSavingResort] = useState(false);
   const [commissionRates, setCommissionRates] = useState({}); // salespersonName -> rate string
   const [expandedPersons, setExpandedPersons] = useState({}); // salespersonName -> boolean
+  const [autoDistributeBySchedule, setAutoDistributeBySchedule] = useState(true);
+  const [clubEmployees, setClubEmployees] = useState([]);
+  const [clubSchedules, setClubSchedules] = useState({}); // empId -> days object
+
+  // Load all employees and schedules for the selected club to allow auto-assigning by schedule
+  useEffect(() => {
+    if (selectedClub === 'ALL') {
+      setClubEmployees([]);
+      setClubSchedules({});
+      return;
+    }
+    const q = query(collection(db, 'employees'), where('club', '==', selectedClub));
+    const unsubEmps = onSnapshot(q, async snap => {
+      const emps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setClubEmployees(emps);
+
+      // Restore saved commission rates from Firestore (Firestore values win on first load)
+      const rates = {};
+      emps.forEach(emp => {
+        const isServ = emp.isService === true || 
+                       (emp.name || '').toLowerCase().includes('сервис') || 
+                       (emp.name || '').toLowerCase().includes('техник') || 
+                       (emp.name || '').toLowerCase().includes('стажер');
+        if (isServ) return;
+        if (emp.commissionRate != null && emp.commissionRate !== '') {
+          rates[emp.name] = String(emp.commissionRate);
+        }
+      });
+      // Always let Firestore values fill in missing entries (don't override edits already in state)
+      setCommissionRates(prev => ({ ...rates, ...prev }));
+      
+      const scheds = {};
+      await Promise.all(emps.map(async emp => {
+        const schedDocRef = doc(db, 'schedules', emp.id);
+        const schedSnap = await getDoc(schedDocRef);
+        if (schedSnap.exists()) {
+          scheds[emp.id] = schedSnap.data()?.days || {};
+        }
+      }));
+      setClubSchedules(scheds);
+    });
+    return () => unsubEmps();
+  }, [selectedClub]);
+
+  const getAdminsWorkingAt = useCallback((saleDate, clubName) => {
+    const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
+    const dayStr = String(saleDate.getDate());
+    const hour = saleDate.getHours();
+    const min = saleDate.getMinutes();
+    const timeVal = hour * 60 + min; // sale time in minutes since midnight
+    
+    const workingAdmins = [];
+    
+    // Filter clubEmployees for this club and month, excluding service employees
+    const monthEmps = clubEmployees.filter(emp => {
+      const isServ = emp.isService === true || 
+                     (emp.name || '').toLowerCase().includes('сервис') || 
+                     (emp.name || '').toLowerCase().includes('техник') || 
+                     (emp.name || '').toLowerCase().includes('стажер');
+      return !isServ && emp.monthKey === monthKey && emp.club === clubName;
+    });
+    
+    monthEmps.forEach(emp => {
+      const days = clubSchedules[emp.id];
+      if (!days) return;
+      const shiftStr = days[dayStr];
+      if (!shiftStr) return;
+      
+      const cleanShift = shiftStr.trim().toLowerCase();
+      if (!cleanShift || cleanShift === 'выходной') return;
+      
+      // Parse shift interval, e.g. "9:00-19:00" or "09:00 - 21:00" or "13:30-23:00"
+      const parts = cleanShift.split('-');
+      if (parts.length === 2) {
+        const startPart = parts[0].trim();
+        const endPart = parts[1].trim();
+        
+        const parseTimeToMinutes = (tStr) => {
+          const tParts = tStr.split(':');
+          if (tParts.length >= 1) {
+            const h = parseInt(tParts[0]) || 0;
+            const m = parseInt(tParts[1]) || 0;
+            return h * 60 + m;
+          }
+          return null;
+        };
+        
+        const startMin = parseTimeToMinutes(startPart);
+        const endMin = parseTimeToMinutes(endPart);
+        
+        if (startMin !== null && endMin !== null) {
+          if (endMin < startMin) {
+            // Shift spans midnight (e.g. 14:00 - 02:00)
+            if (timeVal >= startMin || timeVal <= endMin) {
+              workingAdmins.push(emp.name);
+            }
+          } else {
+            if (timeVal >= startMin && timeVal <= endMin) {
+              workingAdmins.push(emp.name);
+            }
+          }
+        }
+      }
+    });
+    
+    return workingAdmins;
+  }, [clubEmployees, clubSchedules]);
   
   // Sync selectedClub if user updates
   useEffect(() => {
@@ -115,7 +222,12 @@ const MerchPage = () => {
       if (!firebaseUser) return;
       const q = query(collection(db, 'employees'), where('monthKey', '==', monthKey), where('club', '==', activeClubForEmployees));
       unsub = onSnapshot(q, async snap => {
-        const empList = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.isService);
+        const empList = snap.docs.map(d => {
+          const data = d.data();
+          const nLower = (data.name || '').toLowerCase();
+          const isServ = data.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
+          return { id: d.id, ...data, isService: isServ };
+        }).filter(e => !e.isService);
         if (empList.length === 0) { setTodayClubEmployees([]); return; }
         
         const { doc: fsDoc, getDoc } = await import('firebase/firestore');
@@ -1256,11 +1368,18 @@ const MerchPage = () => {
             if (endDate && dateStr > endDate) return false;
             return true;
           });
-          // Group by salespersonName (supporting up to 2 admins per sale)
+          // Group by salespersonName (supporting up to 2 admins per sale, optionally auto-distributing by schedule)
           const byPerson = {};
           filtered.forEach(s => {
-            const rawName = s.salespersonName || 'Не указан';
-            const names = rawName.split(',').map(n => n.trim()).filter(Boolean);
+            let names = [];
+            if (autoDistributeBySchedule && s.createdAt?.seconds) {
+              const saleDate = new Date(s.createdAt.seconds * 1000);
+              names = getAdminsWorkingAt(saleDate, s.club);
+            }
+            if (names.length === 0) {
+              const rawName = s.salespersonName || 'Не указан';
+              names = rawName.split(',').map(n => n.trim()).filter(Boolean);
+            }
             if (names.length === 0) names.push('Не указан');
             
             const shareTotal = (s.totalSum || 0) / names.length;
@@ -1268,7 +1387,7 @@ const MerchPage = () => {
             
             names.forEach(name => {
               if (!byPerson[name]) byPerson[name] = { sales: [], total: 0, count: 0 };
-              byPerson[name].sales.push(s);
+              byPerson[name].sales.push({ ...s, autoNames: names });
               byPerson[name].total += shareTotal;
               byPerson[name].count += shareCount;
             });
@@ -1282,6 +1401,19 @@ const MerchPage = () => {
                 <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.08em', marginBottom: 4 }}>{activeClubForSales} · Общая сумма продаж</div>
                 <div style={{ fontSize: 32, fontWeight: 950, color: '#8b5cf6' }}>{grandTotal.toLocaleString('ru-RU')} ₸</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{filtered.length} продаж · {Object.keys(byPerson).length} сотрудников{startDate || endDate ? ` · фильтр: ${startDate || '...'} — ${endDate || '...сейчас'}` : ''}</div>
+              </div>
+              
+              {/* Auto distribute toggle */}
+              <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
+                  <input 
+                    type="checkbox"
+                    checked={autoDistributeBySchedule}
+                    onChange={(e) => setAutoDistributeBySchedule(e.target.checked)}
+                    style={{ width: 15, height: 15, accentColor: '#8b5cf6', cursor: 'pointer', borderRadius: 4 }}
+                  />
+                  <span>Распределять продажи по графику смен (по дате и времени смены)</span>
+                </label>
               </div>
               {sortedPersons.length === 0 ? (
                 <div className="py-20 text-center text-[var(--text-muted)]">
@@ -1304,6 +1436,10 @@ const MerchPage = () => {
                     const rate = commissionRates[name] || '';
                     const parsedRate = parseFloat(rate) || 0;
                     const award = Math.round((data.total * parsedRate) / 100);
+                    // Check if this person is a service employee — no commission for them
+                    const empRecord = clubEmployees.find(e => e.name.trim().toLowerCase() === name.trim().toLowerCase());
+                    const nLower = name.trim().toLowerCase();
+                    const isServicePerson = empRecord?.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
                     return (
                       <div key={name} style={{ background: 'var(--bg-hover)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1318,38 +1454,40 @@ const MerchPage = () => {
                           </div>
                           
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            {/* Commission rate input */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 8px', height: '36px' }}>
-                              <input 
-                                type="number" 
-                                placeholder="0" 
-                                min="0"
-                                max="100"
-                                value={rate}
-                                onChange={async (e) => {
-                                  const val = e.target.value;
-                                  setCommissionRates(prev => ({ ...prev, [name]: val }));
-                                  
-                                  const emp = todayClubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
-                                  if (emp) {
-                                    try {
-                                      const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
-                                      await fsUpdateDoc(fsDoc(db, 'employees', emp.id), {
-                                        commissionRate: val === '' ? null : parseFloat(val)
-                                      });
-                                    } catch (err) {
-                                      console.error('Error saving commission rate:', err);
+                            {/* Commission rate input — hidden for service employees */}
+                            {!isServicePerson && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 8px', height: '36px' }}>
+                                <input 
+                                  type="number" 
+                                  placeholder="0" 
+                                  min="0"
+                                  max="100"
+                                  value={rate}
+                                  onChange={async (e) => {
+                                    const val = e.target.value;
+                                    setCommissionRates(prev => ({ ...prev, [name]: val }));
+                                    
+                                    const emp = clubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
+                                    if (emp) {
+                                      try {
+                                        const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
+                                        await fsUpdateDoc(fsDoc(db, 'employees', emp.id), {
+                                          commissionRate: val === '' ? null : parseFloat(val)
+                                        });
+                                      } catch (err) {
+                                        console.error('Error saving commission rate:', err);
+                                      }
                                     }
-                                  }
-                                }}
-                                style={{ width: 36, background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 800, outline: 'none', textAlign: 'center' }} 
-                              />
-                              <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)' }}>%</span>
-                            </div>
+                                  }}
+                                  style={{ width: 36, background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 800, outline: 'none', textAlign: 'center' }} 
+                                />
+                                <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)' }}>%</span>
+                              </div>
+                            )}
                             
                             <div style={{ textAlign: 'right' }}>
                               <div style={{ fontSize: 15, fontWeight: 950, color: '#8b5cf6' }}>{data.total.toLocaleString('ru-RU')} ₸</div>
-                              {parsedRate > 0 && (
+                              {!isServicePerson && parsedRate > 0 && (
                                 <div style={{ fontSize: 11, fontWeight: 900, color: '#10b981', marginTop: 1 }}>
                                   Награда: {award.toLocaleString('ru-RU')} ₸
                                 </div>
@@ -1362,16 +1500,6 @@ const MerchPage = () => {
                         <div style={{ height: 4, background: 'var(--border)', borderRadius: 4, marginBottom: 10, overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', borderRadius: 4, transition: 'width 0.6s ease' }} />
                         </div>
-                        {/* Products list */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 12 }}>
-                          {Object.entries(byProduct).sort((a, b) => b[1].total - a[1].total).map(([pName, pData]) => (
-                            <div key={pName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-secondary)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{pName}</span>
-                              <span style={{ fontWeight: 700, flexShrink: 0 }}>{pData.qty} шт · {pData.total.toLocaleString('ru-RU')} ₸</span>
-                            </div>
-                          ))}
-                        </div>
-
                         {/* Collapsible individual sales list */}
                         <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 10 }}>
                           <button 
@@ -1390,7 +1518,11 @@ const MerchPage = () => {
                                   <div key={s.id} className="flex items-center justify-between text-xs py-1 hover:bg-[var(--bg-primary)] rounded px-1">
                                     <div className="flex flex-col">
                                       <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({s.qty} шт)</span>
-                                      <span className="text-[9px] text-[var(--text-muted)]">{sDate.toLocaleDateString('ru-RU')} в {sDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · {s.paymentMethod}</span>
+                                      <span className="text-[9px] text-[var(--text-muted)]">
+                                        {sDate.toLocaleDateString('ru-RU')} в {sDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · {s.paymentMethod}
+                                        {s.salespersonName && ` · В чекбоксе: ${s.salespersonName}`}
+                                        {autoDistributeBySchedule && s.autoNames && ` · По графику: ${s.autoNames.join(', ')}`}
+                                      </span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className="font-bold text-emerald-400">{(s.totalSum || 0).toLocaleString()} ₸</span>

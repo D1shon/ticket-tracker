@@ -587,76 +587,94 @@ const SchedulePage = () => {
       const dayNum = format(dateObj, 'd');
       const saleClub = sale.club || '4YOU';
 
-      // 1. Direct salesperson match (especially for NURLY ORDA)
-      if (sale.salespersonName) {
-        const matchedEmp = employees.find(e => 
-          (e.club || '4YOU') === saleClub &&
-          e.name.trim().toLowerCase() === sale.salespersonName.trim().toLowerCase()
-        );
-        if (matchedEmp) {
-          const rateVal = matchedEmp.commissionRate !== undefined && matchedEmp.commissionRate !== null
-            ? (matchedEmp.commissionRate / 100)
-            : COMMISSION_RATE;
-          salesCommissions[matchedEmp.id] += (sale.totalSum || 0) * rateVal;
-          return;
-        }
-      }
-
-      // 2. Fallback to shift-based distribution
-      const saleTimeMin = dateObj.getHours() * 60 + dateObj.getMinutes();
-      const isMorningSale = saleTimeMin < (14 * 60 + 30); // before 14:30
-
-      // Find working employees of this club on this day
-      const workingEmps = employees.filter(e => {
-        if ((e.club || '4YOU') !== saleClub) return false;
-        const docId = e.id.includes('_') ? e.id : `${monthKey}_${e.id}`;
-        const data = scheduleData[docId] || {};
-        const val = data.days?.[dayNum] || '';
-        return isWorkingShift(val);
-      });
-
-      if (workingEmps.length === 0) return;
-
-      // Classify into morning / evening shifts
-      const morningEmps = [];
-      const eveningEmps = [];
-
-      workingEmps.forEach(e => {
-        const docId = e.id.includes('_') ? e.id : `${monthKey}_${e.id}`;
-        const data = scheduleData[docId] || {};
-        const val = data.days?.[dayNum] || '';
+      // Attribute sale by shift schedule first, matching MerchPage logic
+      let names = [];
+      if (sale.createdAt?.seconds) {
+        const saleTimeMin = dateObj.getHours() * 60 + dateObj.getMinutes();
         
-        // Parse shift start time (e.g., "8:30-14:30" -> starts at 8:30)
-        let startMin = 0;
-        const clean = String(val).trim().replace(/\s+/g, '').replace(/\./g, ':');
-        if (clean.includes('-')) {
-          const parts = clean.split('-');
-          const toMin = (s) => {
-            const c = s.trim();
-            if (!c.includes(':')) return (parseInt(c) || 0) * 60;
-            const [h, m] = c.split(':').map(Number);
-            return (h || 0) * 60 + (m || 0);
-          };
-          startMin = toMin(parts[0]);
-        }
-        
-        if (startMin < (14 * 60 + 30)) {
-          morningEmps.push(e);
-        } else {
-          eveningEmps.push(e);
-        }
-      });
+        // Find all non-service employees of this club
+        const clubEmps = employees.filter(e => {
+          if ((e.club || '4YOU') !== saleClub) return false;
+          const isServ = e.isService === true || 
+                         (e.name || '').toLowerCase().includes('сервис') || 
+                         (e.name || '').toLowerCase().includes('техник') || 
+                         (e.name || '').toLowerCase().includes('стажер');
+          return !isServ;
+        });
 
-      const targets = isMorningSale 
-        ? (morningEmps.length > 0 ? morningEmps : workingEmps) 
-        : (eveningEmps.length > 0 ? eveningEmps : workingEmps);
+        clubEmps.forEach(emp => {
+          const docId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+          const days = scheduleData[docId]?.days || {};
+          const shiftStr = days[dayNum];
+          if (!shiftStr) return;
 
-      if (targets.length > 0) {
-        const share = ((sale.totalSum || 0) * COMMISSION_RATE) / targets.length;
-        targets.forEach(e => {
-          salesCommissions[e.id] += share;
+          const cleanShift = shiftStr.trim().toLowerCase();
+          if (!cleanShift || cleanShift === 'выходной') return;
+
+          const parts = cleanShift.split('-');
+          if (parts.length === 2) {
+            const startPart = parts[0].trim();
+            const endPart = parts[1].trim();
+            
+            const parseTimeToMinutes = (tStr) => {
+              const tParts = tStr.split(':');
+              if (tParts.length >= 1) {
+                const h = parseInt(tParts[0]) || 0;
+                const m = parseInt(tParts[1]) || 0;
+                return h * 60 + m;
+              }
+              return null;
+            };
+
+            const startMin = parseTimeToMinutes(startPart);
+            const endMin = parseTimeToMinutes(endPart);
+
+            if (startMin !== null && endMin !== null) {
+              if (endMin < startMin) {
+                if (saleTimeMin >= startMin || saleTimeMin <= endMin) {
+                  names.push(emp.name.trim().toLowerCase());
+                }
+              } else {
+                if (saleTimeMin >= startMin && saleTimeMin <= endMin) {
+                  names.push(emp.name.trim().toLowerCase());
+                }
+              }
+            }
+          }
         });
       }
+
+      // If no one is scheduled, fallback to manual salespersonName
+      if (names.length === 0) {
+        const rawName = sale.salespersonName || 'Не указан';
+        names = rawName.split(',').map(n => n.trim().toLowerCase()).filter(Boolean);
+      }
+      if (names.length === 0) {
+        names.push('не указан');
+      }
+
+      // Split the sale total among the attributed salespeople
+      const shareTotal = (sale.totalSum || 0) / names.length;
+
+      names.forEach(name => {
+        const matchedEmp = employees.find(e => 
+          (e.club || '4YOU') === saleClub &&
+          e.name.trim().toLowerCase() === name
+        );
+        if (matchedEmp) {
+          const isServ = matchedEmp.isService === true || 
+                         (matchedEmp.name || '').toLowerCase().includes('сервис') || 
+                         (matchedEmp.name || '').toLowerCase().includes('техник') || 
+                         (matchedEmp.name || '').toLowerCase().includes('стажер');
+          if (!isServ) {
+            // Use commissionRate from employee record (no fallback to default COMMISSION_RATE)
+            const rateVal = (matchedEmp.commissionRate !== undefined && matchedEmp.commissionRate !== null)
+              ? (matchedEmp.commissionRate / 100)
+              : 0;
+            salesCommissions[matchedEmp.id] += shareTotal * rateVal;
+          }
+        }
+      });
     });
     
     employees.forEach(emp => {
@@ -719,7 +737,11 @@ const SchedulePage = () => {
 
       const advance = data.advance === '-' ? 0 : (parseFloat(data.advance) || 0);
       const correction = data.correction === '-' ? 0 : (parseFloat(data.correction) || 0);
-      const salesCommission = salesCommissions[emp.id] || 0;
+      const isServiceEmp = emp.isService === true || 
+                           (emp.name || '').toLowerCase().includes('сервис') || 
+                           (emp.name || '').toLowerCase().includes('техник') || 
+                           (emp.name || '').toLowerCase().includes('стажер');
+      const salesCommission = isServiceEmp ? 0 : (salesCommissions[emp.id] || 0);
       const toPay = salary + finalRazvozka - advance + correction + salesCommission;
       
       stats[emp.id] = { 
