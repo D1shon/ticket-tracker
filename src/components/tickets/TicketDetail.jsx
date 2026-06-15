@@ -340,7 +340,7 @@ const TicketDetail = () => {
       // local fallback
       setMessages(prev => [...prev, {
         id: Date.now(), text, author: 'Вы',
-        time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toISOString(),
         attachment,
       }]);
     }
@@ -565,7 +565,7 @@ const TicketDetail = () => {
                       </div>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatAuthor(m.author)} · {m.time}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatAuthor(m.author)} · {formatCreatedDate(m.createdAt || m.time)}</div>
                 </div>
               ))}
             </div>
