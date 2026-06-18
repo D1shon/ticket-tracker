@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ShieldCheck, ChevronLeft, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { ShieldCheck, ChevronLeft, AlertCircle, CheckCircle2, Clock, Wind } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { useChecklist } from '../store/ChecklistContext';
 import { CHECK_ITEMS, SHIFTS_DATA, getShiftsForDate } from '../data/checklistData';
@@ -27,7 +27,7 @@ const ChecklistDetail = () => {
     return new Date();
   };
   const activeDate = getDateObj();
-  const shift = getShiftsForDate(activeDate, club).find(s => s.id === shiftId) || SHIFTS_DATA.find(s => s.id === shiftId);
+  const shift = getShiftsForDate(activeDate).find(s => s.id === shiftId) || SHIFTS_DATA.find(s => s.id === shiftId);
   const cardData = CHECK_ITEMS[cardId];
   
   const [itemStates, setItemStates] = useState({});
@@ -130,7 +130,7 @@ const ChecklistDetail = () => {
     navigate(`/checklists?club=${club}&date=${dateKey}`);
   };
 
-  const allAnswered = cardData.items.every((_, i) => itemStates[i] !== undefined && itemStates[i] !== null);
+  const allAnswered = cardData.items.every((item, i) => item.startsWith('§') || (itemStates[i] !== undefined && itemStates[i] !== null));
   const hasIssues = Object.values(itemStates).some(state => state === 'issue');
   const isSubmitDisabled = !allAnswered || (hasIssues && !inspectorName.trim());
 
@@ -165,12 +165,24 @@ const ChecklistDetail = () => {
         {/* Items List */}
         <div className="flex flex-col gap-6 mb-12">
           {cardData.items.map((item, i) => {
+            if (item.startsWith('§')) {
+              return (
+                <div key={i} className="flex items-center gap-2 mt-2 mb-1">
+                  <Wind size={13} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-purple)' }}>
+                    {item.slice(1)}
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                </div>
+              );
+            }
+
             const state = itemStates[i];
             const ts = itemTimestamps[i];
 
             return (
               <div key={i} className="flex flex-col gap-3">
-                <div 
+                <div
                   className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
                     state === 'ok' ? 'bg-green-500/5 border-green-500/20' : 
                     state === 'issue' ? 'bg-red-500/5 border-red-500/20' : 

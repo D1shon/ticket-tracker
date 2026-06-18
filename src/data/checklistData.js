@@ -1,4 +1,4 @@
-import { Coffee, Sun, Moon, Activity, Sparkles, Wrench, ShieldCheck, Wind } from 'lucide-react';
+import { Coffee, Sun, Moon, Activity, Sparkles, Wrench, ShieldCheck } from 'lucide-react';
 
 export const CLUBS = ['ВСЕ КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
@@ -36,14 +36,8 @@ export const CHECK_ITEMS = {
       'Проверка и санитарная обработка кулеров',
       'Осмотр целостности напольного покрытия (резина/ковролин)',
       'Проверка доводчиков дверей и входной группы',
-      'Проверка работоспособности камер'
-    ]
-  },
-  'tech-hvac': {
-    title: 'Вентиляция и климат',
-    icon: Wind,
-    clubs: ['COLIBRI'],
-    items: [
+      'Проверка работоспособности камер',
+      '§Вентиляция и климат',
       'Проверка приточно-вытяжной вентиляции (подача/вытяжка)',
       'Проверка чиллера (показания давления, температуры)',
       'Проверка кондиционирования (фанкойлы, дренаж)',
@@ -109,19 +103,7 @@ export const SHIFTS_DATA = [
   },
 ];
 
-const addClubCards = (cards, club) => {
-  const extras = Object.entries(CHECK_ITEMS)
-    .filter(([, v]) => v.clubs && v.clubs.includes(club))
-    .map(([k]) => k);
-  // Insert after 'tech' if present, otherwise append
-  const techIdx = cards.indexOf('tech');
-  if (techIdx !== -1) {
-    return [...cards.slice(0, techIdx + 1), ...extras, ...cards.slice(techIdx + 1)];
-  }
-  return [...cards, ...extras];
-};
-
-export const getShiftsForDate = (date, club = null) => {
+export const getShiftsForDate = (date) => {
   const d = date instanceof Date ? date : new Date(date);
   const day = d.getDay();
   const isWeekend = day === 0 || day === 6; // 0 is Sunday, 6 is Saturday
@@ -152,7 +134,7 @@ export const getShiftsForDate = (date, club = null) => {
         icon: Coffee,
         color: '#f97316',
         isCurrent: isToday && activeShiftId === 'morning',
-        cards: addClubCards(['equipment', 'cleaning', 'tech', 'opening'], club)
+        cards: ['equipment', 'cleaning', 'tech', 'opening']
       },
       {
         id: 'day',
@@ -161,7 +143,7 @@ export const getShiftsForDate = (date, club = null) => {
         icon: Sun,
         color: '#facc15',
         isCurrent: isToday && activeShiftId === 'day',
-        cards: addClubCards(['equipment', 'cleaning', 'tech'], club)
+        cards: ['equipment', 'cleaning', 'tech']
       },
       {
         id: 'evening',
@@ -170,7 +152,7 @@ export const getShiftsForDate = (date, club = null) => {
         icon: Moon,
         color: '#6366f1',
         isCurrent: isToday && activeShiftId === 'evening',
-        cards: addClubCards(['equipment', 'cleaning', 'tech', 'closing'], club)
+        cards: ['equipment', 'cleaning', 'tech', 'closing']
       }
     ];
   }

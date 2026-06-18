@@ -104,7 +104,7 @@ const ChecklistPage = () => {
             <h1 className="text-xl font-bold tracking-tight uppercase" style={{ letterSpacing: '0.02em' }}>Мониторинг клуба</h1>
           </div>
           <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-            Регулярные проверки по расписанию: {getShiftsForDate(activeDate, activeClub).map(s => s.time).join(' - ')}
+            Регулярные проверки по расписанию: {getShiftsForDate(activeDate).map(s => s.time).join(' - ')}
           </p>
         </div>
       </div>
@@ -186,7 +186,7 @@ const ChecklistPage = () => {
 
       {/* Shifts List */}
       <div className="flex flex-col gap-6">
-        {getShiftsForDate(activeDate, activeClub).map(shift => (
+        {getShiftsForDate(activeDate).map(shift => (
           <div 
             key={shift.id} 
             className={`relative rounded-2xl transition-all ${
