@@ -61,7 +61,7 @@ export const ScheduleProvider = ({ children }) => {
       shift1: '8:30-14:30',
       shift2: '14:30-21:30',
       hourlyRate: 1500,
-      visibleCols: { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true }
+      visibleCols: { totalHours: true, salary: true, salesCommission: true, razvozka: true, advance: true, correction: true, toPay: true }
     };
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -108,7 +108,7 @@ export const ScheduleProvider = ({ children }) => {
       shift1: '8:30-14:30',
       shift2: '14:30-21:30',
       hourlyRate: 1500,
-      visibleCols: { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true }
+      visibleCols: { totalHours: true, salary: true, salesCommission: true, razvozka: true, advance: true, correction: true, toPay: true }
     };
     try {
       const saved = localStorage.getItem(`${STORAGE_KEYS.SETTINGS}_${monthKey}`);
@@ -236,7 +236,7 @@ export const ScheduleProvider = ({ children }) => {
         unsubSettings = onSnapshot(docRef, async (snapshot) => {
           if (snapshot.exists()) {
             const remote = snapshot.data();
-            const defaultVisibleCols = { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true };
+            const defaultVisibleCols = { totalHours: true, salary: true, salesCommission: true, razvozka: true, advance: true, correction: true, toPay: true };
             const merged = {
               shift1: remote.shift1 || '8:30-14:30',
               shift2: remote.shift2 || '14:30-21:30',
@@ -276,7 +276,7 @@ export const ScheduleProvider = ({ children }) => {
                     shift1: '8:30-14:30',
                     shift2: '14:30-21:30',
                     hourlyRate: 1500,
-                    visibleCols: { totalHours: true, salary: true, razvozka: true, advance: true, correction: true, toPay: true }
+                    visibleCols: { totalHours: true, salary: true, salesCommission: true, razvozka: true, advance: true, correction: true, toPay: true }
                   };
                   console.log(`Initialized settings with default settings for ${monthKey}`);
                 }

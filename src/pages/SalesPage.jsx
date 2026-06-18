@@ -85,9 +85,10 @@ const SalesPage = () => {
       unsub = onSnapshot(q, async snap => {
         const empList = snap.docs.map(d => {
           const data = d.data();
-          const nLower = (data.name || '').toLowerCase();
+          const trimmedName = (data.name || '').trim();
+          const nLower = trimmedName.toLowerCase();
           const isServ = data.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
-          return { id: d.id, ...data, isService: isServ };
+          return { id: d.id, ...data, name: trimmedName, isService: isServ };
         }).filter(e => !e.isService);
         if (empList.length === 0) { setTodayClubEmployees([]); return; }
         // Fetch schedule docs for today
@@ -109,15 +110,9 @@ const SalesPage = () => {
     return () => { unsubAuth(); if (unsub) unsub(); };
   }, [activeClub]);
 
-  const filteredEmployees = useMemo(() => {
-    return todayClubEmployees.filter(emp => {
-      if (activeClub === 'NURLY ORDA') {
-        return true; // Show all for Nurly Orda
-      }
-      const cleanShift = (emp.shift || '').trim().toLowerCase();
-      return cleanShift && cleanShift !== 'выходной'; // Only show working employees for other clubs
-    });
-  }, [todayClubEmployees, activeClub]);
+  // Show all club employees in the selector so any admin can be manually assigned,
+  // regardless of today's schedule. Shift label in the button shows working status.
+  const filteredEmployees = todayClubEmployees;
 
   // Products for active club only
   const clubProducts = useMemo(() =>

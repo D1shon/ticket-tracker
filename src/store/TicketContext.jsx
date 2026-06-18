@@ -8,6 +8,7 @@ export const USER_ROLES = {
   // ── Chefs (full admin) ────────────────────────────────────────────────────
   'dilshat.r@hj.fit': { role: 'chef', club: null, displayName: 'Дильшат' },
   'magzhan@hj.fit':   { role: 'chef', club: null, displayName: 'Магжан' },
+  'iliyas.s@hj.fit':  { role: 'chef', club: null, displayName: 'Илияс' },
 
   // ── 4YOU ─────────────────────────────────────────────────────────────────
   'saniya@hj.fit':              { role: 'manager', club: '4YOU', displayName: 'Сания' },

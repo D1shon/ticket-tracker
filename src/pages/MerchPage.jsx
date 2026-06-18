@@ -1358,7 +1358,17 @@ const MerchPage = () => {
         /* --- SALES TOTALS TAB --- */
         (() => {
           const activeClubForSales = selectedClub;
-          const nurlySales = sales.filter(s => s.club === activeClubForSales && (s.qty || 0) > 0);
+          const _now = new Date();
+          const currentMonthKey = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
+          const nurlySales = sales.filter(s => {
+            if (s.club !== activeClubForSales || (s.qty || 0) <= 0) return false;
+            if (s.createdAt?.seconds) {
+              const d = new Date(s.createdAt.seconds * 1000);
+              const saleMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+              if (saleMonth !== currentMonthKey) return false;
+            }
+            return true;
+          });
           // Filter by date range if set
           const filtered = nurlySales.filter(s => {
             if (!s.createdAt?.seconds) return true;
@@ -1368,17 +1378,13 @@ const MerchPage = () => {
             if (endDate && dateStr > endDate) return false;
             return true;
           });
-          // Group by salespersonName (supporting up to 2 admins per sale, optionally auto-distributing by schedule)
+          // Always distribute by schedule (who was on shift at sale time)
           const byPerson = {};
           filtered.forEach(s => {
             let names = [];
             if (autoDistributeBySchedule && s.createdAt?.seconds) {
               const saleDate = new Date(s.createdAt.seconds * 1000);
               names = getAdminsWorkingAt(saleDate, s.club);
-            }
-            if (names.length === 0) {
-              const rawName = s.salespersonName || 'Не указан';
-              names = rawName.split(',').map(n => n.trim()).filter(Boolean);
             }
             if (names.length === 0) names.push('Не указан');
             
@@ -1439,8 +1445,20 @@ const MerchPage = () => {
                     const isServicePerson = empRecord?.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
 
                     const rate = commissionRates[name] || '';
-                    const parsedRate = isServicePerson ? 0 : (rate !== '' ? (parseFloat(rate) || 0) : 2);
-                    const award = Math.round((data.total * parsedRate) / 100);
+                    const parsedCustom = parseFloat(rate);
+                    // Only treat as custom if explicitly set to a positive value; 0 or empty → auto
+                    const hasCustomRate = rate !== '' && !isNaN(parsedCustom) && parsedCustom > 0;
+                    let awardRaw = 0;
+                    if (!isServicePerson) {
+                      data.sales.forEach(s => {
+                        const numAdmins = s.autoNames?.length || 1;
+                        const shareAmount = (s.totalSum || 0) / numAdmins;
+                        const saleRate = hasCustomRate ? parsedCustom : (numAdmins === 1 ? 8 : 4);
+                        awardRaw += shareAmount * saleRate / 100;
+                      });
+                    }
+                    const award = Math.round(awardRaw);
+                    const customRate = hasCustomRate ? parsedCustom : null;
                     return (
                       <div key={name} style={{ background: 'var(--bg-hover)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1457,40 +1475,59 @@ const MerchPage = () => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             {/* Commission rate input — hidden for service employees */}
                             {!isServicePerson && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 8px', height: '36px' }}>
-                                <input 
-                                  type="number" 
-                                  placeholder="0" 
-                                  min="0"
-                                  max="100"
-                                  value={rate}
-                                  onChange={async (e) => {
-                                    const val = e.target.value;
-                                    setCommissionRates(prev => ({ ...prev, [name]: val }));
-                                    
-                                    const emp = clubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
-                                    if (emp) {
-                                      try {
-                                        const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
-                                        await fsUpdateDoc(fsDoc(db, 'employees', emp.id), {
-                                          commissionRate: val === '' ? null : parseFloat(val)
-                                        });
-                                      } catch (err) {
-                                        console.error('Error saving commission rate:', err);
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-primary)', border: `1px solid ${hasCustomRate ? '#8b5cf6' : 'var(--border)'}`, borderRadius: 10, padding: '4px 8px', height: '36px' }}>
+                                  <input
+                                    type="number"
+                                    placeholder="—"
+                                    min="0"
+                                    max="100"
+                                    value={rate === '0' ? '' : rate}
+                                    onChange={async (e) => {
+                                      const val = e.target.value;
+                                      setCommissionRates(prev => ({ ...prev, [name]: val }));
+                                      const emp = clubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
+                                      if (emp) {
+                                        try {
+                                          const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
+                                          await fsUpdateDoc(fsDoc(db, 'employees', emp.id), {
+                                            commissionRate: val === '' ? null : parseFloat(val)
+                                          });
+                                        } catch (err) {
+                                          console.error('Error saving commission rate:', err);
+                                        }
                                       }
-                                    }
-                                  }}
-                                  style={{ width: 36, background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 800, outline: 'none', textAlign: 'center' }} 
-                                />
-                                <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)' }}>%</span>
+                                    }}
+                                    style={{ width: 36, background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 800, outline: 'none', textAlign: 'center' }}
+                                  />
+                                  <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)' }}>%</span>
+                                </div>
+                                {hasCustomRate && (
+                                  <button
+                                    title="Сбросить на авто (8% соло / 4% пара)"
+                                    onClick={async () => {
+                                      setCommissionRates(prev => ({ ...prev, [name]: '' }));
+                                      const emp = clubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
+                                      if (emp) {
+                                        try {
+                                          const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
+                                          await fsUpdateDoc(fsDoc(db, 'employees', emp.id), { commissionRate: null });
+                                        } catch (err) {
+                                          console.error('Error clearing commission rate:', err);
+                                        }
+                                      }
+                                    }}
+                                    style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '2px 4px', borderRadius: 6 }}
+                                  >×</button>
+                                )}
                               </div>
                             )}
                             
                             <div style={{ textAlign: 'right' }}>
                               <div style={{ fontSize: 15, fontWeight: 950, color: '#8b5cf6' }}>{data.total.toLocaleString('ru-RU')} ₸</div>
-                              {!isServicePerson && parsedRate > 0 && (
+                              {!isServicePerson && award > 0 && (
                                 <div style={{ fontSize: 11, fontWeight: 900, color: '#10b981', marginTop: 1 }}>
-                                  Награда: {award.toLocaleString('ru-RU')} ₸ ({parsedRate}%)
+                                  Награда: {award.toLocaleString('ru-RU')} ₸{customRate !== null ? ` (${customRate}%)` : ''}
                                 </div>
                               )}
                               <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}% от общего</div>
@@ -1518,7 +1555,7 @@ const MerchPage = () => {
                                 return (
                                   <div key={s.id} className="flex items-center justify-between text-xs py-1 hover:bg-[var(--bg-primary)] rounded px-1">
                                     <div className="flex flex-col">
-                                      <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({s.qty} шт)</span>
+                                      <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({s.autoNames?.length > 1 ? `${((s.qty || 0) / s.autoNames.length).toFixed(1)} из ${s.qty}` : s.qty} шт)</span>
                                       <span className="text-[9px] text-[var(--text-muted)]">
                                         {sDate.toLocaleDateString('ru-RU')} в {sDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · {s.paymentMethod}
                                         {s.salespersonName && ` · В чекбоксе: ${s.salespersonName}`}
@@ -1526,7 +1563,7 @@ const MerchPage = () => {
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <span className="font-bold text-emerald-400">{(s.totalSum || 0).toLocaleString()} ₸</span>
+                                      <span className="font-bold text-emerald-400">{(s.autoNames?.length > 1 ? (s.totalSum || 0) / s.autoNames.length : (s.totalSum || 0)).toLocaleString('ru-RU')} ₸</span>
                                       <button 
                                         onClick={() => handleDeleteSale(s)}
                                         className="p-1 hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 rounded transition-all"

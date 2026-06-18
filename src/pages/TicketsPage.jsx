@@ -188,12 +188,7 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
   const [assignee, setAssignee] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Identify CHEF role (more inclusive check)
-  const isChef = user?.email?.toLowerCase().includes('chef') || 
-                 user?.email?.toLowerCase().includes('sales5') ||
-                 user?.displayName?.toLowerCase().includes('chef') ||
-                 user?.displayName?.toLowerCase().includes('sales5') ||
-                 user?.email === 'dilshat.r@hj.fit'; 
+  const isChef = user?.role === 'chef';
 
   useEffect(() => {
     if (isOpen) {

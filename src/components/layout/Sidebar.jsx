@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Ticket, CheckSquare, Calendar, 
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
-  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen
+  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText
 } from 'lucide-react';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
@@ -20,6 +20,7 @@ const ALL_NAV = [
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
+  { icon: FileText,        label: 'Соглашение',  path: '/policy',      primary: false },
   { icon: Settings,        label: 'Настройки',   path: '/settings',    primary: false },
 ];
 
@@ -47,10 +48,10 @@ const DesktopSidebar = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy';
     }
     if (user?.role === 'marketing') {
-      return item.path === '/merch';
+      return item.path === '/merch' || item.path === '/policy';
     }
     return true;
   });
@@ -195,10 +196,10 @@ const MobileNav = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy';
     }
     if (user?.role === 'marketing') {
-      return item.path === '/merch';
+      return item.path === '/merch' || item.path === '/policy';
     }
     return true;
   });

@@ -40,6 +40,8 @@ const COMMISSION_RATE = 0.02; // 2% merch sales commission rate
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
+const cleanName = (str) => (str || '').replace(/\s*\(.*?\)\s*/g, '').trim().toLowerCase();
+
 // Mapping managers to their respective clubs
 const MANAGER_CLUB_MAP = {
   'sania': '4YOU',
@@ -342,13 +344,7 @@ const SchedulePage = () => {
   const { currentMonth, setCurrentMonth, monthKey, employeesLoading, scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, setEmployeeService, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
   const { user } = useTickets();
 
-  // Identify CHEF role — only these two emails have full chef access
-  const isChef = useMemo(() => {
-    const email = user?.email?.toLowerCase() || '';
-    return user?.role === 'chef' ||
-           email === 'dilshat.r@hj.fit' ||
-           email === 'magzhan@hj.fit';
-  }, [user]);
+  const isChef = useMemo(() => user?.role === 'chef', [user]);
 
   const isManager = user?.role === 'manager';
   // Admin role: sees schedule only, NO financial data
@@ -402,6 +398,36 @@ const SchedulePage = () => {
     });
     return () => { unsubAuth(); if (unsub) unsub(); };
   }, []);
+
+  // ─── Commission Rates (all employees, all months — mirrors MerchPage) ────────
+  const [commissionRatesMap, setCommissionRatesMap] = useState({});
+  useEffect(() => {
+    let unsub = null;
+    const unsubAuth = auth.onAuthStateChanged(firebaseUser => {
+      if (firebaseUser) {
+        unsub = onSnapshot(query(collection(db, 'employees')), snap => {
+          const rates = {};
+          snap.docs.forEach(d => {
+            const emp = d.data();
+            const isServ = emp.isService === true ||
+              (emp.name || '').toLowerCase().includes('сервис') ||
+              (emp.name || '').toLowerCase().includes('техник') ||
+              (emp.name || '').toLowerCase().includes('стажер');
+            if (isServ || !emp.name) return;
+            if (emp.commissionRate != null && emp.commissionRate !== '') {
+              rates[cleanName(emp.name)] = parseFloat(emp.commissionRate);
+            }
+          });
+          setCommissionRatesMap(rates);
+        });
+      } else {
+        if (unsub) { unsub(); unsub = null; }
+        setCommissionRatesMap({});
+      }
+    });
+    return () => { unsubAuth(); if (unsub) unsub(); };
+  }, []);
+
   // financialEdits: tracks in-progress edits for salary/razvozka/advance/correction
   // key: `${empId}-${field}`, value: current string being edited
   const [financialEdits, setFinancialEdits] = useState({});
@@ -570,105 +596,77 @@ const SchedulePage = () => {
       });
     });
 
-    // Sum total sales revenue share for each employee
+    // Compute sales revenue shares — mirrors MerchPage "Итого продаж" byPerson logic exactly.
+    // salespersonName wins (manual override); schedule is fallback for unassigned sales.
     const salesRevenueShares = {};
-    employees.forEach(emp => {
-      salesRevenueShares[emp.id] = 0;
-    });
+    employees.forEach(emp => { salesRevenueShares[emp.id] = 0; });
 
-    merchSales.forEach(sale => {
-      if ((sale.qty || 0) <= 0) return; // skip supplies / adjustments
-      if (!sale.createdAt) return;
+    const isServEmpCheck = (emp) =>
+      emp.isService === true ||
+      (emp.name || '').toLowerCase().includes('сервис') ||
+      (emp.name || '').toLowerCase().includes('техник') ||
+      (emp.name || '').toLowerCase().includes('стажер');
 
-      const dateObj = sale.createdAt.seconds ? new Date(sale.createdAt.seconds * 1000) : new Date(sale.createdAt);
-      const saleMonthKey = format(dateObj, 'yyyy-MM');
-      if (saleMonthKey !== monthKey) return; // only current month
+    const parseTimeToMinutes = (tStr) => {
+      const tParts = (tStr || '').split(':');
+      const h = parseInt(tParts[0]) || 0;
+      const m = parseInt(tParts[1]) || 0;
+      return h * 60 + m;
+    };
 
-      const dayNum = format(dateObj, 'd');
-      const saleClub = sale.club || '4YOU';
+    CLUBS.forEach(clubName => {
+      const byPerson = {};
 
-      // Attribute sale by shift schedule first, matching MerchPage logic
-      let names = [];
-      if (sale.createdAt?.seconds) {
+      const clubSales = merchSales.filter(s =>
+        (s.club || '4YOU') === clubName &&
+        (s.qty || 0) > 0 &&
+        s.createdAt?.seconds &&
+        format(new Date(s.createdAt.seconds * 1000), 'yyyy-MM') === monthKey
+      );
+
+      clubSales.forEach(sale => {
+        const dateObj = new Date(sale.createdAt.seconds * 1000);
+        const dayNum = format(dateObj, 'd');
         const saleTimeMin = dateObj.getHours() * 60 + dateObj.getMinutes();
-        
-        // Find all non-service employees of this club
-        const clubEmps = employees.filter(e => {
-          if ((e.club || '4YOU') !== saleClub) return false;
-          const isServ = e.isService === true || 
-                         (e.name || '').toLowerCase().includes('сервис') || 
-                         (e.name || '').toLowerCase().includes('техник') || 
-                         (e.name || '').toLowerCase().includes('стажер');
-          return !isServ;
-        });
 
+        // Always distribute by schedule (who was on shift at sale time)
+        const names = [];
+        const clubEmps = employees.filter(e =>
+          (e.club || '4YOU') === clubName && !isServEmpCheck(e)
+        );
         clubEmps.forEach(emp => {
           const docId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
-          const days = scheduleData[docId]?.days || {};
-          const shiftStr = days[dayNum];
-          if (!shiftStr) return;
-
-          const cleanShift = shiftStr.trim().toLowerCase();
-          if (!cleanShift || cleanShift === 'выходной') return;
-
+          const shiftStr = scheduleData[docId]?.days?.[dayNum];
+          if (!shiftStr || !isWorkingShift(shiftStr)) return;
+          const cleanShift = shiftStr.trim().replace(/\s+/g, '');
           const parts = cleanShift.split('-');
-          if (parts.length === 2) {
-            const startPart = parts[0].trim();
-            const endPart = parts[1].trim();
-            
-            const parseTimeToMinutes = (tStr) => {
-              const tParts = tStr.split(':');
-              if (tParts.length >= 1) {
-                const h = parseInt(tParts[0]) || 0;
-                const m = parseInt(tParts[1]) || 0;
-                return h * 60 + m;
-              }
-              return null;
-            };
-
-            const startMin = parseTimeToMinutes(startPart);
-            const endMin = parseTimeToMinutes(endPart);
-
-            if (startMin !== null && endMin !== null) {
-              if (endMin < startMin) {
-                if (saleTimeMin >= startMin || saleTimeMin <= endMin) {
-                  names.push(emp.name.trim().toLowerCase());
-                }
-              } else {
-                if (saleTimeMin >= startMin && saleTimeMin <= endMin) {
-                  names.push(emp.name.trim().toLowerCase());
-                }
-              }
-            }
-          }
+          if (parts.length !== 2) return;
+          const startMin = parseTimeToMinutes(parts[0].trim());
+          const endMin = parseTimeToMinutes(parts[1].trim());
+          const inShift = endMin < startMin
+            ? (saleTimeMin >= startMin || saleTimeMin <= endMin)
+            : (saleTimeMin >= startMin && saleTimeMin <= endMin);
+          if (inShift) names.push(emp.name.trim());
         });
-      }
 
-      // If no one is scheduled, fallback to manual salespersonName
-      if (names.length === 0) {
-        const rawName = sale.salespersonName || 'Не указан';
-        names = rawName.split(',').map(n => n.trim().toLowerCase()).filter(Boolean);
-      }
-      if (names.length === 0) {
-        names.push('не указан');
-      }
+        if (names.length === 0) return;
 
-      // Split the sale total among the attributed salespeople
-      const shareTotal = (sale.totalSum || 0) / names.length;
+        const shareTotal = (sale.totalSum || 0) / names.length;
+        names.forEach(name => {
+          if (!byPerson[name]) byPerson[name] = 0;
+          byPerson[name] += shareTotal;
+        });
+      });
 
-      names.forEach(name => {
-        const matchedEmp = employees.find(e => 
-          (e.club || '4YOU') === saleClub &&
-          e.name.trim().toLowerCase() === name
+      // Map person names → employee IDs using cleanName
+      Object.entries(byPerson).forEach(([name, total]) => {
+        const matchedEmp = employees.find(e =>
+          (e.club || '4YOU') === clubName &&
+          cleanName(e.name) === cleanName(name) &&
+          !isServEmpCheck(e)
         );
         if (matchedEmp) {
-          const isServ = matchedEmp.isService === true || 
-                         (matchedEmp.name || '').toLowerCase().includes('сервис') || 
-                         (matchedEmp.name || '').toLowerCase().includes('техник') || 
-                         (matchedEmp.name || '').toLowerCase().includes('стажер');
-          if (!isServ) {
-            salesRevenueShares[matchedEmp.id] += shareTotal;
-          }
+          salesRevenueShares[matchedEmp.id] = (salesRevenueShares[matchedEmp.id] || 0) + total;
         }
       });
     });
@@ -737,11 +735,10 @@ const SchedulePage = () => {
                            (emp.name || '').toLowerCase().includes('сервис') || 
                            (emp.name || '').toLowerCase().includes('техник') || 
                            (emp.name || '').toLowerCase().includes('стажер');
-      const rateVal = (emp.commissionRate !== undefined && emp.commissionRate !== null)
-        ? (emp.commissionRate / 100)
-        : COMMISSION_RATE;
+      const ratePercent = commissionRatesMap[cleanName(emp.name)] ?? emp.commissionRate ?? 2;
+      const rateVal = isServiceEmp ? 0 : ratePercent / 100;
       const rawCommission = (salesRevenueShares[emp.id] || 0) * rateVal;
-      const salesCommission = isServiceEmp ? 0 : Math.round(rawCommission);
+      const salesCommission = Math.round(rawCommission);
       const toPay = salary + finalRazvozka - advance + correction + salesCommission;
       
       stats[emp.id] = { 
@@ -761,7 +758,7 @@ const SchedulePage = () => {
       };
     });
     return stats;
-  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate, dailyRazvozka, merchSales]);
+  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate, dailyRazvozka, merchSales, commissionRatesMap]);
 
   const getEmployeeStats = (empId) => employeeStats[empId] || { 
     totalHours: 0, 

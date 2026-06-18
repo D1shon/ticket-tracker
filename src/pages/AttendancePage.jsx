@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Wifi, WifiOff, Plus, Trash2, Edit3, Check, X,
-  Clock, Users, Shield, Activity, ChevronDown, Settings2
+  Wifi, Plus, Trash2, Edit3, Check, X,
+  Clock, Users, Shield, ChevronDown, Settings2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -135,12 +135,9 @@ const AttendancePage = () => {
     });
   }, [employees, sessions]);
 
-  // Agent last seen: was it within last 3 minutes?
-  const agentAlive = agentStatus?.lastSeen
-    ? (Date.now() - new Date(agentStatus.lastSeen.seconds ? agentStatus.lastSeen.seconds * 1000 : agentStatus.lastSeen).getTime()) < 3 * 60 * 1000
-    : false;
 
-  const onlineCount = enrichedEmployees.filter(e => e.session?.isOnline && agentAlive).length;
+
+  const onlineCount = enrichedEmployees.filter(e => e.session?.isOnline).length;
 
   // ── Save employee ─────────────────────────────────────────────────
   const handleSave = async () => {
@@ -287,138 +284,9 @@ const AttendancePage = () => {
           </div>
         ))}
 
-        {/* Agent status */}
-        <div style={{
-          background: 'var(--bg-card)', border: `1px solid ${agentAlive ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
-          borderRadius: 20, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14
-        }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: agentAlive ? 'rgba(34,197,94,0.1)' : 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Activity size={18} color={agentAlive ? '#22c55e' : 'var(--text-muted)'} />
-          </div>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Агент</div>
-            <div style={{ fontSize: 13, fontWeight: 900, color: agentAlive ? '#22c55e' : 'var(--text-muted)' }}>
-              {agentAlive ? 'АКТИВЕН' : 'OFFLINE'}
-            </div>
-          </div>
-        </div>
       </div>
 
-      {/* ── Agent offline warning ── */}
-      {!agentAlive && employees.length > 0 && (
-        <div style={{
-          marginBottom: 16, padding: '12px 18px',
-          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
-          borderRadius: 16, display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <WifiOff size={16} color="#ef4444" style={{ flexShrink: 0 }} />
-          <div>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#ef4444' }}>Агент не активен</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
-              Запустите wifi-agent.mjs на компьютере в клубе, чтобы отслеживать присутствие
-            </span>
-          </div>
-        </div>
-      )}
 
-      {/* ── Remote Diagnostics Panel ── (только для chef) */}
-      {isChef && agentStatus?.lastScanAt && (
-        <div style={{
-          marginBottom: 16,
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: 20, overflow: 'hidden',
-        }}>
-          {/* Header */}
-          <div style={{
-            padding: '12px 18px', borderBottom: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Activity size={14} color="var(--accent-purple)" />
-              <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Диагностика · Последнее сканирование
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {agentStatus.version && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: 6 }}>
-                  v{agentStatus.version}
-                </span>
-              )}
-              {agentStatus.subnet && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                  {agentStatus.subnet}
-                </span>
-              )}
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                {agentStatus.lastScanAt
-                  ? format(new Date(agentStatus.lastScanAt), 'HH:mm:ss')
-                  : '—'
-                }
-              </span>
-              <span style={{
-                fontSize: 10, fontWeight: 700,
-                color: agentStatus.lastScanDevicesTotal > 0 ? '#22c55e' : '#f59e0b',
-                background: agentStatus.lastScanDevicesTotal > 0 ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
-                padding: '2px 8px', borderRadius: 6,
-              }}>
-                {agentStatus.lastScanDevicesTotal ?? 0} устройств в сети
-              </span>
-            </div>
-          </div>
-
-          {/* Per-employee match status */}
-          {agentStatus.lastScanEmployees?.length > 0 && (
-            <div style={{ padding: '10px 18px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {agentStatus.lastScanEmployees.map((emp, i) => (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '5px 10px', borderRadius: 10,
-                  background: emp.found ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)',
-                  border: `1px solid ${emp.found ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.15)'}`,
-                }}>
-                  <div style={{
-                    width: 7, height: 7, borderRadius: '50%',
-                    background: emp.found ? '#22c55e' : '#ef4444',
-                    boxShadow: emp.found ? '0 0 6px #22c55e' : 'none',
-                  }} />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: emp.found ? '#22c55e' : '#ef4444' }}>
-                    {emp.name}
-                  </span>
-                  <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                    {emp.mac}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Raw MACs found in network */}
-          {agentStatus.lastScanMacs?.length > 0 && (
-            <details style={{ padding: '0 18px 10px' }}>
-              <summary style={{ fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 700, userSelect: 'none', marginBottom: 6 }}>
-                Все MAC-адреса в сети ({agentStatus.lastScanMacs.length})
-              </summary>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 100, overflowY: 'auto' }}>
-                {agentStatus.lastScanMacs.map((mac, i) => {
-                  const isEmployeeMac = employees.some(e => (e.macAddress || '').toUpperCase() === mac);
-                  return (
-                    <span key={i} style={{
-                      fontSize: 9, fontFamily: 'monospace', fontWeight: 600,
-                      padding: '2px 6px', borderRadius: 4,
-                      background: isEmployeeMac ? 'rgba(123,61,255,0.15)' : 'var(--bg-hover)',
-                      color: isEmployeeMac ? 'var(--accent-purple)' : 'var(--text-muted)',
-                      border: isEmployeeMac ? '1px solid rgba(123,61,255,0.3)' : '1px solid var(--border)',
-                    }}>
-                      {mac}
-                    </span>
-                  );
-                })}
-              </div>
-            </details>
-          )}
-        </div>
-      )}
 
       {/* ── Employee list + Add button ── */}
 
@@ -452,7 +320,7 @@ const AttendancePage = () => {
         ) : (
           enrichedEmployees.map((emp, idx) => {
             // If agent is dead → nobody can be truly online (data is stale)
-            const isOnline = emp.session?.isOnline && agentAlive;
+            const isOnline = emp.session?.isOnline;
             const arrivedAt = emp.session?.arrivedAt;
             const leftAt = emp.session?.leftAt;
             const arrivedStr = arrivedAt
@@ -554,43 +422,7 @@ const AttendancePage = () => {
         )}
       </div>
 
-      {/* ── Download agent card ── */}
-      <div style={{
-        marginTop: 20, padding: '20px 24px',
-        background: 'linear-gradient(135deg, rgba(123,61,255,0.1), rgba(123,61,255,0.03))',
-        border: '1px solid rgba(123,61,255,0.25)', borderRadius: 20,
-        display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap',
-      }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            🖥️ Агент для сканирования сети
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.8, fontWeight: 500, marginBottom: 12 }}>
-            Скачайте агент и запустите его на компьютере в клубе:<br />
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>1.</span> Скачать файл ниже<br />
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>2.</span> Установить Node.js с <strong>nodejs.org</strong><br />
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>3.</span> Открыть терминал в папке с файлом<br />
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>4.</span> Запустить: <code style={{ background: 'var(--bg-hover)', padding: '1px 6px', borderRadius: 4, fontSize: 11 }}>npm install firebase && node wifi-agent.mjs</code>
-          </div>
-          <a
-            href="/wifi-agent.mjs"
-            download="wifi-agent.mjs"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '11px 20px', borderRadius: 12,
-              background: 'var(--accent-purple)', color: '#fff',
-              fontWeight: 900, fontSize: 12, textDecoration: 'none',
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-              boxShadow: '0 4px 16px rgba(123,61,255,0.3)',
-              transition: 'opacity 0.2s',
-            }}
-            onMouseOver={e => e.currentTarget.style.opacity = '0.85'}
-            onMouseOut={e => e.currentTarget.style.opacity = '1'}
-          >
-            ⬇ Скачать wifi-agent.mjs
-          </a>
-        </div>
-      </div>
+
 
 
       {/* ── Add / Edit Modal ── */}
