@@ -1,4 +1,4 @@
-import { Coffee, Sun, Moon, Activity, Sparkles, Wrench, ShieldCheck } from 'lucide-react';
+import { Coffee, Sun, Moon, Activity, Sparkles, Wrench, ShieldCheck, Wind } from 'lucide-react';
 
 export const CLUBS = ['ВСЕ КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
 
@@ -37,6 +37,17 @@ export const CHECK_ITEMS = {
       'Осмотр целостности напольного покрытия (резина/ковролин)',
       'Проверка доводчиков дверей и входной группы',
       'Проверка работоспособности камер'
+    ]
+  },
+  'tech-hvac': {
+    title: 'Вентиляция и климат',
+    icon: Wind,
+    clubs: ['COLIBRI'],
+    items: [
+      'Проверка приточно-вытяжной вентиляции (подача/вытяжка)',
+      'Проверка чиллера (показания давления, температуры)',
+      'Проверка кондиционирования (фанкойлы, дренаж)',
+      'Проверка рекуператора (фильтры, заслонки, показания)'
     ]
   },
   'opening': {
@@ -98,7 +109,19 @@ export const SHIFTS_DATA = [
   },
 ];
 
-export const getShiftsForDate = (date) => {
+const addClubCards = (cards, club) => {
+  const extras = Object.entries(CHECK_ITEMS)
+    .filter(([, v]) => v.clubs && v.clubs.includes(club))
+    .map(([k]) => k);
+  // Insert after 'tech' if present, otherwise append
+  const techIdx = cards.indexOf('tech');
+  if (techIdx !== -1) {
+    return [...cards.slice(0, techIdx + 1), ...extras, ...cards.slice(techIdx + 1)];
+  }
+  return [...cards, ...extras];
+};
+
+export const getShiftsForDate = (date, club = null) => {
   const d = date instanceof Date ? date : new Date(date);
   const day = d.getDay();
   const isWeekend = day === 0 || day === 6; // 0 is Sunday, 6 is Saturday
@@ -122,32 +145,32 @@ export const getShiftsForDate = (date) => {
     }
 
     return [
-      { 
-        id: 'morning', 
-        time: '9:00', 
-        name: 'Утренняя смена', 
-        icon: Coffee, 
-        color: '#f97316', 
+      {
+        id: 'morning',
+        time: '9:00',
+        name: 'Утренняя смена',
+        icon: Coffee,
+        color: '#f97316',
         isCurrent: isToday && activeShiftId === 'morning',
-        cards: ['equipment', 'cleaning', 'tech', 'opening']
+        cards: addClubCards(['equipment', 'cleaning', 'tech', 'opening'], club)
       },
-      { 
-        id: 'day', 
-        time: '14:00', 
-        name: 'Дневная смена', 
-        icon: Sun, 
-        color: '#facc15', 
+      {
+        id: 'day',
+        time: '14:00',
+        name: 'Дневная смена',
+        icon: Sun,
+        color: '#facc15',
         isCurrent: isToday && activeShiftId === 'day',
-        cards: ['equipment', 'cleaning', 'tech']
+        cards: addClubCards(['equipment', 'cleaning', 'tech'], club)
       },
-      { 
-        id: 'evening', 
-        time: '19:00', 
-        name: 'Вечерняя смена', 
-        icon: Moon, 
-        color: '#6366f1', 
+      {
+        id: 'evening',
+        time: '19:00',
+        name: 'Вечерняя смена',
+        icon: Moon,
+        color: '#6366f1',
         isCurrent: isToday && activeShiftId === 'evening',
-        cards: ['equipment', 'cleaning', 'tech', 'closing']
+        cards: addClubCards(['equipment', 'cleaning', 'tech', 'closing'], club)
       }
     ];
   }
@@ -167,41 +190,41 @@ export const getShiftsForDate = (date) => {
   }
 
   return [
-    { 
-      id: 'morning', 
-      time: '6:30', 
-      name: 'Утренняя смена', 
-      icon: Coffee, 
-      color: '#f97316', 
+    {
+      id: 'morning',
+      time: '6:30',
+      name: 'Утренняя смена',
+      icon: Coffee,
+      color: '#f97316',
       isCurrent: isToday && activeShiftId === 'morning',
-      cards: ['equipment', 'cleaning', 'tech', 'opening']
+      cards: addClubCards(['equipment', 'cleaning', 'tech', 'opening'], club)
     },
-    { 
-      id: 'day', 
-      time: '11:30', 
-      name: 'Дневная смена', 
-      icon: Sun, 
-      color: '#facc15', 
+    {
+      id: 'day',
+      time: '11:30',
+      name: 'Дневная смена',
+      icon: Sun,
+      color: '#facc15',
       isCurrent: isToday && activeShiftId === 'day',
-      cards: ['equipment', 'cleaning', 'tech']
+      cards: addClubCards(['equipment', 'cleaning', 'tech'], club)
     },
-    { 
-      id: 'evening', 
-      time: '16:30', 
-      name: 'Вечерняя смена', 
-      icon: Moon, 
-      color: '#6366f1', 
+    {
+      id: 'evening',
+      time: '16:30',
+      name: 'Вечерняя смена',
+      icon: Moon,
+      color: '#6366f1',
       isCurrent: isToday && activeShiftId === 'evening',
-      cards: ['equipment', 'cleaning', 'tech']
+      cards: addClubCards(['equipment', 'cleaning', 'tech'], club)
     },
-    { 
-      id: 'night', 
-      time: '21:30', 
-      name: 'Ночная смена', 
-      icon: Moon, 
-      color: '#a855f7', 
+    {
+      id: 'night',
+      time: '21:30',
+      name: 'Ночная смена',
+      icon: Moon,
+      color: '#a855f7',
       isCurrent: isToday && activeShiftId === 'night',
-      cards: ['equipment', 'cleaning', 'tech', 'closing']
+      cards: addClubCards(['equipment', 'cleaning', 'tech', 'closing'], club)
     },
   ];
 };

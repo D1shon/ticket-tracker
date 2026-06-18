@@ -27,7 +27,7 @@ const ChecklistDetail = () => {
     return new Date();
   };
   const activeDate = getDateObj();
-  const shift = getShiftsForDate(activeDate).find(s => s.id === shiftId) || SHIFTS_DATA.find(s => s.id === shiftId);
+  const shift = getShiftsForDate(activeDate, club).find(s => s.id === shiftId) || SHIFTS_DATA.find(s => s.id === shiftId);
   const cardData = CHECK_ITEMS[cardId];
   
   const [itemStates, setItemStates] = useState({});
