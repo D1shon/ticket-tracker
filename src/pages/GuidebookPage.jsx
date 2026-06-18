@@ -190,7 +190,7 @@ const GuidebookPage = () => {
         }
         
         return (
-          <div 
+          <div
             key={idx}
             style={{
               background: bgColor,
@@ -198,10 +198,10 @@ const GuidebookPage = () => {
               padding: '16px 20px',
               borderRadius: '0 16px 16px 0',
               margin: '16px 0',
-              fontSize: '13.5px',
-              lineHeight: 1.7,
-              color: textColor,
-              fontWeight: 500,
+              fontSize: '15px',
+              lineHeight: 1.8,
+              color: 'var(--text-primary)',
+              fontWeight: 600,
               boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
             }}
           >
@@ -213,15 +213,15 @@ const GuidebookPage = () => {
       // Headers Styling
       if (block.type === 'header') {
         return (
-          <h2 
-            key={idx} 
-            style={{ 
-              fontSize: '18px', 
-              fontWeight: 900, 
-              color: 'var(--text-primary)', 
-              marginTop: '28px', 
-              marginBottom: '12px',
-              paddingBottom: '8px',
+          <h2
+            key={idx}
+            style={{
+              fontSize: '20px',
+              fontWeight: 900,
+              color: 'var(--text-primary)',
+              marginTop: '32px',
+              marginBottom: '14px',
+              paddingBottom: '10px',
               borderBottom: '1px solid var(--border)',
               letterSpacing: '-0.02em',
               display: 'flex',
@@ -229,21 +229,21 @@ const GuidebookPage = () => {
               gap: 8
             }}
           >
-            <span style={{ width: 4, height: 16, background: 'var(--accent-purple)', borderRadius: 2 }} />
+            <span style={{ width: 4, height: 18, background: 'var(--accent-purple)', borderRadius: 2, flexShrink: 0 }} />
             {text}
           </h2>
         );
       }
       if (block.type === 'sub_header') {
         return (
-          <h3 
-            key={idx} 
-            style={{ 
-              fontSize: '15px', 
-              fontWeight: 800, 
-              color: 'var(--text-primary)', 
-              marginTop: '22px', 
-              marginBottom: '8px' 
+          <h3
+            key={idx}
+            style={{
+              fontSize: '17px',
+              fontWeight: 800,
+              color: 'var(--text-primary)',
+              marginTop: '24px',
+              marginBottom: '10px'
             }}
           >
             {text}
@@ -252,14 +252,14 @@ const GuidebookPage = () => {
       }
       if (block.type === 'sub_sub_header') {
         return (
-          <h4 
-            key={idx} 
-            style={{ 
-              fontSize: '13.5px', 
-              fontWeight: 800, 
-              color: 'var(--text-primary)', 
-              marginTop: '18px', 
-              marginBottom: '6px' 
+          <h4
+            key={idx}
+            style={{
+              fontSize: '15px',
+              fontWeight: 800,
+              color: 'var(--text-primary)',
+              marginTop: '20px',
+              marginBottom: '8px'
             }}
           >
             {text}
@@ -270,16 +270,16 @@ const GuidebookPage = () => {
       // Styled list items
       if (block.type === 'bulleted_list' || block.type === 'numbered_list') {
         return (
-          <div 
-            key={idx} 
-            style={{ 
-              display: 'flex', 
-              gap: 12, 
+          <div
+            key={idx}
+            style={{
+              display: 'flex',
+              gap: 12,
               alignItems: 'flex-start',
               margin: '8px 0',
-              fontSize: '13.5px', 
-              color: 'var(--text-secondary)', 
-              lineHeight: 1.7,
+              fontSize: '15px',
+              color: 'var(--text-primary)',
+              lineHeight: 1.8,
               paddingLeft: '8px'
             }}
           >
@@ -303,16 +303,16 @@ const GuidebookPage = () => {
       const isDialogue = text.startsWith('—') || text.startsWith('«') || (text.includes(':') && text.indexOf(':') < 20 && /^[A-ZА-Я]/.test(text));
       if (isDialogue) {
         return (
-          <p 
-            key={idx} 
-            style={{ 
-              fontSize: '13.5px', 
-              color: 'var(--text-primary)', 
-              lineHeight: 1.7, 
+          <p
+            key={idx}
+            style={{
+              fontSize: '15px',
+              color: 'var(--text-primary)',
+              lineHeight: 1.8,
               margin: '10px 0',
               fontStyle: 'italic',
               background: 'rgba(123, 61, 255, 0.03)',
-              padding: '10px 16px',
+              padding: '12px 18px',
               borderRadius: '12px',
               borderLeft: '3px solid var(--accent-purple)',
               fontFamily: 'monospace, sans-serif'
@@ -325,14 +325,15 @@ const GuidebookPage = () => {
 
       // Regular Paragraphs
       return (
-        <p 
-          key={idx} 
-          style={{ 
-            fontSize: '13.5px', 
-            color: 'var(--text-secondary)', 
-            lineHeight: 1.7, 
-            margin: '10px 0',
-            letterSpacing: '0.01em'
+        <p
+          key={idx}
+          style={{
+            fontSize: '15px',
+            color: 'var(--text-primary)',
+            lineHeight: 1.85,
+            margin: '12px 0',
+            letterSpacing: '0.01em',
+            fontWeight: 450
           }}
         >
           {text}
@@ -557,7 +558,7 @@ const GuidebookPage = () => {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <HelpCircle size={16} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
-                        <span style={{ fontSize: 13.5, fontWeight: 800 }}>{item.question}</span>
+                        <span style={{ fontSize: 15, fontWeight: 800 }}>{item.question}</span>
                       </div>
                       {isOpen ? <ChevronUp size={16} style={{ color: 'var(--accent-purple)' }} /> : <ChevronDown size={16} />}
                     </button>
@@ -566,9 +567,9 @@ const GuidebookPage = () => {
                       <div 
                         style={{
                           padding: '16px 24px 24px 52px',
-                          fontSize: 13,
-                          color: 'var(--text-secondary)',
-                          lineHeight: 1.7,
+                          fontSize: 15,
+                          color: 'var(--text-primary)',
+                          lineHeight: 1.85,
                           borderTop: '1px solid var(--border)',
                           background: 'rgba(255, 255, 255, 0.005)'
                         }}
@@ -636,7 +637,7 @@ const GuidebookPage = () => {
                             <Icon size={16} />
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <h4 style={{ fontSize: 13, fontWeight: isSelected ? 800 : 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.4 }}>
+                            <h4 style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.4 }}>
                               {item.title}
                             </h4>
                             <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginTop: 6 }}>
