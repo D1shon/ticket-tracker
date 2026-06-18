@@ -89,21 +89,33 @@ const HRMonitorsPage = () => {
   const [adding,       setAdding]       = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'hr_monitors'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, snap => {
-      setMonitors(snap.docs.map(d => ({ docId: d.id, ...d.data() })).filter(m => m.club === activeClub));
-    });
+    // filter client-side to avoid composite index requirement
+    return onSnapshot(collection(db, 'hr_monitors'), snap => {
+      setMonitors(
+        snap.docs
+          .map(d => ({ docId: d.id, ...d.data() }))
+          .filter(m => m.club === activeClub)
+          .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
+      );
+    }, err => console.error('[hr_monitors]', err));
   }, [activeClub]);
 
   useEffect(() => {
+    // only filter by club — no orderBy — avoids composite index
     const q = query(
       collection(db, 'hr_monitor_history'),
-      where('club', '==', activeClub),
-      orderBy('changedAt', 'desc')
+      where('club', '==', activeClub)
     );
     return onSnapshot(q, snap => {
-      setHistoryItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+      const items = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const ta = a.changedAt?.seconds ?? (a.changedAtISO ? new Date(a.changedAtISO).getTime() / 1000 : 0);
+          const tb = b.changedAt?.seconds ?? (b.changedAtISO ? new Date(b.changedAtISO).getTime() / 1000 : 0);
+          return tb - ta;
+        });
+      setHistoryItems(items);
+    }, err => console.error('[hr_monitor_history]', err));
   }, [activeClub]);
 
   useEffect(() => {
@@ -138,25 +150,34 @@ const HRMonitorsPage = () => {
 
   const handleStatusChange = async (docId, monitorId, currentStatus, newStatus) => {
     if (currentStatus === newStatus) { setOpenDropdown(null); return; }
-    const now = new Date();
-    const shiftName    = getCurrentShiftName(now);
-    const admins       = await getAdminsOnShift(activeClub, now);
-    const lostAt       = newStatus === 'lost' ? now.toISOString() : null;
-
-    await updateDoc(doc(db, 'hr_monitors', docId), { status: newStatus, lostAt });
-
-    await addDoc(collection(db, 'hr_monitor_history'), {
-      monitorDocId:  docId,
-      monitorId,
-      club:          activeClub,
-      oldStatus:     currentStatus,
-      newStatus,
-      shiftName,
-      adminsOnShift: admins,
-      changedAt:     serverTimestamp(),
-      changedAtISO:  now.toISOString(),
-    });
     setOpenDropdown(null);
+    const now      = new Date();
+    const lostAt   = newStatus === 'lost' ? now.toISOString() : null;
+
+    try {
+      await updateDoc(doc(db, 'hr_monitors', docId), { status: newStatus, lostAt });
+    } catch (e) {
+      console.error('[hr_monitors] updateDoc failed:', e);
+      return;
+    }
+
+    try {
+      const shiftName = getCurrentShiftName(now);
+      const admins    = await getAdminsOnShift(activeClub, now);
+      await addDoc(collection(db, 'hr_monitor_history'), {
+        monitorDocId:  docId,
+        monitorId,
+        club:          activeClub,
+        oldStatus:     currentStatus,
+        newStatus,
+        shiftName,
+        adminsOnShift: admins,
+        changedAt:     serverTimestamp(),
+        changedAtISO:  now.toISOString(),
+      });
+    } catch (e) {
+      console.error('[hr_monitor_history] addDoc failed:', e);
+    }
   };
 
   const handleDelete = async (docId) => {
