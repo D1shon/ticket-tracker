@@ -183,20 +183,13 @@ const HRMonitorsPage = () => {
         </div>
       )}
 
-      {/* Table */}
+      {/* Grid */}
       {monitors.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed var(--border)', borderRadius: 20, color: 'var(--text-muted)', fontSize: 14, fontWeight: 600 }}>
           Пульсометры ещё не добавлены
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 40px', gap: 12, padding: '0 4px', marginBottom: 2 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>ID пульсометра</span>
-            <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Статус</span>
-            <span />
-          </div>
-
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
           {monitors.map(monitor => {
             const st = getStatus(monitor.status);
             const Icon = st.icon;
@@ -206,48 +199,68 @@ const HRMonitorsPage = () => {
               <div
                 key={monitor.docId}
                 style={{
-                  display: 'grid', gridTemplateColumns: '1fr 180px 40px', gap: 12, alignItems: 'center',
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 14, padding: '12px 16px'
+                  background: 'var(--bg-card)',
+                  border: `1px solid ${monitor.status !== 'working' ? st.color + '40' : 'var(--border)'}`,
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  position: 'relative'
                 }}
               >
+                {/* Delete btn */}
+                {canEdit && (
+                  <button
+                    onClick={() => handleDelete(monitor.docId)}
+                    style={{
+                      position: 'absolute', top: 8, right: 8,
+                      background: 'none', border: 'none', color: 'var(--text-muted)',
+                      cursor: 'pointer', padding: 2, borderRadius: 6,
+                      opacity: 0.4, lineHeight: 0
+                    }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+
                 {/* ID */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.02em', paddingRight: 16 }}>
                     {monitor.monitorId}
-                  </span>
+                  </div>
                   {monitor.status === 'lost' && monitor.lostAt && (
-                    <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 600, opacity: 0.8 }}>
-                      Утерян: {format(new Date(monitor.lostAt), 'd MMM yyyy, HH:mm', { locale: ru })}
-                    </span>
+                    <div style={{ fontSize: 9, color: '#ef4444', fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
+                      {format(new Date(monitor.lostAt), 'd MMM yyyy, HH:mm', { locale: ru })}
+                    </div>
                   )}
                 </div>
 
-                {/* Status dropdown */}
+                {/* Status pill / dropdown trigger */}
                 <div style={{ position: 'relative' }}>
                   <button
                     onClick={e => { e.stopPropagation(); setOpenDropdown(isOpen ? null : monitor.docId); }}
                     style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '7px 12px', borderRadius: 10,
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '5px 9px', borderRadius: 8,
                       background: st.bg, border: `1px solid ${st.color}40`,
                       color: st.color, cursor: canEdit ? 'pointer' : 'default',
-                      fontSize: 13, fontWeight: 700
+                      fontSize: 11, fontWeight: 700
                     }}
                   >
-                    <Icon size={14} strokeWidth={2.5} />
+                    <Icon size={11} strokeWidth={2.5} />
                     <span style={{ flex: 1, textAlign: 'left' }}>{st.label}</span>
-                    {canEdit && <ChevronDown size={13} style={{ opacity: 0.7, transform: isOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />}
+                    {canEdit && <ChevronDown size={10} style={{ opacity: 0.7, transform: isOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />}
                   </button>
 
                   {isOpen && canEdit && (
                     <div
                       onClick={e => e.stopPropagation()}
                       style={{
-                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+                        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
                         background: 'var(--bg-card)', border: '1px solid var(--border)',
-                        borderRadius: 12, overflow: 'hidden', zIndex: 50,
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.2)'
+                        borderRadius: 10, overflow: 'hidden', zIndex: 50,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.25)'
                       }}
                     >
                       {STATUS_OPTIONS.map(opt => {
@@ -257,17 +270,18 @@ const HRMonitorsPage = () => {
                             key={opt.value}
                             onClick={() => handleStatusChange(monitor.docId, opt.value)}
                             style={{
-                              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                              padding: '11px 14px', background: monitor.status === opt.value ? opt.bg : 'transparent',
-                              border: 'none', color: opt.color, fontSize: 13, fontWeight: 700,
+                              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '9px 12px',
+                              background: monitor.status === opt.value ? opt.bg : 'transparent',
+                              border: 'none', color: opt.color, fontSize: 12, fontWeight: 700,
                               cursor: 'pointer', textAlign: 'left',
                               borderBottom: opt.value !== 'lost' ? '1px solid var(--border)' : 'none'
                             }}
                           >
-                            <OptIcon size={14} strokeWidth={2.5} />
+                            <OptIcon size={12} strokeWidth={2.5} />
                             {opt.label}
                             {monitor.status === opt.value && (
-                              <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.6 }}>✓</span>
+                              <span style={{ marginLeft: 'auto', fontSize: 9, opacity: 0.5 }}>✓</span>
                             )}
                           </button>
                         );
@@ -275,16 +289,6 @@ const HRMonitorsPage = () => {
                     </div>
                   )}
                 </div>
-
-                {/* Delete */}
-                {canEdit && (
-                  <button
-                    onClick={() => handleDelete(monitor.docId)}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                )}
               </div>
             );
           })}
