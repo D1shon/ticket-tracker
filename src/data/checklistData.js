@@ -179,7 +179,7 @@ export const getShiftsForDate = (date) => {
       icon: Coffee,
       color: '#f97316',
       isCurrent: isToday && activeShiftId === 'morning',
-      cards: addClubCards(['equipment', 'cleaning', 'tech', 'opening'], club)
+      cards: ['equipment', 'cleaning', 'tech', 'opening']
     },
     {
       id: 'day',
@@ -188,7 +188,7 @@ export const getShiftsForDate = (date) => {
       icon: Sun,
       color: '#facc15',
       isCurrent: isToday && activeShiftId === 'day',
-      cards: addClubCards(['equipment', 'cleaning', 'tech'], club)
+      cards: ['equipment', 'cleaning', 'tech']
     },
     {
       id: 'evening',
@@ -197,7 +197,7 @@ export const getShiftsForDate = (date) => {
       icon: Moon,
       color: '#6366f1',
       isCurrent: isToday && activeShiftId === 'evening',
-      cards: addClubCards(['equipment', 'cleaning', 'tech'], club)
+      cards: ['equipment', 'cleaning', 'tech']
     },
     {
       id: 'night',
@@ -206,7 +206,7 @@ export const getShiftsForDate = (date) => {
       icon: Moon,
       color: '#a855f7',
       isCurrent: isToday && activeShiftId === 'night',
-      cards: addClubCards(['equipment', 'cleaning', 'tech', 'closing'], club)
+      cards: ['equipment', 'cleaning', 'tech', 'closing']
     },
   ];
 };
