@@ -80,11 +80,11 @@ const ChecklistPage = () => {
   const getCheckProgress = (shiftId, cardId) => {
     const docId = `${dateKey}_${activeClub}_${shiftId}_${cardId}`;
     const data = checklistData[docId];
-    if (!data || !data.states) return { answered: 0, total: CHECK_ITEMS[cardId].items.length };
-    
-    const states = data.states;
-    const items = CHECK_ITEMS[cardId].items;
-    const answered = items.filter((_, i) => states[i] === 'ok' || states[i] === 'issue').length;
+    const card = CHECK_ITEMS[cardId];
+    const clubExtra = card?.clubItems?.[activeClub] ?? card?.clubItems?.['_default'] ?? [];
+    const items = [...(card?.items ?? []), ...clubExtra].filter(it => !it.startsWith('§'));
+    if (!data || !data.states) return { answered: 0, total: items.length };
+    const answered = items.filter((_, i) => data.states[i] === 'ok' || data.states[i] === 'issue').length;
     return { answered, total: items.length };
   };
 

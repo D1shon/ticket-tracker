@@ -29,7 +29,9 @@ const ChecklistDetail = () => {
   const activeDate = getDateObj();
   const shift = getShiftsForDate(activeDate).find(s => s.id === shiftId) || SHIFTS_DATA.find(s => s.id === shiftId);
   const cardData = CHECK_ITEMS[cardId];
-  
+  const clubExtra = cardData?.clubItems?.[club] ?? cardData?.clubItems?.['_default'] ?? [];
+  const effectiveItems = [...(cardData?.items ?? []), ...clubExtra];
+
   const [itemStates, setItemStates] = useState({});
   const [itemIssues, setItemIssues] = useState({});
   const [itemTimestamps, setItemTimestamps] = useState({});
@@ -97,7 +99,7 @@ const ChecklistDetail = () => {
         if (itemRepeats[idx] === true) continue;
 
         const problemDescription = itemIssues[idx] || '';
-        const itemTitle = cardData.items[idx];
+        const itemTitle = effectiveItems[idx];
         
         const descText = problemDescription.trim()
           ? (inspectorName.trim() ? `${problemDescription.trim()} (Проверил: ${inspectorName.trim()})` : problemDescription.trim())
@@ -130,7 +132,7 @@ const ChecklistDetail = () => {
     navigate(`/checklists?club=${club}&date=${dateKey}`);
   };
 
-  const allAnswered = cardData.items.every((item, i) => item.startsWith('§') || (itemStates[i] !== undefined && itemStates[i] !== null));
+  const allAnswered = effectiveItems.every((item, i) => item.startsWith('§') || (itemStates[i] !== undefined && itemStates[i] !== null));
   const hasIssues = Object.values(itemStates).some(state => state === 'issue');
   const isSubmitDisabled = !allAnswered || (hasIssues && !inspectorName.trim());
 
@@ -164,7 +166,7 @@ const ChecklistDetail = () => {
       <div className="max-w-4xl">
         {/* Items List */}
         <div className="flex flex-col gap-6 mb-12">
-          {cardData.items.map((item, i) => {
+          {effectiveItems.map((item, i) => {
             if (item.startsWith('§')) {
               return (
                 <div key={i} className="flex items-center gap-2 mt-2 mb-1">
