@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, Ticket, CheckSquare, Calendar, 
+import {
+  LayoutDashboard, Ticket, CheckSquare, Calendar,
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
-  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText
+  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart
 } from 'lucide-react';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
@@ -17,6 +17,7 @@ const ALL_NAV = [
   { icon: TrendingUp,      label: 'Продажи',    path: '/sales',       primary: true  },
   { icon: LayoutDashboard, label: 'Дашборд',    path: '/dashboard',   primary: false },
   { icon: Archive,         label: 'Архив',       path: '/archive',     primary: false },
+  { icon: Heart,           label: 'Пульсометры', path: '/hr-monitors', primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },

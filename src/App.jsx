@@ -27,6 +27,7 @@ import DemoDayBanner from './components/layout/DemoDayBanner';
 import MobileScanner from './pages/MobileScanner';
 import GuidebookPage from './pages/GuidebookPage';
 import PolicyPage from './pages/PolicyPage';
+import HRMonitorsPage from './pages/HRMonitorsPage';
 
 // Notification bell is fixed top-right on every authenticated page
 const NotificationCorner = () => (
@@ -207,6 +208,11 @@ const AppContent = () => {
         <Route path="/policy" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'marketing']}>
             <PolicyPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/hr-monitors" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+            <HRMonitorsPage />
           </ProtectedLayout>
         } />
         <Route path="/settings" element={
