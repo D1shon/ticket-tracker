@@ -61,7 +61,11 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to={user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : '/tickets'} replace />;
+    const fallback = user.role === 'admin' ? '/schedule'
+      : user.role === 'marketing' ? '/merch'
+      : user.role === 'viewer'    ? '/checklists'
+      : '/tickets';
+    return <Navigate to={fallback} replace />;
   }
 
   return (
@@ -100,7 +104,11 @@ const AppContent = () => {
 
   const RootRedirect = () => {
     if (!user) return <Navigate to="/login" replace />;
-    return <Navigate to={user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : '/tickets'} replace />;
+    const home = user.role === 'admin' ? '/schedule'
+      : user.role === 'marketing' ? '/merch'
+      : user.role === 'viewer'    ? '/checklists'
+      : '/tickets';
+    return <Navigate to={home} replace />;
   };
 
   return (
@@ -122,7 +130,9 @@ const AppContent = () => {
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : '/tickets'} replace /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to={
+          user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : user.role === 'viewer' ? '/checklists' : '/tickets'
+        } replace /> : <Login />} />
         
         <Route path="/scan" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
@@ -149,17 +159,17 @@ const AppContent = () => {
         } />
 
         <Route path="/checklist" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
             <ChecklistPage />
           </ProtectedLayout>
         } />
         <Route path="/checklists" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
             <ChecklistPage />
           </ProtectedLayout>
         } />
         <Route path="/checklists/:shiftId/:cardId" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
             <ChecklistDetail />
           </ProtectedLayout>
         } />
@@ -171,13 +181,13 @@ const AppContent = () => {
         } />
 
         <Route path="/merch" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'marketing']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'marketing', 'viewer']}>
             <MerchPage />
           </ProtectedLayout>
         } />
 
         <Route path="/sales" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer']}>
             <SalesPage />
           </ProtectedLayout>
         } />
@@ -193,7 +203,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/attendance" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
             <AttendancePage />
           </ProtectedLayout>
         } />
@@ -203,32 +213,32 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/guidebook" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer']}>
             <GuidebookPage />
           </ProtectedLayout>
         } />
         <Route path="/policy" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'marketing']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'marketing', 'viewer']}>
             <PolicyPage />
           </ProtectedLayout>
         } />
         <Route path="/hr-monitors" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer']}>
             <HRMonitorsPage />
           </ProtectedLayout>
         } />
         <Route path="/towels" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer']}>
             <TowelsPage />
           </ProtectedLayout>
         } />
         <Route path="/club-visits" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
             <ClubVisitsPage />
           </ProtectedLayout>
         } />
         <Route path="/settings" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer']}>
             <SettingsPage />
           </ProtectedLayout>
         } />
