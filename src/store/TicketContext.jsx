@@ -40,6 +40,9 @@ export const USER_ROLES = {
 
   // ── Marketing (restricted warehouse views, all clubs) ─────────────────────
   'guldana.k@hj.fit': { role: 'marketing', club: null, displayName: 'Гульдана' },
+
+  // ── Viewer (no tickets, schedule, calls, dashboard, archive) ──────────────
+  'nurali.m@hj.fit': { role: 'viewer', club: null, displayName: 'Нурали' },
 };
 
 function isEmailAllowed(email) {
