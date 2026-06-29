@@ -87,12 +87,17 @@ const DesktopSidebar = () => {
     return `${Math.floor(d / 86400)} д назад`;
   };
 
+  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive']);
+
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
       return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
+    }
+    if (user?.role === 'viewer') {
+      return !VIEWER_HIDDEN.has(item.path);
     }
     return true;
   });
@@ -247,12 +252,17 @@ const MobileNav = () => {
     return `${Math.floor(d / 86400)} д`;
   };
 
+  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive']);
+
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
       return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
+    }
+    if (user?.role === 'viewer') {
+      return !VIEWER_HIDDEN_M.has(item.path);
     }
     return true;
   });
