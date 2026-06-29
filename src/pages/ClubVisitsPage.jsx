@@ -96,6 +96,7 @@ const ClubVisitsPage = () => {
   const [mode, setMode]         = useState('yesterday');
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
   const [dateTo, setDateTo]     = useState(yesterdayStr);
+  const [analyticsClub, setAnalyticsClub] = useState(null); // null = все клубы
 
   useEffect(() => {
     const u1 = onSnapshot(doc(db, 'dwh_stats', 'club_visits'),   s => { if (s.exists()) setSummary(s.data()); });
@@ -117,11 +118,15 @@ const ClubVisitsPage = () => {
   const maxVal       = sorted[0]?.visits ?? 1;
 
   // ── Analytics data ───────────────────────────────────────────────────────────
+  // Clubs available for filter (derived from history)
+  const availableClubs = history
+    ? [...new Set(history.data.flatMap(d => d.clubs.map(c => c.name)))].sort()
+    : [];
+
+  const analyticsFilter = isChef ? analyticsClub : dwhClub;
   const analytics = history
-    ? buildAnalytics(history.data, isChef ? null : dwhClub)
+    ? buildAnalytics(history.data, analyticsFilter)
     : null;
-  const maxDow     = analytics ? Math.max(...analytics.dowAvg, 1) : 1;
-  const maxMonth   = analytics ? Math.max(...analytics.months.map(m => m.avg), 1) : 1;
 
   // ── Header helpers ───────────────────────────────────────────────────────────
   const updatedAt = summary?.updatedAt
@@ -200,7 +205,15 @@ const ClubVisitsPage = () => {
 
       {/* ── ANALYTICS TAB ──────────────────────────────────────────────────────── */}
       {mode === 'analytics' && (
-        <AnalyticsPanel analytics={analytics} isChef={isChef} dwhClub={dwhClub} history={history} />
+        <AnalyticsPanel
+          analytics={analytics}
+          isChef={isChef}
+          dwhClub={dwhClub}
+          history={history}
+          availableClubs={availableClubs}
+          selectedClub={analyticsClub}
+          onSelectClub={setAnalyticsClub}
+        />
       )}
 
       {/* ── VISITS TAB ─────────────────────────────────────────────────────────── */}
@@ -274,7 +287,7 @@ const ClubVisitsPage = () => {
 
 // ── Analytics Panel ────────────────────────────────────────────────────────────
 
-const AnalyticsPanel = ({ analytics, isChef, dwhClub, history }) => {
+const AnalyticsPanel = ({ analytics, isChef, dwhClub, history, availableClubs, selectedClub, onSelectClub }) => {
   if (!history) {
     return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Загрузка...</div>;
   }
@@ -286,6 +299,7 @@ const AnalyticsPanel = ({ analytics, isChef, dwhClub, history }) => {
   const maxDow   = Math.max(...dowAvg, 1);
   const maxMonth = Math.max(...months.map(m => m.avg), 1);
   const days     = history.data.length;
+  const activeClub = isChef ? selectedClub : dwhClub;
 
   // Reorder: Mon(1) Tue(2) ... Sun(0)
   const dowOrder = [1, 2, 3, 4, 5, 6, 0];
@@ -305,9 +319,36 @@ const AnalyticsPanel = ({ analytics, isChef, dwhClub, history }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+      {/* Club filter — chef only */}
+      {isChef && availableClubs.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Клуб:</span>
+          {[{ key: null, label: 'Все' }, ...availableClubs.map(c => ({ key: c, label: c.replace('HJ ', '') }))].map(({ key, label }) => {
+            const active = selectedClub === key;
+            const color  = key ? (CLUB_COLORS[key] || '#7B3DFF') : '#7B3DFF';
+            return (
+              <button
+                key={label}
+                onClick={() => onSelectClub(key)}
+                style={{
+                  padding: '6px 16px', borderRadius: 20, cursor: 'pointer',
+                  fontWeight: 800, fontSize: 11,
+                  background: active ? color : 'var(--bg-card)',
+                  color:      active ? '#fff' : 'var(--text-secondary)',
+                  border:     `1px solid ${active ? color : 'var(--border)'}`,
+                  transition: 'all 0.18s',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Data coverage notice */}
       <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>
-        Данные за последние {days} дн. {!isChef && dwhClub ? `· ${dwhClub}` : '· все клубы'}
+        Данные за последние {days} дн. · {activeClub ? activeClub : 'все клубы'}
       </div>
 
       {/* Будни vs Выходные */}
