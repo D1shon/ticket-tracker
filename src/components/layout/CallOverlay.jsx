@@ -158,90 +158,97 @@ const CallOverlay = () => {
 
   const gridColumns = activeCameras.length > 1 ? '1fr 1fr' : '1fr';
 
+  const thumbW = isFullPage ? 180 : 110;
+  const thumbH = isFullPage ? 135 : 82;
+
   const renderScreenShareLayout = () => {
+    // If I'm the one sharing — show remote cameras as main content, not my own screen
+    if (isScreenSharing && !activeScreenShareUser) {
+      return (
+        <div style={{
+          position: 'relative', width: '100%', background: '#000',
+          flex: isFullPage ? 1 : 'none',
+          height: isFullPage ? '100%' : (getWidth() * 9) / 16,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16
+        }}>
+          <div style={{
+            position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+            background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)',
+            borderRadius: 20, padding: '6px 16px',
+            fontSize: 11, fontWeight: 800, color: '#60a5fa', letterSpacing: '0.05em'
+          }}>
+            ● ТРАНСЛЯЦИЯ ЭКРАНА АКТИВНА
+          </div>
+          {/* Remote camera grid while sharing */}
+          {remoteUsers.filter(u => !u.isScreen).length > 0 ? (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: remoteUsers.filter(u => !u.isScreen).length > 1 ? '1fr 1fr' : '1fr',
+              gap: 8, padding: '60px 16px 16px', width: '100%', height: '100%'
+            }}>
+              {!isCameraMuted && localVideoTrack && (
+                <div style={{ position: 'relative', background: '#1a1a20', borderRadius: 12, overflow: 'hidden', minHeight: 200 }}>
+                  <VideoPlayer track={localVideoTrack} />
+                  <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 4, fontSize: 9, color: 'white', fontWeight: 800 }}>
+                    Я {isMicMuted ? '🔇' : '🎙️'}
+                  </div>
+                </div>
+              )}
+              {remoteUsers.filter(u => !u.isScreen).map(u => (
+                <div key={u.uid} style={{ position: 'relative', background: '#1a1a20', borderRadius: 12, overflow: 'hidden', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {u.videoTrack ? <VideoPlayer track={u.videoTrack} /> : <User size={48} color="rgba(255,255,255,0.15)" />}
+                  <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: 4, fontSize: 9, color: 'white', fontWeight: 800 }}>
+                    Собеседник {u.audioTrack ? '🔊' : '🔇'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)' }}>
+              <Monitor size={48} style={{ marginBottom: 12 }} />
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Ожидание участников...</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Viewer: screen share as main, cameras as PiP thumbnails
     return (
       <div style={{
-        position: 'relative',
-        width: '100%',
+        position: 'relative', width: '100%',
         flex: isFullPage ? 1 : 'none',
         height: isFullPage ? '100%' : (getWidth() * 9) / 16,
         background: '#000'
       }}>
-        <VideoPlayer 
-          track={activeScreenTrack} 
-          style={{ objectFit: 'contain' }} 
-        />
-        
-        {/* Floating thumbnail strip for camera streams */}
+        <VideoPlayer track={activeScreenTrack} style={{ objectFit: 'contain' }} />
+
+        {/* PiP thumbnail strip */}
         <div style={{
-          position: 'absolute',
-          top: 16,
-          right: 16,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-          zIndex: 100
+          position: 'absolute', bottom: 16, right: 16,
+          display: 'flex', flexDirection: 'column', gap: 10, zIndex: 100
         }}>
-          {/* Local Camera Thumbnail */}
           {!isCameraMuted && localVideoTrack && (
             <div style={{
-              width: isFullPage ? 160 : 100,
-              height: isFullPage ? 120 : 75,
-              borderRadius: 12,
-              overflow: 'hidden',
-              border: '2px solid rgba(255,255,255,0.2)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-              background: '#1a1a20',
-              position: 'relative'
+              width: thumbW, height: thumbH, borderRadius: 12, overflow: 'hidden',
+              border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+              background: '#1a1a20', position: 'relative'
             }}>
               <VideoPlayer track={localVideoTrack} />
-              <div style={{
-                position: 'absolute',
-                bottom: 6,
-                left: 6,
-                background: 'rgba(0,0,0,0.6)',
-                padding: '2px 6px',
-                borderRadius: 4,
-                fontSize: 9,
-                color: 'white',
-                fontWeight: 800
-              }}>
+              <div style={{ position: 'absolute', bottom: 5, left: 6, background: 'rgba(0,0,0,0.65)', padding: '2px 6px', borderRadius: 4, fontSize: 9, color: 'white', fontWeight: 800 }}>
                 Я {isMicMuted ? '🔇' : '🎙️'}
               </div>
             </div>
           )}
-
-          {/* Remote Camera Thumbnail */}
           {remoteUsers.filter(u => !u.isScreen).map(u => (
             <div key={u.uid} style={{
-              width: isFullPage ? 160 : 100,
-              height: isFullPage ? 120 : 75,
-              borderRadius: 12,
-              overflow: 'hidden',
-              border: '2px solid rgba(255,255,255,0.2)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-              background: '#1a1a20',
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
+              width: thumbW, height: thumbH, borderRadius: 12, overflow: 'hidden',
+              border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+              background: '#1a1a20', position: 'relative',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}>
-              {u.videoTrack ? (
-                <VideoPlayer track={u.videoTrack} />
-              ) : (
-                <User size={isFullPage ? 32 : 20} className="text-white/20" />
-              )}
-              <div style={{
-                position: 'absolute',
-                bottom: 6,
-                left: 6,
-                background: 'rgba(0,0,0,0.6)',
-                padding: '2px 6px',
-                borderRadius: 4,
-                fontSize: 9,
-                color: 'white',
-                fontWeight: 800
-              }}>
+              {u.videoTrack ? <VideoPlayer track={u.videoTrack} /> : <User size={isFullPage ? 36 : 22} color="rgba(255,255,255,0.15)" />}
+              <div style={{ position: 'absolute', bottom: 5, left: 6, background: 'rgba(0,0,0,0.65)', padding: '2px 6px', borderRadius: 4, fontSize: 9, color: 'white', fontWeight: 800 }}>
                 Собеседник {u.audioTrack ? '🔊' : '🔇'}
               </div>
             </div>

@@ -286,6 +286,9 @@ const TicketDetail = () => {
   const [pendingAction,   setPendingAction]   = useState(null);
   const [statusReport,    setStatusReport]    = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditModal,   setShowEditModal]   = useState(false);
+  const [editTitle,       setEditTitle]       = useState('');
+  const [editDesc,        setEditDesc]        = useState('');
   const [messages,     setMessages]       = useState(ticket?.comments || []);
   const [msgInput,     setMsgInput]       = useState('');
   const [starred,      setStarred]        = useState(false);
@@ -440,7 +443,11 @@ const TicketDetail = () => {
         <button onClick={() => navigate('/tickets')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Home size={15} /></button>
         <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(79,142,247,0.15)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.3)', padding: '2px 7px', borderRadius: 4 }}>{ticket.club}</span>
         <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>{ticket.title}</span>
-        <Edit2 size={13} color="var(--text-muted)" style={{ cursor: 'pointer' }} />
+        <Edit2
+          size={13} color="var(--text-muted)"
+          style={{ cursor: 'pointer', flexShrink: 0 }}
+          onClick={() => { setEditTitle(ticket.title || ''); setEditDesc(ticket.description || ticket.subtitle || ''); setShowEditModal(true); }}
+        />
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: sColor, background: `${sColor}18`, border: `1px solid ${sColor}40`, padding: '3px 10px', borderRadius: 6 }}>● {sLabel}</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', padding: '3px 10px', borderRadius: 6 }}>{ticket.priority}</span>
@@ -750,6 +757,69 @@ const TicketDetail = () => {
           </div>
         </div>
       )}
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div
+          onClick={() => setShowEditModal(false)}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.15s ease' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: 32, maxWidth: 520, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', animation: 'slideUp 0.2s ease', display: 'flex', flexDirection: 'column', gap: 16 }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Edit2 size={18} color="#4f8ef7" />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Редактировать заявку</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Название</label>
+              <input
+                autoFocus
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', outline: 'none', transition: 'border-color 0.15s' }}
+                onFocus={e => e.target.style.borderColor = '#4f8ef7'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Описание</label>
+              <textarea
+                value={editDesc}
+                onChange={e => setEditDesc(e.target.value)}
+                rows={4}
+                style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', resize: 'vertical', lineHeight: 1.6, fontFamily: 'Inter, sans-serif', transition: 'border-color 0.15s' }}
+                onFocus={e => e.target.style.borderColor = '#4f8ef7'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+              <button
+                onClick={() => setShowEditModal(false)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.04em' }}
+              >ОТМЕНА</button>
+              <button
+                onClick={async () => {
+                  const t = editTitle.trim();
+                  const d = editDesc.trim();
+                  if (!t) return;
+                  if (updateTicket && ticket?.id) {
+                    await updateTicket(ticket.id, { title: t, description: d, subtitle: d });
+                  }
+                  setShowEditModal(false);
+                }}
+                style={{ flex: 1, padding: 12, borderRadius: 12, background: 'linear-gradient(135deg, #2563eb, #4f8ef7)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', boxShadow: '0 4px 16px rgba(79,142,247,0.4)' }}
+              >СОХРАНИТЬ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Image Preview Modal */}
       {previewImage && (
         <div 

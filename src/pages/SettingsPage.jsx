@@ -26,10 +26,14 @@ const SettingsPage = () => {
   const [savingUrl, setSavingUrl] = useState(false);
 
   // IP map state (chef only)
-  const [ipMap, setIpMap] = useState({}); // { ip: clubId }
-  const [newIp, setNewIp] = useState('');
-  const [newIpClub, setNewIpClub] = useState('4YOU');
-  const [savingIp, setSavingIp] = useState(false);
+  const [ipMap, setIpMap]           = useState({}); // { publicIp: clubId }
+  const [gatewayMap, setGatewayMap] = useState({}); // { localGatewayIp: clubId }
+  const [newIp, setNewIp]           = useState('');
+  const [newIpClub, setNewIpClub]   = useState('4YOU');
+  const [savingIp, setSavingIp]     = useState(false);
+  const [newGw, setNewGw]           = useState('');
+  const [newGwClub, setNewGwClub]   = useState('4YOU');
+  const [savingGw, setSavingGw]     = useState(false);
 
   // Load clubs config from Firestore
   useEffect(() => {
@@ -42,19 +46,39 @@ const SettingsPage = () => {
     });
   }, []);
 
-  // Load IP map from Firestore (chef only)
+  // Load IP map + gateway map from Firestore (chef only)
   useEffect(() => {
     if (!isChef) return;
     return onSnapshot(doc(db, 'checkin_config', 'ip_map'), (snap) => {
-      if (snap.exists()) setIpMap(snap.data().ips ?? {});
+      if (snap.exists()) {
+        setIpMap(snap.data().ips ?? {});
+        setGatewayMap(snap.data().gateways ?? {});
+      }
     });
   }, [isChef]);
 
   const saveIpMap = async (updatedMap) => {
-    await setDoc(doc(db, 'checkin_config', 'ip_map'), {
-      ips: updatedMap,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    await setDoc(doc(db, 'checkin_config', 'ip_map'), { ips: updatedMap, updatedAt: new Date().toISOString() }, { merge: true });
+  };
+
+  const saveGatewayMap = async (updatedMap) => {
+    await setDoc(doc(db, 'checkin_config', 'ip_map'), { gateways: updatedMap, updatedAt: new Date().toISOString() }, { merge: true });
+  };
+
+  const handleAddGateway = async () => {
+    const trimmed = newGw.trim();
+    if (!trimmed || !newGwClub) return;
+    setSavingGw(true);
+    try {
+      await saveGatewayMap({ ...gatewayMap, [trimmed]: newGwClub });
+      setNewGw('');
+    } finally { setSavingGw(false); }
+  };
+
+  const handleRemoveGateway = async (gw) => {
+    const updated = { ...gatewayMap };
+    delete updated[gw];
+    await saveGatewayMap(updated);
   };
 
   const handleAddIp = async () => {
@@ -380,6 +404,75 @@ const SettingsPage = () => {
               onClick={handleAddIp}
               disabled={savingIp || !newIp.trim()}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 12, background: 'var(--accent-purple)', color: '#fff', fontSize: 13, fontWeight: 700, border: 'none', cursor: savingIp ? 'wait' : 'pointer', opacity: !newIp.trim() ? 0.5 : 1 }}
+            >
+              <Plus size={16} />
+              Добавить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Gateway IP Map (chef only) ── */}
+      {isChef && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40, marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <MapPin size={22} color="#22c55e" />
+            <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+              IP роутера (локальный)
+            </h2>
+          </div>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 8 }}>
+            Шлюз клубного WiFi — проверка подсети устройства
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500, marginBottom: 28, lineHeight: 1.6 }}>
+            При чекине приложение определяет локальный IP устройства (WebRTC) и проверяет, что оно находится в подсети роутера.
+            Например, если роутер <code style={{ background: 'var(--bg-hover)', padding: '1px 6px', borderRadius: 4 }}>192.168.26.1</code>, то устройство должно быть в диапазоне <code style={{ background: 'var(--bg-hover)', padding: '1px 6px', borderRadius: 4 }}>192.168.26.*</code>.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+            {Object.entries(gatewayMap).length === 0 ? (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>Нет добавленных шлюзов</p>
+            ) : (
+              Object.entries(gatewayMap).map(([gw, clubId]) => {
+                const club = CLUBS.find(c => c.name === clubId);
+                return (
+                  <div key={gw} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: 'var(--bg-hover)', borderRadius: 16, border: '1px solid var(--border)' }}>
+                    <code style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{gw}</code>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, fontFamily: 'monospace' }}>
+                      подсеть: {gw.split('.').slice(0, 3).join('.')}.*
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: club?.color ?? 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', minWidth: 90, textAlign: 'right' }}>
+                      {clubId}
+                    </span>
+                    <button onClick={() => handleRemoveGateway(gw)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4, display: 'flex' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={newGw}
+              onChange={e => setNewGw(e.target.value)}
+              placeholder="192.168.26.1"
+              style={{ flex: 1, minWidth: 160, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', fontFamily: 'monospace' }}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddGateway(); }}
+            />
+            <select
+              value={newGwClub}
+              onChange={e => setNewGwClub(e.target.value)}
+              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', cursor: 'pointer' }}
+            >
+              {CLUBS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </select>
+            <button
+              onClick={handleAddGateway}
+              disabled={savingGw || !newGw.trim()}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 12, background: '#22c55e', color: '#000', fontSize: 13, fontWeight: 700, border: 'none', cursor: savingGw ? 'wait' : 'pointer', opacity: !newGw.trim() ? 0.5 : 1 }}
             >
               <Plus size={16} />
               Добавить

@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     .split(',')[0]
     .trim()
 
-  const { userId, userName } = req.body ?? {}
+  const { userId, userName, localSubnetOk } = req.body ?? {}
   if (!userId) return res.status(400).json({ error: 'userId required' })
 
   try {
@@ -36,6 +36,7 @@ export default async function handler(req, res) {
       userName: userName ?? null,
       clubId,
       ipAddress: ip,
+      localSubnetOk: localSubnetOk ?? null,
       status: clubId ? 'verified' : 'failed',
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       date: new Date().toISOString().split('T')[0],

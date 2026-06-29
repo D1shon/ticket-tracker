@@ -3,10 +3,45 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Ticket, CheckSquare, Calendar,
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
-  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart
+  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2
 } from 'lucide-react';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
+import { db } from '../../lib/firebase';
+import { doc, collection, query, where, onSnapshot } from 'firebase/firestore';
+
+// Returns true if any monitor in this club hasn't been checked today
+const useMonitorAlert = (club) => {
+  const [alert, setAlert] = useState(false);
+  useEffect(() => {
+    if (!club) { setAlert(false); return; }
+    const today = new Date().toISOString().slice(0, 10);
+    const q = query(collection(db, 'hr_monitors'), where('club', '==', club));
+    return onSnapshot(q, snap => {
+      const docs = snap.docs;
+      setAlert(docs.length > 0 && docs.some(d => d.data().lastCheckedDate !== today));
+    }, () => setAlert(false));
+  }, [club]);
+  return alert;
+};
+
+// Returns true if yesterday's towel record for this club is missing or incomplete
+const useTowelAlert = (club) => {
+  const [alert, setAlert] = useState(false);
+  useEffect(() => {
+    if (!club) { setAlert(false); return; }
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const yStr  = d.toISOString().slice(0, 10);
+    const docId = `${yStr}_${club.replace(/\s+/g, '_')}`;
+    return onSnapshot(doc(db, 'towel_records', docId), snap => {
+      if (!snap.exists()) { setAlert(true); return; }
+      const data = snap.data();
+      setAlert(data.dirtyTotal == null || data.actualCount == null);
+    }, () => setAlert(false));
+  }, [club]);
+  return alert;
+};
 
 /* ─── All nav items ──────────────────────────────────────────── */
 const ALL_NAV = [
@@ -18,7 +53,9 @@ const ALL_NAV = [
   { icon: LayoutDashboard, label: 'Дашборд',    path: '/dashboard',   primary: false },
   { icon: Archive,         label: 'Архив',       path: '/archive',     primary: false },
   { icon: Heart,           label: 'Пульсометры', path: '/hr-monitors', primary: false },
+  { icon: Shirt,           label: 'Учет полотенец', path: '/towels',   primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
+  { icon: BarChart2,       label: 'Посещения',   path: '/club-visits', primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
   { icon: FileText,        label: 'Соглашение',  path: '/policy',      primary: false },
@@ -32,6 +69,9 @@ const DesktopSidebar = () => {
   const [isDark, setIsDark] = useState(() => localStorage.getItem('hjtrack-theme') === 'dark');
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
+  const _alertClub = (user?.role === 'admin' || user?.role === 'manager') ? (user?.club?.toUpperCase() || null) : null;
+  const towelAlert   = useTowelAlert(_alertClub);
+  const monitorAlert = useMonitorAlert(_alertClub);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -49,7 +89,7 @@ const DesktopSidebar = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
@@ -64,16 +104,25 @@ const DesktopSidebar = () => {
       </div>
 
       <nav style={{ flex: 1, paddingTop: 8 }}>
-        {allowedNav.map(item => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          >
-            <item.icon size={17} strokeWidth={1.8} />
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
+        {allowedNav.map(item => {
+          const isTowelAlert   = item.path === '/towels'       && towelAlert;
+          const isMonitorAlert = item.path === '/hr-monitors'  && monitorAlert;
+          const isAlerted      = isTowelAlert || isMonitorAlert;
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              style={isAlerted ? { boxShadow: '0 0 0 1.5px #ef4444', borderRadius: 10, position: 'relative' } : undefined}
+            >
+              <item.icon size={17} strokeWidth={1.8} />
+              <span>{item.label}</span>
+              {isAlerted && (
+                <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0, boxShadow: '0 0 6px #ef4444' }} />
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
 
       <div style={{ borderTop: '1px solid var(--sidebar-border)', paddingTop: 4, paddingBottom: 8, position: 'relative' }}>
@@ -151,6 +200,9 @@ const MobileNav = () => {
   const location = useLocation();
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
   const [isDark, setIsDark] = useState(() => localStorage.getItem('hjtrack-theme') === 'dark');
+  const _alertClubM  = (user?.role === 'admin' || user?.role === 'manager') ? (user?.club?.toUpperCase() || null) : null;
+  const towelAlert   = useTowelAlert(_alertClubM);
+  const monitorAlert = useMonitorAlert(_alertClubM);
   const [showMore, setShowMore] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const sheetRef = useRef(null);
@@ -197,7 +249,7 @@ const MobileNav = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
@@ -334,6 +386,9 @@ const MobileNav = () => {
             {(showMore || isMoreActive) && (
               <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />
             )}
+            {(towelAlert && secondaryItems.some(i => i.path === '/towels') || monitorAlert && secondaryItems.some(i => i.path === '/hr-monitors')) && (
+              <span style={{ position: 'absolute', top: 6, right: 'calc(50% - 14px)', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />
+            )}
             <MoreHorizontal size={20} strokeWidth={1.8} />
             <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Ещё</span>
           </button>
@@ -365,23 +420,27 @@ const MobileNav = () => {
             <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
 
             {secondaryItems.map(item => {
-              const active = isActive(item.path);
+              const active   = isActive(item.path);
+              const isAl     = (item.path === '/towels' && towelAlert) || (item.path === '/hr-monitors' && monitorAlert);
               return (
                 <button
                   key={item.path}
                   onClick={() => handleTabClick(item.path)}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                    padding: '14px 24px', background: 'transparent', border: 'none',
+                    padding: '14px 24px', background: isAl ? 'rgba(239,68,68,0.04)' : 'transparent', border: 'none',
                     cursor: 'pointer', textAlign: 'left',
-                    color: active ? 'var(--accent-purple)' : 'var(--text-primary)',
-                    borderLeft: active ? '3px solid var(--accent-purple)' : '3px solid transparent',
+                    color: active ? 'var(--accent-purple)' : isAl ? '#ef4444' : 'var(--text-primary)',
+                    borderLeft: active ? '3px solid var(--accent-purple)' : isAl ? '3px solid #ef4444' : '3px solid transparent',
                     transition: 'all 0.15s',
                   }}
                 >
                   <item.icon size={20} strokeWidth={1.8} />
-                  <span style={{ flex: 1, fontSize: 15, fontWeight: active ? 700 : 500 }}>{item.label}</span>
-                  <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+                  <span style={{ flex: 1, fontSize: 15, fontWeight: active || isAl ? 700 : 500 }}>{item.label}</span>
+                  {isAl
+                    ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
+                    : <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+                  }
                 </button>
               );
             })}

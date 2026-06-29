@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight } from 'lucide-react';
+import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight, CalendarClock } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 
 const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
@@ -192,6 +193,7 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
 
   useEffect(() => {
     if (isOpen) {
+      document.body.style.overflow = 'hidden';
       setTitle('');
       setDescription('');
       setPriority('medium');
@@ -200,7 +202,10 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
       const initialClub = user?.club || ((activeClub && activeClub !== 'ВСЕ') ? activeClub : (isChef ? '' : '4YOU'));
       setClub(initialClub);
       setAssignee(user?.displayName || 'Анастасия');
+    } else {
+      document.body.style.overflow = '';
     }
+    return () => { document.body.style.overflow = ''; };
   }, [isOpen, isChef, user, activeClub]);
 
   if (!isOpen) return null;
@@ -226,20 +231,22 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
     }
   };
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
         position: 'fixed',
-        inset: 0,
+        top: 0, left: 0, right: 0, bottom: 0,
         zIndex: 9999,
-        background: 'rgba(0,0,0,0.65)',
+        background: 'rgba(0,0,0,0.75)',
         backdropFilter: 'blur(6px)',
         WebkitBackdropFilter: 'blur(6px)',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: '16px'
+        padding: '20px 16px 32px',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch'
       }}
     >
       <div
@@ -252,9 +259,8 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
           borderRadius: 28,
           padding: '32px',
           boxShadow: '0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
-          maxHeight: '92vh',
-          overflowY: 'auto',
-          animation: 'modal-pop 0.22s cubic-bezier(0.34,1.56,0.64,1)'
+          animation: 'modal-pop 0.22s cubic-bezier(0.34,1.56,0.64,1)',
+          flexShrink: 0
         }}
       >
         <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 24, letterSpacing: '-0.02em' }}>
@@ -304,7 +310,6 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
               value={title}
               onChange={e => setTitle(e.target.value)}
               required
-              autoFocus
             />
           </div>
 
@@ -401,9 +406,176 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
+// ─── Schedule Ticket Modal ────────────────────────────────────────────────────
+const ScheduleTicketModal = ({ isOpen, onClose, user, onAdd, activeClub }) => {
+  const [title,       setTitle]       = useState('');
+  const [description, setDescription] = useState('');
+  const [club,        setClub]        = useState('');
+  const [priority,    setPriority]    = useState('medium');
+  const [assignee,    setAssignee]    = useState('');
+  const [scheduledFor, setScheduledFor] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isChef = user?.role === 'chef';
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const tomorrowStr = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })();
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      setTitle(''); setDescription(''); setPriority('medium'); setIsSubmitting(false);
+      setScheduledFor(tomorrowStr);
+      const initialClub = user?.club || ((activeClub && activeClub !== 'ВСЕ') ? activeClub : (isChef ? '' : '4YOU'));
+      setClub(initialClub);
+      setAssignee(user?.displayName || 'Анастасия');
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen, isChef, user, activeClub]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title || !club || !scheduledFor) return;
+    setIsSubmitting(true);
+    try {
+      await onAdd({
+        title, description, club, priority, assignee,
+        scheduledFor,
+        status: scheduledFor > todayStr ? 'scheduled' : 'new',
+      });
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '8px 16px 32px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 520, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: '32px', boxShadow: '0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)', animation: 'modal-pop 0.22s cubic-bezier(0.34,1.56,0.64,1)', flexShrink: 0 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+          <CalendarClock size={20} style={{ color: '#63b3ed' }} />
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+            ЗАПЛАНИРОВАТЬ ЗАДАЧУ
+          </h2>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Клуб */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Клуб</label>
+            {user?.club ? (
+              <div style={{ padding: '10px 16px', borderRadius: 12, background: 'var(--bg-hover)', border: '1px solid var(--border)', fontSize: 13, fontWeight: 800, color: 'var(--accent-purple)' }}>{user.club.toUpperCase()}</div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {CLUBS.map(c => (
+                  <button key={c} type="button" onClick={() => setClub(c)}
+                    style={{ padding: '8px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: club === c ? 'var(--accent-purple)' : 'var(--bg-secondary)', color: club === c ? '#fff' : 'var(--text-secondary)', border: club === c ? '1px solid var(--accent-purple)' : '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.15s' }}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Дата появления */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Дата появления в «Новых»
+            </label>
+            <input
+              type="date"
+              className="input-app"
+              style={{ width: '100%', borderRadius: 12, border: '1.5px solid rgba(99,179,237,0.4)', color: '#63b3ed', fontWeight: 800 }}
+              min={todayStr}
+              value={scheduledFor}
+              onChange={e => setScheduledFor(e.target.value)}
+              required
+            />
+            {scheduledFor === todayStr && (
+              <p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600, marginTop: 6, marginBottom: 0 }}>
+                Сегодня — задача появится сразу в «Новых»
+              </p>
+            )}
+          </div>
+
+          {/* Заголовок */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Заголовок задачи</label>
+            <input className="input-app" style={{ width: '100%', borderRadius: 12 }} placeholder="Коротко о сути..." value={title} onChange={e => setTitle(e.target.value)} required />
+          </div>
+
+          {/* Срочность */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Срочность</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {PRIORITIES.map(p => (
+                <button key={p.id} type="button" onClick={() => setPriority(p.id)}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 12, fontSize: 11, fontWeight: 700, background: priority === p.id ? `${p.color}20` : 'var(--bg-secondary)', color: priority === p.id ? p.color : 'var(--text-muted)', border: priority === p.id ? `1px solid ${p.color}40` : '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Описание */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Информация подробнее</label>
+            <textarea className="input-app" style={{ width: '100%', borderRadius: 12, minHeight: 80, padding: 12, resize: 'none' }} placeholder="Детали задачи..." value={description} onChange={e => setDescription(e.target.value)} />
+          </div>
+
+          {/* Ответственный */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Ответственный</label>
+            <select className="input-app" style={{ width: '100%', borderRadius: 12, cursor: 'pointer' }} value={assignee.split(' (')[0]} onChange={e => setAssignee(`${e.target.value} (${club || '?'})`)}>
+              {Object.entries(USER_ROLES)
+                .filter(([, u]) => !club || u.club === club || u.club === null)
+                .filter(([, u], i, arr) => arr.findIndex(([, x]) => x.displayName === u.displayName) === i)
+                .sort(([, a], [, b]) => a.displayName.localeCompare(b.displayName, 'ru'))
+                .map(([email, u]) => (
+                  <option key={email} value={u.displayName}>
+                    {u.displayName}{u.club ? ` (${u.club})` : u.role === 'chef' ? ' (CHEF)' : ''}
+                  </option>
+                ))
+              }
+            </select>
+          </div>
+
+          {/* Кнопки */}
+          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, padding: '14px', borderRadius: 14, background: 'transparent', color: 'var(--text-muted)', fontWeight: 700, border: '1px solid var(--border)', cursor: 'pointer' }}>
+              ОТМЕНА
+            </button>
+            <button type="submit" disabled={isSubmitting || !title || !club || !scheduledFor}
+              style={{ flex: 2, padding: '14px', borderRadius: 14, background: isSubmitting ? 'var(--bg-secondary)' : 'rgba(99,179,237,0.15)', color: isSubmitting ? 'var(--text-muted)' : '#63b3ed', fontWeight: 800, border: '1.5px solid rgba(99,179,237,0.4)', cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              {isSubmitting ? (
+                <><div style={{ width: 14, height: 14, border: '2px solid rgba(99,179,237,0.3)', borderTop: '2px solid #63b3ed', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }}></div>СОХРАНЕНИЕ...</>
+              ) : (
+                <><CalendarClock size={15} />ЗАПЛАНИРОВАТЬ</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 const KanbanColumn = ({ col, tickets, prevTicketIds }) => {
   return (
     <div className="kanban-col" style={{ flex: 1, minWidth: 280, display: 'flex', flexDirection: 'column' }}>
@@ -435,7 +607,8 @@ const TicketsPage = () => {
   const [activeFilter, setActiveFilter] = useState('ВСЕ');
   const [search,       setSearch]       = useState('');
   const [viewMode,     setViewMode]     = useState('kanban');
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreateOpen,   setIsCreateOpen]   = useState(false);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [prevColIds,    setPrevColIds]    = useState(null);
 
   const navigate = useNavigate();
@@ -451,12 +624,18 @@ const TicketsPage = () => {
   const groupedTickets = React.useMemo(() => {
     const result = { new: [], in_progress: [], paused: [], waiting: [], closed: [] };
     if (!tickets) return result;
-    
+    const todayStr = new Date().toISOString().slice(0, 10);
+
     tickets.forEach(t => {
       // Filter by club first for security
       if (userClub && (t.club || '').toUpperCase() !== userClub) return;
-      
-      const s = t.status || 'new';
+
+      let s = t.status || 'new';
+      // Scheduled tasks: show in "new" when their date has arrived
+      if (s === 'scheduled') {
+        if (t.scheduledFor && t.scheduledFor > todayStr) return; // future — hide from board
+        s = 'new'; // date reached → treat as new
+      }
       if (result[s]) result[s].push(t);
     });
     return result;
@@ -543,6 +722,22 @@ const TicketsPage = () => {
             </div>
           )}
           <button
+            onClick={() => setIsScheduleOpen(true)}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 18px', borderRadius: 14,
+              background: 'transparent',
+              border: '1.5px solid rgba(99,179,237,0.45)',
+              color: '#63b3ed', fontWeight: 800, fontSize: 12,
+              cursor: 'pointer', letterSpacing: '0.04em',
+              transition: 'all 0.15s',
+            }}
+          >
+            <CalendarClock size={15} strokeWidth={2.5} /> ЗАПЛАНИРОВАТЬ
+          </button>
+          <button
             onClick={() => setIsCreateOpen(true)}
             className="btn-create-ticket"
             onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
@@ -620,9 +815,16 @@ const TicketsPage = () => {
         )}
       </div>
       {/* Create Modal */}
-      <CreateTicketModal 
-        isOpen={isCreateOpen} 
+      <CreateTicketModal
+        isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
+        user={user}
+        onAdd={addTicket}
+        activeClub={activeClub}
+      />
+      <ScheduleTicketModal
+        isOpen={isScheduleOpen}
+        onClose={() => setIsScheduleOpen(false)}
         user={user}
         onAdd={addTicket}
         activeClub={activeClub}

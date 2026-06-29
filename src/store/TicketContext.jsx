@@ -17,9 +17,10 @@ export const USER_ROLES = {
 
   // ── COLIBRI ───────────────────────────────────────────────────────────────
   '19.anastasiya.tkachenko.88@gmail.com': { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
-  'daewure@mail.ru':         { role: 'manager', club: 'COLIBRI', displayName: 'Аружан' },
-  'dias.colibri@hj.fit':     { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
-  'diasbakyt3773@gmail.com': { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
+  'daewure@mail.ru':              { role: 'manager', club: 'COLIBRI', displayName: 'Аружан' },
+  'dias.colibri@hj.fit':          { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
+  'diasbakyt3773@gmail.com':      { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
+  'loshkadishka3006@gmail.com':   { role: 'manager', club: 'COLIBRI', displayName: 'Алишер' },
 
   // ── VILLA ─────────────────────────────────────────────────────────────────
   'diassd9806@gmail.com':   { role: 'manager', club: 'VILLA', displayName: 'Диас' },
@@ -273,7 +274,20 @@ export const TicketProvider = ({ children }) => {
     const enriched = enrichUserWithRole(sessionUser);
     setUser(enriched);
     localStorage.setItem('app_session_user', JSON.stringify(sessionUser));
-    
+
+    // Log admin logins for activity tracking (visible to chef/manager in HR Monitors)
+    if (enriched.role === 'admin' && !offlineMode) {
+      const now = new Date();
+      addDoc(collection(db, 'hr_monitor_activity'), {
+        type: 'login',
+        adminEmail:   enriched.email,
+        adminName:    enriched.displayName,
+        club:         enriched.club,
+        date:         now.toISOString().slice(0, 10),
+        timestampISO: now.toISOString(),
+      }).catch(() => {});
+    }
+
     if (offlineMode) {
       toast.warning('Вход выполнен в автономном режиме. Облачная база данных недоступна (требуется включить Anonymous Auth в Firebase Console).', {
         duration: 8000
@@ -378,14 +392,14 @@ export const TicketProvider = ({ children }) => {
     try {
       await addDoc(collection(db, 'tickets'), {
         ...ticketData,
-        status: 'new',
+        status: ticketData.status ?? 'new',
         createdAt: serverTimestamp(),
         createdBy: user?.uid || 'anonymous',
         createdByEmail: user?.email || '',
         createdByClub: user?.club || ticketData.club || '',
         comments: [],
       });
-      toast.success('Задача создана');
+      toast.success(ticketData.status === 'scheduled' ? 'Задача запланирована' : 'Задача создана');
     } catch (error) {
       toast.error('Ошибка создания задачи');
       throw error;

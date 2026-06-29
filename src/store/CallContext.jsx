@@ -3,7 +3,7 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
 import { db } from '../lib/firebase';
-import { doc, setDoc, deleteDoc, onSnapshot, collection, increment, getDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, updateDoc, deleteField, onSnapshot, collection, serverTimestamp, getDoc } from 'firebase/firestore';
 
 const CallContext = createContext();
 
@@ -34,8 +34,9 @@ export const CallProvider = ({ children }) => {
 
   const clientRef   = useRef(null);
   const screenClientRef = useRef(null);
-  const channelRef  = useRef('');  // current channel name
+  const channelRef  = useRef('');
   const uidRef      = useRef(null);
+  const heartbeatRef = useRef(null);
 
   // ─── Listen to room-counts collection ──────────────────────────────────────
   useEffect(() => {
@@ -43,7 +44,15 @@ export const CallProvider = ({ children }) => {
     try {
       unsub = onSnapshot(collection(db, 'call_rooms'), (snap) => {
         const counts = {};
-        snap.docs.forEach(d => { counts[d.id] = d.data().count || 0; });
+        const nowMs = Date.now();
+        snap.docs.forEach(d => {
+          const members = d.data().members || {};
+          counts[d.id] = Object.values(members).filter(m => {
+            if (!m.lastSeen) return true;
+            const ts = m.lastSeen.toMillis ? m.lastSeen.toMillis() : 0;
+            return nowMs - ts < 3 * 60 * 1000;
+          }).length;
+        });
         setRoomCounts(counts);
       }, (error) => {
         console.warn('[CallContext] Listener to call_rooms failed:', error);
@@ -54,36 +63,40 @@ export const CallProvider = ({ children }) => {
     return () => { if (unsub) unsub(); };
   }, []);
 
-  // ─── Helpers to update Firestore room count ─────────────────────────────────
-  const incrementRoom = async (channel) => {
+  // ─── Helpers to update Firestore room presence ──────────────────────────────
+  const getMemberId = () =>
+    user?.email?.replace(/[^a-zA-Z0-9]/g, '_') || `anon_${Math.random().toString(36).slice(2, 8)}`;
+
+  const joinRoom = async (channel) => {
     try {
-      const ref = doc(db, 'call_rooms', channel);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        await setDoc(ref, { count: (snap.data().count || 0) + 1 }, { merge: true });
-      } else {
-        await setDoc(ref, { count: 1 });
-      }
+      const memberId = getMemberId();
+      await setDoc(doc(db, 'call_rooms', channel), {
+        members: { [memberId]: { name: user?.displayName || memberId, lastSeen: serverTimestamp() } }
+      }, { merge: true });
     } catch (e) {
-      console.warn('[CallContext] Failed to increment room count in Firestore:', e);
+      console.warn('[CallContext] joinRoom error:', e);
     }
   };
 
-  const decrementRoom = async (channel) => {
+  const leaveRoom = async (channel) => {
     try {
-      const ref = doc(db, 'call_rooms', channel);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const next = Math.max(0, (snap.data().count || 1) - 1);
-        if (next === 0) {
-          await deleteDoc(ref);
-        } else {
-          await setDoc(ref, { count: next }, { merge: true });
-        }
-      }
+      const memberId = getMemberId();
+      await updateDoc(doc(db, 'call_rooms', channel), {
+        [`members.${memberId}`]: deleteField()
+      });
     } catch (e) {
-      console.warn('[CallContext] Failed to decrement room count in Firestore:', e);
+      console.warn('[CallContext] leaveRoom error:', e);
     }
+  };
+
+  const heartbeat = async () => {
+    if (!channelRef.current) return;
+    try {
+      const memberId = getMemberId();
+      await setDoc(doc(db, 'call_rooms', channelRef.current), {
+        members: { [memberId]: { lastSeen: serverTimestamp() } }
+      }, { merge: true });
+    } catch (e) {}
   };
 
   // ─── Join ───────────────────────────────────────────────────────────────────
@@ -204,8 +217,8 @@ export const CallProvider = ({ children }) => {
         await clientRef.current.publish(tracksToPublish);
       }
 
-      // Update Firestore counter (wrapped in try-catch internally, won't throw)
-      await incrementRoom(channel);
+      await joinRoom(channel);
+      heartbeatRef.current = setInterval(heartbeat, 30000);
 
       setIsInCall(true);
       toast.success(`Вы вошли в комнату: ${displayName}`);
@@ -311,8 +324,8 @@ export const CallProvider = ({ children }) => {
       }
       if (clientRef.current) await clientRef.current.leave();
 
-      // Update Firestore counter
-      if (channelRef.current) await decrementRoom(channelRef.current);
+      if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+      if (channelRef.current) await leaveRoom(channelRef.current);
     } catch (e) {
       console.error('[CallContext] leaveCall error:', e);
     }
@@ -329,7 +342,7 @@ export const CallProvider = ({ children }) => {
   // ─── Clean up on page unload ────────────────────────────────────────────────
   useEffect(() => {
     const handleUnload = () => {
-      if (channelRef.current) decrementRoom(channelRef.current).catch(() => {});
+      if (channelRef.current) leaveRoom(channelRef.current).catch(() => {});
     };
     window.addEventListener('beforeunload', handleUnload);
     return () => window.removeEventListener('beforeunload', handleUnload);

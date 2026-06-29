@@ -1,6 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, CheckCircle2, X, Smartphone } from 'lucide-react';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
+
+async function getLocalIPs() {
+  return new Promise(resolve => {
+    const ips = new Set();
+    let pc;
+    try {
+      pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel('');
+      pc.onicecandidate = e => {
+        if (!e.candidate) { resolve([...ips]); return; }
+        const m = /([0-9]{1,3}(?:\.[0-9]{1,3}){3})/.exec(e.candidate.candidate);
+        if (m && !m[1].startsWith('127.')) ips.add(m[1]);
+      };
+      pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => resolve([]));
+    } catch { resolve([]); return; }
+    setTimeout(() => { try { pc.close(); } catch {} resolve([...ips]); }, 2000);
+  });
+}
+
+function onGatewaySubnet(localIPs, gatewayIp) {
+  const prefix = gatewayIp.split('.').slice(0, 3).join('.');
+  return localIPs.some(ip => ip.startsWith(prefix + '.'));
+}
 
 const MobileScanner = () => {
   const { user } = useTickets();
@@ -8,9 +33,16 @@ const MobileScanner = () => {
   const [result, setResult] = useState(null); // { allowed, clubId, ip }
   const [showInstallPrompt, setShowInstallPrompt] = useState(true);
   const [isIOS, setIsIOS] = useState(false);
+  const [gateways, setGateways] = useState({});
 
   // fallback: support legacy ?admin=Name URL param for backwards compat
   const [adminName, setAdminName] = useState('');
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'checkin_config', 'ip_map'), snap => {
+      if (snap.exists()) setGateways(snap.data().gateways ?? {});
+    });
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,15 +63,26 @@ const MobileScanner = () => {
     setStatus('verifying');
     setResult(null);
     try {
+      // WebRTC: собираем как дополнительную инфо, не блокируем
+      let localSubnetOk = null;
+      const gwList = Object.keys(gateways);
+      if (gwList.length > 0) {
+        const localIPs = await getLocalIPs();
+        if (localIPs.length > 0) {
+          localSubnetOk = gwList.some(gw => onGatewaySubnet(localIPs, gw));
+        }
+      }
+
+      // Сервер принимает окончательное решение
       const res = await fetch('/api/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user?.email || adminName || 'unknown',
           userName: user?.displayName || adminName || null,
+          localSubnetOk,
         }),
       });
-
       const data = await res.json();
       setResult(data);
       setStatus(data.allowed ? 'success' : 'error');
@@ -94,7 +137,12 @@ const MobileScanner = () => {
           <X size={40} color="#000" strokeWidth={3} />
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.03em', color: '#ef4444' }}>Нет доступа</h1>
-        {result?.ip ? (
+        {result?.localNetworkError ? (
+          <p style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8, textAlign: 'center', lineHeight: 1.6 }}>
+            Ваш IP: <code style={{ color: '#fff', background: '#1c1c1e', padding: '2px 8px', borderRadius: 6 }}>{result.ip}</code><br />
+            Нужна подсеть: <code style={{ color: '#f59e0b', background: '#1c1c1e', padding: '2px 8px', borderRadius: 6 }}>{result.expectedSubnet}</code>
+          </p>
+        ) : result?.ip ? (
           <p style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8, textAlign: 'center', lineHeight: 1.6 }}>
             Ваш IP: <code style={{ color: '#fff', background: '#1c1c1e', padding: '2px 8px', borderRadius: 6 }}>{result.ip}</code>
           </p>

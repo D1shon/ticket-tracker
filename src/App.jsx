@@ -28,6 +28,8 @@ import MobileScanner from './pages/MobileScanner';
 import GuidebookPage from './pages/GuidebookPage';
 import PolicyPage from './pages/PolicyPage';
 import HRMonitorsPage from './pages/HRMonitorsPage';
+import TowelsPage from './pages/TowelsPage';
+import ClubVisitsPage from './pages/ClubVisitsPage';
 
 // Notification bell is fixed top-right on every authenticated page
 const NotificationCorner = () => (
@@ -123,7 +125,7 @@ const AppContent = () => {
         <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : '/tickets'} replace /> : <Login />} />
         
         <Route path="/scan" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
             <MobileScanner />
           </ProtectedLayout>
         } />
@@ -213,6 +215,16 @@ const AppContent = () => {
         <Route path="/hr-monitors" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
             <HRMonitorsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/towels" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+            <TowelsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/club-visits" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+            <ClubVisitsPage />
           </ProtectedLayout>
         } />
         <Route path="/settings" element={
