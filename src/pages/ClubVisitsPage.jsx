@@ -93,7 +93,7 @@ const ClubVisitsPage = () => {
   const [summary, setSummary] = useState(null);
   const [history, setHistory] = useState(null);
 
-  const [mode, setMode]         = useState('today');
+  const [mode, setMode]         = useState('yesterday');
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
   const [dateTo, setDateTo]     = useState(yesterdayStr);
 
@@ -128,13 +128,11 @@ const ClubVisitsPage = () => {
     ? (typeof summary.updatedAt === 'string' ? new Date(summary.updatedAt) : summary.updatedAt.toDate?.())
     : null;
 
-  const modeLabel = mode === 'today' ? 'Сегодня'
-    : mode === 'yesterday' ? 'Вчера'
+  const modeLabel = mode === 'yesterday' ? 'Вчера'
     : mode === 'analytics' ? 'Аналитика'
     : `${format(parseISO(dateFrom), 'd MMM', { locale: ru })} – ${format(parseISO(dateTo), 'd MMM', { locale: ru })}`;
 
   const TABS = [
-    { id: 'today',     label: 'Сегодня'      },
     { id: 'yesterday', label: 'Вчера'        },
     { id: 'range',     label: 'Фильтр дат'  },
     { id: 'analytics', label: '📊 Аналитика' },
