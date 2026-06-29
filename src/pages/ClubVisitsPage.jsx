@@ -86,7 +86,7 @@ function buildAnalytics(data, clubFilter) {
 
 const ClubVisitsPage = () => {
   const { user } = useTickets();
-  const isChef   = user?.role === 'chef';
+  const isChef   = user?.role === 'chef' || user?.role === 'viewer';
   const userClub = user?.club?.toUpperCase();
   const dwhClub  = CLUB_MAP[userClub] ?? null;
 

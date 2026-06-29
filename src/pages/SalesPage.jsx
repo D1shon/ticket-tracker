@@ -20,7 +20,7 @@ const CLUB_COLORS = {
 
 const SalesPage = () => {
   const { user } = useTickets();
-  const isChef = useMemo(() => user?.role === 'chef', [user]);
+  const isChef = useMemo(() => user?.role === 'chef' || user?.role === 'viewer', [user]);
   const userClub = useMemo(() => user?.club || null, [user]);
 
   // Chef can select any club; admin/manager is locked to their club

@@ -58,7 +58,7 @@ const LiveClock = () => {
 
 const AttendancePage = () => {
   const { user } = useTickets();
-  const isChef = user?.role === 'chef';
+  const isChef = user?.role === 'chef' || user?.role === 'viewer';
   const userClub = user?.club?.toUpperCase();
 
   const [selectedClub, setSelectedClub] = useState(userClub || CLUBS[0]);

@@ -21,7 +21,7 @@ const MerchPage = () => {
   const { user } = useTickets();
   
   // Role & Permissions check
-  const isChef = useMemo(() => user?.role === 'chef', [user]);
+  const isChef = useMemo(() => user?.role === 'chef' || user?.role === 'viewer', [user]);
   const isMarketing = useMemo(() => user?.role === 'marketing', [user]);
   const managerClub = useMemo(() => user?.club || null, [user]);
   const canSelectAllClubs = useMemo(() => isChef || isMarketing, [isChef, isMarketing]);

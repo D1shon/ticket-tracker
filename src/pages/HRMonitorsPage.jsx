@@ -112,7 +112,7 @@ const getEmployeesWithShifts = async (club, date) => {
 
 const HRMonitorsPage = () => {
   const { user } = useTickets();
-  const isChef    = user?.role === 'chef';
+  const isChef    = user?.role === 'chef' || user?.role === 'viewer';
   const isAdmin   = user?.role === 'admin';
   const userClub  = user?.club || null;
 
