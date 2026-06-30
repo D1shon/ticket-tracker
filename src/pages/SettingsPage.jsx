@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2 } from 'lucide-react';
+import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { collection, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -12,9 +12,12 @@ const DEFAULT_POLICY_URLS = {
 };
 
 const SettingsPage = () => {
-  const { user, logout } = useTickets();
+  const { user, logout, updateDisplayName } = useTickets();
   const isChef = user?.role === 'chef';
   const userClubUpper = user?.club?.toUpperCase();
+
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   const [pushEnabled, setPushEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -157,8 +160,36 @@ const SettingsPage = () => {
             <div style={{ width: 64, height: 64, borderRadius: 20, background: 'var(--accent-purple-bg)', border: '1px solid var(--accent-purple-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <User size={32} color="var(--accent-purple)" />
             </div>
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 6 }}>{userName}</h2>
+            <div style={{ flex: 1 }}>
+              {editingName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { updateDisplayName(nameInput); setEditingName(false); }
+                      if (e.key === 'Escape') setEditingName(false);
+                    }}
+                    style={{ fontSize: 16, fontWeight: 800, background: 'var(--bg-hover)', border: '1px solid var(--accent-purple)', borderRadius: 10, padding: '6px 12px', color: 'var(--text-primary)', outline: 'none', width: 140 }}
+                  />
+                  <button onClick={() => { updateDisplayName(nameInput); setEditingName(false); }} style={{ background: 'var(--accent-purple)', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center' }}>
+                    <Check size={14} />
+                  </button>
+                  <button onClick={() => setEditingName(false)} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>{userName}</h2>
+                  {user?.role === 'admin' && (
+                    <button onClick={() => { setNameInput(userName); setEditingName(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
               <span style={{ fontSize: 10, fontWeight: 800, background: 'var(--accent-purple)', color: '#fff', padding: '4px 10px', borderRadius: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {userRole}
               </span>

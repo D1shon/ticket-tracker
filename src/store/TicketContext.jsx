@@ -206,12 +206,13 @@ export const TicketProvider = ({ children }) => {
   const enrichUserWithRole = useCallback((u) => {
     if (!u) return null;
     const email = (u.email || '').toLowerCase().trim();
-    
+    const customName = localStorage.getItem('hj_custom_name_' + email) || null;
+
     const registered = USER_ROLES[email];
     if (registered) {
       return {
         ...u,
-        displayName: registered.displayName || u.displayName || email.split('@')[0],
+        displayName: customName || registered.displayName || u.displayName || email.split('@')[0],
         role: registered.role,
         club: registered.club
       };
@@ -220,7 +221,7 @@ export const TicketProvider = ({ children }) => {
     // Default fallback (no permissions)
     return {
       ...u,
-      displayName: u.displayName || email.split('@')[0],
+      displayName: customName || u.displayName || email.split('@')[0],
       role: 'user',
       club: null
     };
@@ -535,8 +536,19 @@ export const TicketProvider = ({ children }) => {
     });
   }, []);
 
+  const updateDisplayName = useCallback((name) => {
+    if (!user?.email) return;
+    const trimmed = name.trim();
+    if (trimmed) {
+      localStorage.setItem('hj_custom_name_' + user.email, trimmed);
+    } else {
+      localStorage.removeItem('hj_custom_name_' + user.email);
+    }
+    setUser(prev => prev ? { ...prev, displayName: trimmed || USER_ROLES[user.email]?.displayName || user.email } : prev);
+  }, [user?.email]);
+
   return (
-    <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, deleteTicket, addComment, uploadFile }}>
+    <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, deleteTicket, addComment, uploadFile, updateDisplayName }}>
       {children}
     </TicketContext.Provider>
   );
