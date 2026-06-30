@@ -106,9 +106,15 @@ const ClubVisitsPage = () => {
 
   // ── Visits data ──────────────────────────────────────────────────────────────
   const getRawClubs = () => {
-    if (mode === 'today')     return summary?.clubs?.map(c => ({ name: c.name, visits: c.today })) ?? [];
-    if (mode === 'yesterday') return history ? aggregate(history.data, yesterdayStr, yesterdayStr) : [];
-    if (mode === 'range')     return history ? aggregate(history.data, dateFrom, dateTo)           : [];
+    if (mode === 'yesterday') {
+      // Prefer the yesterday field stored in club_visits (always fresh)
+      if (summary?.clubs?.some(c => c.yesterday != null)) {
+        return summary.clubs.map(c => ({ name: c.name, visits: c.yesterday ?? 0 }));
+      }
+      // Fallback to daily_history
+      return history ? aggregate(history.data, yesterdayStr, yesterdayStr) : [];
+    }
+    if (mode === 'range') return history ? aggregate(history.data, dateFrom, dateTo) : [];
     return [];
   };
 
