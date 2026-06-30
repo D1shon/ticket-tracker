@@ -38,12 +38,12 @@ export const USER_ROLES = {
   'admin-4you':           { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'       },
   'admin-nurlyorda':      { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda' },
   'ikoperper@gmail.com':              { role: 'admin', club: '4YOU', displayName: 'Искандер'  },
-  'yussentyan@gmail.com':             { role: 'admin', club: '4YOU', displayName: 'Юссен'     },
-  'shapagat.mukhametkaliyeva@mail.ru':{ role: 'admin', club: '4YOU', displayName: 'Шапагат'   },
-  'kasel00405@gmail.com':             { role: 'admin', club: '4YOU', displayName: 'Асель'     },
-  'zhaniya.m12@gmail.com':            { role: 'admin', club: '4YOU', displayName: 'Жания'     },
-  'utemisovazarina1912@gmail.com':    { role: 'admin', club: '4YOU', displayName: 'Зарина'    },
-  'sakenulyabylaj6@gmail.com':        { role: 'admin', club: '4YOU', displayName: 'Сакен'     },
+  'yussentyan@gmail.com':             { role: 'admin', club: 'COLIBRI', displayName: 'Юссен'     },
+  'shapagat.mukhametkaliyeva@mail.ru':{ role: 'admin', club: 'COLIBRI', displayName: 'Шапагат'   },
+  'kasel00405@gmail.com':             { role: 'admin', club: 'COLIBRI', displayName: 'Асель'     },
+  'zhaniya.m12@gmail.com':            { role: 'admin', club: 'COLIBRI', displayName: 'Жания'     },
+  'utemisovazarina1912@gmail.com':    { role: 'admin', club: 'COLIBRI', displayName: 'Зарина'    },
+  'sakenulyabylaj6@gmail.com':        { role: 'admin', club: 'COLIBRI', displayName: 'Сакен'     },
 
   // ── Marketing (restricted warehouse views, all clubs) ─────────────────────
   'guldana.k@hj.fit': { role: 'marketing', club: null, displayName: 'Гульдана' },
