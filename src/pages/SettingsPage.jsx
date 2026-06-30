@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
-import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const DEFAULT_POLICY_URLS = {
@@ -58,11 +58,11 @@ const SettingsPage = () => {
   }, [isChef]);
 
   const saveIpMap = async (updatedMap) => {
-    await setDoc(doc(db, 'checkin_config', 'ip_map'), { ips: updatedMap, updatedAt: new Date().toISOString() }, { merge: true });
+    await updateDoc(doc(db, 'checkin_config', 'ip_map'), { ips: updatedMap, updatedAt: new Date().toISOString() });
   };
 
   const saveGatewayMap = async (updatedMap) => {
-    await setDoc(doc(db, 'checkin_config', 'ip_map'), { gateways: updatedMap, updatedAt: new Date().toISOString() }, { merge: true });
+    await updateDoc(doc(db, 'checkin_config', 'ip_map'), { gateways: updatedMap, updatedAt: new Date().toISOString() });
   };
 
   const handleAddGateway = async () => {
