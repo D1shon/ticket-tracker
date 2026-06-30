@@ -10,6 +10,31 @@ if (!admin.apps.length) {
   })
 }
 
+// Fallback ip_map used when Firestore is unavailable (quota exhausted, cold start)
+const FALLBACK_IP_MAP = {
+  '77.240.35.17':  'COLIBRI',
+  '95.161.225.166': 'VILLA',
+}
+
+// In-memory cache — persists across warm invocations, reloads on cold start
+let ipMapCache = null
+let ipMapCachedAt = 0
+const IP_MAP_TTL = 5 * 60 * 1000
+
+async function getIpMap() {
+  const now = Date.now()
+  if (ipMapCache && now - ipMapCachedAt < IP_MAP_TTL) return ipMapCache
+  try {
+    const snap = await admin.firestore().collection('checkin_config').doc('ip_map').get()
+    ipMapCache = snap.data()?.ips ?? {}
+    ipMapCachedAt = now
+    return ipMapCache
+  } catch (err) {
+    console.warn('ip_map read failed, using fallback:', err.message)
+    return ipMapCache ?? FALLBACK_IP_MAP
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -26,13 +51,11 @@ export default async function handler(req, res) {
   if (!userId) return res.status(400).json({ error: 'userId required' })
 
   try {
-    const db = admin.firestore()
-    const configSnap = await db.collection('checkin_config').doc('ip_map').get()
-    const ipMap = configSnap.data()?.ips ?? {}
+    const ipMap = await getIpMap()
     const clubId = ipMap[ip] ?? null
 
     // Fire-and-forget — quota exhaustion must not block the checkin response
-    db.collection('checkins').add({
+    admin.firestore().collection('checkins').add({
       userId,
       userName: userName ?? null,
       clubId,
