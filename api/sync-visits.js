@@ -36,25 +36,32 @@ export default async function handler(req, res) {
 
     // Append yesterday's data to daily_history if provided
     const { yesterday_date, yesterday_clubs } = req.body ?? {};
+    let historyUpdated = false;
+    let historyError   = null;
+
     if (yesterday_date && Array.isArray(yesterday_clubs) && yesterday_clubs.length > 0) {
-      const histRef = db.collection('dwh_stats').doc('daily_history');
-      const histSnap = await histRef.get();
-      const existing = histSnap.exists ? (histSnap.data().data ?? []) : [];
+      try {
+        const histRef  = db.collection('dwh_stats').doc('daily_history');
+        const histSnap = await histRef.get();
+        const raw      = histSnap.exists ? histSnap.data() : null;
+        const existing = Array.isArray(raw?.data) ? raw.data : [];
 
-      // Replace or append the day entry
-      const filtered = existing.filter(d => d.date !== yesterday_date);
-      const updated  = [...filtered, { date: yesterday_date, clubs: yesterday_clubs }]
-        .sort((a, b) => a.date.localeCompare(b.date));
+        const filtered = existing.filter(d => d.date !== yesterday_date);
+        const updated  = [...filtered, { date: yesterday_date, clubs: yesterday_clubs }]
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .slice(-90);
 
-      // Keep last 90 days
-      const trimmed = updated.slice(-90);
-
-      await histRef.set({ data: trimmed, updatedAt: new Date().toISOString() });
+        await histRef.set({ data: updated, updatedAt: new Date().toISOString() });
+        historyUpdated = true;
+      } catch (hErr) {
+        historyError = hErr.message;
+        console.error('daily_history update failed:', hErr);
+      }
     }
 
-    return res.json({ ok: true, count: clubs.length });
+    return res.json({ ok: true, count: clubs.length, historyUpdated, historyError });
   } catch (err) {
     console.error('sync-visits error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', detail: err.message });
   }
 }
