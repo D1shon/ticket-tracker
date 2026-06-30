@@ -31,7 +31,8 @@ export default async function handler(req, res) {
     const ipMap = configSnap.data()?.ips ?? {}
     const clubId = ipMap[ip] ?? null
 
-    await db.collection('checkins').add({
+    // Fire-and-forget — quota exhaustion must not block the checkin response
+    db.collection('checkins').add({
       userId,
       userName: userName ?? null,
       clubId,
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
       status: clubId ? 'verified' : 'failed',
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       date: new Date().toISOString().split('T')[0],
-    })
+    }).catch(err => console.error('checkin log failed:', err.message))
 
     return res.json({ allowed: !!clubId, clubId, ip })
   } catch (err) {
