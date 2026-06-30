@@ -91,7 +91,7 @@ const DesktopSidebar = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
@@ -256,7 +256,7 @@ const MobileNav = () => {
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';

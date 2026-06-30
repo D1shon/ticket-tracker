@@ -203,7 +203,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/attendance" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'admin']}>
             <AttendancePage />
           </ProtectedLayout>
         } />
