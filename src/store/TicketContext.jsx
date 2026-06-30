@@ -33,10 +33,11 @@ export const USER_ROLES = {
   'azimuus@gmail.com':      { role: 'manager', club: 'NURLY ORDA', displayName: 'Азиз' },
 
   // ── RESTRICTED ADMINS (schedule + sales only, no financials, no warehouse) ──
-  'admin-colibri':   { role: 'admin', club: 'COLIBRI',    displayName: 'Админ Colibri'    },
-  'admin-villa':     { role: 'admin', club: 'VILLA',       displayName: 'Админ Villa'      },
-  'admin-4you':      { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'       },
-  'admin-nurlyorda': { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda' },
+  'admin-colibri':        { role: 'admin', club: 'COLIBRI',    displayName: 'Админ Colibri'    },
+  'admin-villa':          { role: 'admin', club: 'VILLA',       displayName: 'Админ Villa'      },
+  'admin-4you':           { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'       },
+  'admin-nurlyorda':      { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda' },
+  'ikoperper@gmail.com':  { role: 'admin', club: '4YOU',        displayName: 'Искандер'         },
 
   // ── Marketing (restricted warehouse views, all clubs) ─────────────────────
   'guldana.k@hj.fit': { role: 'marketing', club: null, displayName: 'Гульдана' },
