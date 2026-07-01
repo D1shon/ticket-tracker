@@ -52,8 +52,8 @@ export const USER_ROLES = {
   'sakenulyabylaj6@gmail.com':        { role: 'admin', club: 'COLIBRI', displayName: 'Сакен'     },
 
   // ── VILLA ─────────────────────────────────────────────────────────────────
-  'asemnurkabek@gmail.com':  { role: 'admin', club: 'VILLA', displayName: 'Әсем'    },
-  'rrrkh.257@mail.ru':       { role: 'admin', club: 'VILLA', displayName: 'Асем'    },
+  'asemnurkabek@gmail.com':  { role: 'admin', club: 'VILLA', displayName: 'Ермекқызы Әсем'  },
+  'rrrkh.257@mail.ru':       { role: 'admin', club: 'VILLA', displayName: 'Рахимбаева Асем' },
   'mkayrlynova@mail.ru':     { role: 'admin', club: 'VILLA', displayName: 'Меруерт' },
   'kushanlos123@gmail.com':  { role: 'admin', club: 'VILLA', displayName: 'Салим'   },
 
