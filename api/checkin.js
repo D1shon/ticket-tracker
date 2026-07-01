@@ -32,7 +32,8 @@ async function getIpMap() {
     return ipMapCache
   } catch (err) {
     console.warn('ip_map read failed, using fallback:', err.message)
-    return ipMapCache ?? FALLBACK_IP_MAP
+    // Always merge with FALLBACK so hardcoded IPs are guaranteed even with stale cache
+    return { ...FALLBACK_IP_MAP, ...(ipMapCache ?? {}) }
   }
 }
 
