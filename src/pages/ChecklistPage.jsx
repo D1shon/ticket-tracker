@@ -82,10 +82,14 @@ const ChecklistPage = () => {
     const data = checklistData[docId];
     const card = CHECK_ITEMS[cardId];
     const clubExtra = card?.clubItems?.[activeClub] ?? card?.clubItems?.['_default'] ?? [];
-    const items = [...(card?.items ?? []), ...clubExtra].filter(it => !it.startsWith('§'));
-    if (!data || !data.states) return { answered: 0, total: items.length };
-    const answered = items.filter((_, i) => data.states[i] === 'ok' || data.states[i] === 'issue').length;
-    return { answered, total: items.length };
+    const allItems = [...(card?.items ?? []), ...clubExtra];
+    const total = allItems.filter(it => !it.startsWith('§')).length;
+    if (!data || !data.states) return { answered: 0, total };
+    // Use original (unfiltered) indices — same as how ChecklistDetail saves states
+    const answered = allItems.filter((item, i) =>
+      !item.startsWith('§') && (data.states[i] === 'ok' || data.states[i] === 'issue')
+    ).length;
+    return { answered, total };
   };
 
   const isCheckComplete = (shiftId, cardId) => {
