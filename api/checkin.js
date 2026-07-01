@@ -68,7 +68,7 @@ export default async function handler(req, res) {
       date: new Date().toISOString().split('T')[0],
     }).catch(err => console.error('checkin log failed:', err.message))
 
-    return res.json({ allowed: !!clubId, clubId, ip })
+    return res.json({ allowed: !!clubId, clubId, ip, v: 3 })
   } catch (err) {
     console.error('checkin error:', err)
     return res.status(500).json({ error: 'Internal server error' })
