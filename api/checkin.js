@@ -14,6 +14,7 @@ if (!admin.apps.length) {
 const FALLBACK_IP_MAP = {
   '77.240.35.17':  'COLIBRI',
   '95.161.225.166': 'VILLA',
+  '92.46.44.66':   '4YOU',
 }
 
 // In-memory cache — persists across warm invocations, reloads on cold start
