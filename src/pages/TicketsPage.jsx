@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight, CalendarClock } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 
@@ -603,7 +603,8 @@ const TicketsPage = () => {
   const { tickets, user, addTicket } = useTickets();
   const userClub = user?.club?.toUpperCase();
 
-  const [activeClub,   setActiveClub]   = useState(userClub || 'ВСЕ');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeClub,   setActiveClub]   = useState(() => userClub || searchParams.get('club') || 'ВСЕ');
   const [activeFilter, setActiveFilter] = useState('ВСЕ');
   const [search,       setSearch]       = useState('');
   const [viewMode,     setViewMode]     = useState('kanban');
@@ -612,6 +613,13 @@ const TicketsPage = () => {
   const [prevColIds,    setPrevColIds]    = useState(null);
 
   const navigate = useNavigate();
+
+  // Persist active club in URL so returning from ticket detail restores it
+  useEffect(() => {
+    if (!userClub) {
+      setSearchParams(p => { p.set('club', activeClub); return p; }, { replace: true });
+    }
+  }, [activeClub, userClub, setSearchParams]);
 
   // If user has a fixed club, ensure they stay on it
   useEffect(() => {

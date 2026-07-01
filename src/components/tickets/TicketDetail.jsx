@@ -412,7 +412,7 @@ const TicketDetail = () => {
       <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '60vh', color: 'var(--text-muted)', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Заявка не найдена</h2>
         <p style={{ fontSize: 13 }}>Заявка не существует или у вас нет прав на её просмотр.</p>
-        <button onClick={() => navigate('/tickets')} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--accent-purple)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Назад к списку</button>
+        <button onClick={() => navigate(-1)} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--accent-purple)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Назад к списку</button>
       </div>
     );
   }
@@ -422,7 +422,7 @@ const TicketDetail = () => {
       <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '60vh', color: 'var(--text-muted)', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Доступ ограничен</h2>
         <p style={{ fontSize: 13 }}>Эта заявка принадлежит другому клубу ({ticket.club?.toUpperCase()}).</p>
-        <button onClick={() => navigate('/tickets')} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--accent-purple)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Назад к списку</button>
+        <button onClick={() => navigate(-1)} style={{ padding: '8px 16px', borderRadius: 10, background: 'var(--accent-purple)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Назад к списку</button>
       </div>
     );
   }
@@ -440,7 +440,7 @@ const TicketDetail = () => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 6 }}><ArrowLeft size={18} /></button>
         <button onClick={() => setStarred(s => !s)} style={{ background: 'none', border: 'none', color: starred ? '#f59e0b' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Star size={16} fill={starred ? '#f59e0b' : 'none'} /></button>
-        <button onClick={() => navigate('/tickets')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Home size={15} /></button>
+        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Home size={15} /></button>
         <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(79,142,247,0.15)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.3)', padding: '2px 7px', borderRadius: 4 }}>{ticket.club}</span>
         <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>{ticket.title}</span>
         <Edit2
@@ -741,7 +741,7 @@ const TicketDetail = () => {
                 onClick={async () => {
                   setShowDeleteModal(false);
                   await deleteTicket(ticket.id);
-                  navigate('/tickets');
+                  navigate(-1);
                 }}
                 style={{
                   flex: 1, padding: '12px', borderRadius: 12,
