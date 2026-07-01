@@ -681,8 +681,16 @@ const GuidebookPage = () => {
           /* Split layout for regulations: Left (topics list), Right (detailed reading pane) */
           <div>
             {filteredItems.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: 20 }}>
-                В данном разделе регламентов по запросу ничего не найдено.
+              <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <span>В данном разделе регламентов по запросу ничего не найдено.</span>
+                {isChef && !searchQuery && (
+                  <button
+                    onClick={openNewEditor}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: 'rgba(123,61,255,0.08)', border: '1px dashed rgba(123,61,255,0.3)', borderRadius: 14, color: 'var(--accent-purple)', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    <Plus size={14} /> Добавить первую статью
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '300px 1fr', gap: 24, alignItems: 'start' }}>
