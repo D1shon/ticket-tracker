@@ -1381,31 +1381,6 @@ const MerchPage = () => {
         </div>
       </div>
 
-      {/* Month Selector */}
-      {!isMarketing && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            onClick={() => { setStartDate(''); setEndDate(''); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${!startDate && !endDate ? 'bg-[var(--accent-purple)] text-white shadow-sm' : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border)] hover:text-[var(--text-primary)]'}`}
-          >
-            Все
-          </button>
-          {availableMonths.map(({ label, year, month }) => {
-            const key = `${year}-${month}`;
-            const isSelected = selectedMonth === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setMonth(year, month)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${isSelected ? 'bg-[var(--accent-purple)] text-white shadow-sm' : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border)] hover:text-[var(--text-primary)]'}`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {/* Content Body */}
       {activeTab === 'nurly-sales' ? (
         /* --- SALES TOTALS TAB --- */
@@ -1458,9 +1433,35 @@ const MerchPage = () => {
             <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-xl overflow-hidden">
               {/* Grand total banner */}
               <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02))' }}>
-                <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.08em', marginBottom: 4 }}>{activeClubForSales} · Общая сумма продаж</div>
-                <div style={{ fontSize: 32, fontWeight: 950, color: '#8b5cf6' }}>{grandTotal.toLocaleString('ru-RU')} ₸</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{filtered.length} продаж · {Object.keys(byPerson).length} сотрудников{startDate || endDate ? ` · фильтр: ${startDate || '...'} — ${endDate || '...сейчас'}` : ''}</div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.08em', marginBottom: 4 }}>{activeClubForSales} · Общая сумма продаж</div>
+                    <div style={{ fontSize: 32, fontWeight: 950, color: '#8b5cf6' }}>{grandTotal.toLocaleString('ru-RU')} ₸</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{filtered.length} продаж · {Object.keys(byPerson).length} сотрудников</div>
+                  </div>
+                  {/* Month switcher */}
+                  {(() => {
+                    const now = new Date();
+                    const viewIdx = availableMonths.findIndex(m => selectedMonth === `${m.year}-${m.month}`);
+                    const currentIdx = viewIdx >= 0 ? viewIdx : availableMonths.length - 1;
+                    const cur = availableMonths[currentIdx];
+                    const hasPrev = currentIdx > 0;
+                    const hasNext = currentIdx < availableMonths.length - 1;
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(139,92,246,0.1)', borderRadius: 12, padding: '6px 10px', border: '1px solid rgba(139,92,246,0.2)' }}>
+                        <button
+                          onClick={() => hasPrev && setMonth(availableMonths[currentIdx - 1].year, availableMonths[currentIdx - 1].month)}
+                          style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: hasPrev ? 'rgba(139,92,246,0.15)' : 'transparent', color: hasPrev ? '#8b5cf6' : 'var(--text-muted)', cursor: hasPrev ? 'pointer' : 'default', fontWeight: 900, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >‹</button>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: '#8b5cf6', minWidth: 100, textAlign: 'center' }}>{cur?.label}</span>
+                        <button
+                          onClick={() => hasNext && setMonth(availableMonths[currentIdx + 1].year, availableMonths[currentIdx + 1].month)}
+                          style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: hasNext ? 'rgba(139,92,246,0.15)' : 'transparent', color: hasNext ? '#8b5cf6' : 'var(--text-muted)', cursor: hasNext ? 'pointer' : 'default', fontWeight: 900, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >›</button>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
               
               {/* Auto distribute toggle */}
