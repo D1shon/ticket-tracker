@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { 
-  collection, query, onSnapshot, setDoc, doc, deleteDoc,
-  serverTimestamp, addDoc, updateDoc, increment, where
+  collection, query, onSnapshot, setDoc, doc, deleteDoc, 
+  serverTimestamp, addDoc, updateDoc, increment, where, getDoc
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
@@ -33,25 +33,28 @@ const MerchPage = () => {
   const [savingResort, setSavingResort] = useState(false);
   const [commissionRates, setCommissionRates] = useState({}); // salespersonName -> rate string
   const [expandedPersons, setExpandedPersons] = useState({}); // salespersonName -> boolean
+  const [autoDistributeBySchedule, setAutoDistributeBySchedule] = useState(true);
   const [clubEmployees, setClubEmployees] = useState([]);
+  const [clubSchedules, setClubSchedules] = useState({}); // empId -> days object
 
   // Load all employees and schedules for the selected club to allow auto-assigning by schedule
   useEffect(() => {
     if (selectedClub === 'ALL') {
       setClubEmployees([]);
+      setClubSchedules({});
       return;
     }
     const q = query(collection(db, 'employees'), where('club', '==', selectedClub));
-    const unsubEmps = onSnapshot(q, snap => {
+    const unsubEmps = onSnapshot(q, async snap => {
       const emps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setClubEmployees(emps);
 
       // Restore saved commission rates from Firestore (Firestore values win on first load)
       const rates = {};
       emps.forEach(emp => {
-        const isServ = emp.isService === true ||
-                       (emp.name || '').toLowerCase().includes('сервис') ||
-                       (emp.name || '').toLowerCase().includes('техник') ||
+        const isServ = emp.isService === true || 
+                       (emp.name || '').toLowerCase().includes('сервис') || 
+                       (emp.name || '').toLowerCase().includes('техник') || 
                        (emp.name || '').toLowerCase().includes('стажер');
         if (isServ) return;
         if (emp.commissionRate != null && emp.commissionRate !== '') {
@@ -60,10 +63,84 @@ const MerchPage = () => {
       });
       // Always let Firestore values fill in missing entries (don't override edits already in state)
       setCommissionRates(prev => ({ ...rates, ...prev }));
+      
+      const scheds = {};
+      await Promise.all(emps.map(async emp => {
+        const schedDocRef = doc(db, 'schedules', emp.id);
+        const schedSnap = await getDoc(schedDocRef);
+        if (schedSnap.exists()) {
+          scheds[emp.id] = schedSnap.data()?.days || {};
+        }
+      }));
+      setClubSchedules(scheds);
     });
     return () => unsubEmps();
   }, [selectedClub]);
 
+  const getAdminsWorkingAt = useCallback((saleDate, clubName) => {
+    const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
+    const dayStr = String(saleDate.getDate());
+    const hour = saleDate.getHours();
+    const min = saleDate.getMinutes();
+    const timeVal = hour * 60 + min; // sale time in minutes since midnight
+    
+    const workingAdmins = [];
+    
+    // Filter clubEmployees for this club and month, excluding service employees
+    const monthEmps = clubEmployees.filter(emp => {
+      const isServ = emp.isService === true || 
+                     (emp.name || '').toLowerCase().includes('сервис') || 
+                     (emp.name || '').toLowerCase().includes('техник') || 
+                     (emp.name || '').toLowerCase().includes('стажер');
+      return !isServ && emp.monthKey === monthKey && emp.club === clubName;
+    });
+    
+    monthEmps.forEach(emp => {
+      const days = clubSchedules[emp.id];
+      if (!days) return;
+      const shiftStr = days[dayStr];
+      if (!shiftStr) return;
+      
+      const cleanShift = shiftStr.trim().toLowerCase();
+      if (!cleanShift || cleanShift === 'выходной') return;
+      
+      // Parse shift interval, e.g. "9:00-19:00" or "09:00 - 21:00" or "13:30-23:00"
+      const parts = cleanShift.split('-');
+      if (parts.length === 2) {
+        const startPart = parts[0].trim();
+        const endPart = parts[1].trim();
+        
+        const parseTimeToMinutes = (tStr) => {
+          const tParts = tStr.split(':');
+          if (tParts.length >= 1) {
+            const h = parseInt(tParts[0]) || 0;
+            const m = parseInt(tParts[1]) || 0;
+            return h * 60 + m;
+          }
+          return null;
+        };
+        
+        const startMin = parseTimeToMinutes(startPart);
+        const endMin = parseTimeToMinutes(endPart);
+        
+        if (startMin !== null && endMin !== null) {
+          if (endMin < startMin) {
+            // Shift spans midnight (e.g. 14:00 - 02:00)
+            if (timeVal >= startMin || timeVal <= endMin) {
+              workingAdmins.push(emp.name);
+            }
+          } else {
+            if (timeVal >= startMin && timeVal <= endMin) {
+              workingAdmins.push(emp.name);
+            }
+          }
+        }
+      }
+    });
+    
+    return workingAdmins;
+  }, [clubEmployees, clubSchedules]);
+  
   // Sync selectedClub if user updates
   useEffect(() => {
     if (!canSelectAllClubs && managerClub) {
@@ -1330,13 +1407,25 @@ const MerchPage = () => {
             if (endDate && dateStr > endDate) return false;
             return true;
           });
+          // Always distribute by schedule (who was on shift at sale time)
           const byPerson = {};
           filtered.forEach(s => {
-            const name = s.salespersonName || 'Не указан';
-            if (!byPerson[name]) byPerson[name] = { sales: [], total: 0, count: 0 };
-            byPerson[name].sales.push(s);
-            byPerson[name].total += (s.totalSum || 0);
-            byPerson[name].count += (s.qty || 0);
+            let names = [];
+            if (autoDistributeBySchedule && s.createdAt?.seconds) {
+              const saleDate = new Date(s.createdAt.seconds * 1000);
+              names = getAdminsWorkingAt(saleDate, s.club);
+            }
+            if (names.length === 0) names.push('Не указан');
+            
+            const shareTotal = (s.totalSum || 0) / names.length;
+            const shareCount = (s.qty || 0) / names.length;
+            
+            names.forEach(name => {
+              if (!byPerson[name]) byPerson[name] = { sales: [], total: 0, count: 0 };
+              byPerson[name].sales.push({ ...s, autoNames: names });
+              byPerson[name].total += shareTotal;
+              byPerson[name].count += shareCount;
+            });
           });
           const grandTotal = filtered.reduce((a, s) => a + (s.totalSum || 0), 0);
           const sortedPersons = Object.entries(byPerson).sort((a, b) => b[1].total - a[1].total);
@@ -1375,6 +1464,18 @@ const MerchPage = () => {
                 </div>
               </div>
               
+              {/* Auto distribute toggle */}
+              <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
+                  <input 
+                    type="checkbox"
+                    checked={autoDistributeBySchedule}
+                    onChange={(e) => setAutoDistributeBySchedule(e.target.checked)}
+                    style={{ width: 15, height: 15, accentColor: '#8b5cf6', cursor: 'pointer', borderRadius: 4 }}
+                  />
+                  <span>Распределять продажи по графику смен (по дате и времени смены)</span>
+                </label>
+              </div>
               {sortedPersons.length === 0 ? (
                 <div className="py-20 text-center text-[var(--text-muted)]">
                   <TrendingUp size={48} className="mx-auto opacity-35 mb-4 text-purple-400" />
@@ -1405,8 +1506,10 @@ const MerchPage = () => {
                     let awardRaw = 0;
                     if (!isServicePerson) {
                       data.sales.forEach(s => {
-                        const saleRate = hasCustomRate ? parsedCustom : 8;
-                        awardRaw += (s.totalSum || 0) * saleRate / 100;
+                        const numAdmins = s.autoNames?.length || 1;
+                        const shareAmount = (s.totalSum || 0) / numAdmins;
+                        const saleRate = hasCustomRate ? parsedCustom : (numAdmins === 1 ? 8 : 4);
+                        awardRaw += shareAmount * saleRate / 100;
                       });
                     }
                     const award = Math.round(awardRaw);
@@ -1507,13 +1610,15 @@ const MerchPage = () => {
                                 return (
                                   <div key={s.id} className="flex items-center justify-between text-xs py-1 hover:bg-[var(--bg-primary)] rounded px-1">
                                     <div className="flex flex-col">
-                                      <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({s.qty} шт)</span>
+                                      <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({s.autoNames?.length > 1 ? `${((s.qty || 0) / s.autoNames.length).toFixed(1)} из ${s.qty}` : s.qty} шт)</span>
                                       <span className="text-[9px] text-[var(--text-muted)]">
                                         {sDate.toLocaleDateString('ru-RU')} в {sDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · {s.paymentMethod}
+                                        {s.salespersonName && ` · В чекбоксе: ${s.salespersonName}`}
+                                        {autoDistributeBySchedule && s.autoNames && ` · По графику: ${s.autoNames.join(', ')}`}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <span className="font-bold text-emerald-400">{(s.totalSum || 0).toLocaleString('ru-RU')} ₸</span>
+                                      <span className="font-bold text-emerald-400">{(s.autoNames?.length > 1 ? (s.totalSum || 0) / s.autoNames.length : (s.totalSum || 0)).toLocaleString('ru-RU')} ₸</span>
                                       <button 
                                         onClick={() => handleDeleteSale(s)}
                                         className="p-1 hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 rounded transition-all"
