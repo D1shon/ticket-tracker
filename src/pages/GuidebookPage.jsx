@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  BookOpen, Search, HelpCircle, AlertTriangle, ShieldCheck, 
-  Baby, Sparkles, ChevronDown, ChevronUp, Book, MessageSquare, 
+import {
+  BookOpen, Search, HelpCircle, AlertTriangle, ShieldCheck,
+  Baby, Sparkles, ChevronDown, ChevronUp, Book, MessageSquare,
   Calendar, CheckCircle, Smartphone, Wifi, Wrench, Package, Info, Loader2,
-  ArrowLeft, Clock, Layers, FileText
+  ArrowLeft, Clock, Layers, FileText, Plus, Edit3, Trash2, X
 } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { db } from '../lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { toast } from 'sonner';
 
 const SECTIONS = [
   { id: 'Introduction', label: 'Введение и основы' },
@@ -61,18 +62,25 @@ const getTopicIcon = (title) => {
 
 const GuidebookPage = () => {
   const { user } = useTickets();
+  const isChef = user?.role === 'chef' || user?.role === 'viewer';
   const [activeSection, setActiveSection] = useState('Introduction');
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
-  
+
   // Data State
   const [guidebookData, setGuidebookData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Responsive / Reading State
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState('list'); // 'list' or 'detail'
   const [selectedTopicId, setSelectedTopicId] = useState(null);
+
+  // Editor State
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingTopic, setEditingTopic] = useState(null);
+  const [editorForm, setEditorForm] = useState({ title: '', section: 'Introduction', subsection: '', content: '' });
+  const [savingTopic, setSavingTopic] = useState(false);
 
   // Monitor screen resizing for layout adjustment
   useEffect(() => {
@@ -89,7 +97,7 @@ const GuidebookPage = () => {
     const fetchGuidebook = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'guidebook'));
-        const data = querySnapshot.docs.map(doc => doc.data());
+        const data = querySnapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
         const sortedData = data.sort((a, b) => {
           const matchA = a.title.match(/^\d+/);
           const matchB = b.title.match(/^\d+/);
@@ -162,6 +170,92 @@ const GuidebookPage = () => {
 
   const toggleFaq = (idx) => {
     setOpenFaqIdx(openFaqIdx === idx ? null : idx);
+  };
+
+  // Convert blocks array → editable text
+  const blocksToText = (blocks) => {
+    if (!blocks) return '';
+    return blocks.map(b => {
+      if (b.type === 'header') return `## ${b.text}`;
+      if (b.type === 'sub_header') return `### ${b.text}`;
+      if (b.type === 'sub_sub_header') return `#### ${b.text}`;
+      if (b.type === 'bulleted_list' || b.type === 'numbered_list') return `- ${b.text}`;
+      return b.text || '';
+    }).join('\n');
+  };
+
+  // Convert editable text → blocks array
+  const textToBlocks = (text) => {
+    return text.split('\n').filter(line => line.trim()).map(line => {
+      if (line.startsWith('## ')) return { type: 'header', text: line.slice(3).trim() };
+      if (line.startsWith('### ')) return { type: 'sub_header', text: line.slice(4).trim() };
+      if (line.startsWith('#### ')) return { type: 'sub_sub_header', text: line.slice(5).trim() };
+      if (line.startsWith('- ')) return { type: 'bulleted_list', text: line.slice(2).trim() };
+      return { type: 'text', text: line.trim() };
+    });
+  };
+
+  const openNewEditor = () => {
+    setEditingTopic(null);
+    setEditorForm({ title: '', section: activeSection === 'faq' ? 'Introduction' : activeSection, subsection: '', content: '' });
+    setShowEditor(true);
+  };
+
+  const openEditEditor = (topic) => {
+    setEditingTopic(topic);
+    setEditorForm({
+      title: topic.title || '',
+      section: topic.section || 'Introduction',
+      subsection: topic.subsection || '',
+      content: blocksToText(topic.blocks),
+    });
+    setShowEditor(true);
+  };
+
+  const handleSaveTopic = async () => {
+    if (!editorForm.title.trim()) return toast.error('Введите заголовок');
+    setSavingTopic(true);
+    try {
+      const blocks = textToBlocks(editorForm.content);
+      const data = {
+        title: editorForm.title.trim(),
+        section: editorForm.section,
+        subsection: editorForm.subsection.trim() || null,
+        blocks,
+        updatedAt: serverTimestamp(),
+      };
+      if (editingTopic) {
+        await updateDoc(doc(db, 'guidebook', editingTopic._docId), data);
+        setGuidebookData(prev => prev.map(item =>
+          item._docId === editingTopic._docId ? { ...item, ...data } : item
+        ));
+        toast.success('Статья обновлена');
+      } else {
+        const newId = `topic_${Date.now()}`;
+        const docRef = await addDoc(collection(db, 'guidebook'), { ...data, id: newId, createdAt: serverTimestamp() });
+        setGuidebookData(prev => [...prev, { ...data, id: newId, _docId: docRef.id }]);
+        toast.success('Статья добавлена');
+      }
+      setShowEditor(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Ошибка сохранения');
+    } finally {
+      setSavingTopic(false);
+    }
+  };
+
+  const handleDeleteTopic = async (topic) => {
+    if (!window.confirm(`Удалить статью "${topic.title}"?`)) return;
+    try {
+      await deleteDoc(doc(db, 'guidebook', topic._docId));
+      setGuidebookData(prev => prev.filter(item => item._docId !== topic._docId));
+      if (selectedTopicId === topic.id) setSelectedTopicId(null);
+      toast.success('Статья удалена');
+    } catch (err) {
+      console.error(err);
+      toast.error('Ошибка удаления');
+    }
   };
 
   // Modern Dynamic Notion Block Renderer
@@ -352,6 +446,7 @@ const GuidebookPage = () => {
   }
 
   return (
+    <>
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
       
       {/* Dynamic Scss/Css styles inside page */}
@@ -598,10 +693,8 @@ const GuidebookPage = () => {
                     {filteredItems.map((item) => {
                       const isSelected = item.id === selectedTopicId;
                       const Icon = getTopicIcon(item.title);
-                      
-                      // Calculate short estimate of blocks
                       const textBlockCount = item.blocks ? item.blocks.filter(b => b.type === 'text' || b.type === 'bulleted_list').length : 0;
-                      
+
                       return (
                         <div
                           key={item.id}
@@ -621,37 +714,53 @@ const GuidebookPage = () => {
                             alignItems: 'flex-start'
                           }}
                         >
-                          <div 
-                            style={{
-                              width: 32,
-                              height: 32,
-                              borderRadius: 8,
-                              background: isSelected ? 'rgba(123, 61, 255, 0.15)' : 'rgba(255, 255, 255, 0.02)',
-                              color: isSelected ? 'var(--accent-purple)' : 'var(--text-muted)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0
-                            }}
-                          >
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: isSelected ? 'rgba(123, 61, 255, 0.15)' : 'rgba(255, 255, 255, 0.02)', color: isSelected ? 'var(--accent-purple)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <Icon size={16} />
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <h4 style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.4 }}>
                               {item.title}
                             </h4>
-                            <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginTop: 6 }}>
-                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'inline-block', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {item.subsection || 'Общее'}
                               </span>
-                              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, background: 'rgba(255,255,255,0.03)', padding: '2px 6px', borderRadius: 4 }}>
-                                {textBlockCount} абз.
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, background: 'rgba(255,255,255,0.03)', padding: '2px 6px', borderRadius: 4 }}>
+                                  {textBlockCount} абз.
+                                </span>
+                                {isChef && (
+                                  <>
+                                    <button
+                                      onClick={e => { e.stopPropagation(); openEditEditor(item); }}
+                                      title="Редактировать"
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', borderRadius: 4, display: 'flex', alignItems: 'center' }}
+                                    >
+                                      <Edit3 size={12} />
+                                    </button>
+                                    <button
+                                      onClick={e => { e.stopPropagation(); handleDeleteTopic(item); }}
+                                      title="Удалить"
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', borderRadius: 4, display: 'flex', alignItems: 'center' }}
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
                       );
                     })}
+                    {isChef && (
+                      <button
+                        onClick={openNewEditor}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', background: 'rgba(123,61,255,0.06)', border: '1px dashed rgba(123,61,255,0.3)', borderRadius: 16, color: 'var(--accent-purple)', fontSize: 12, fontWeight: 800, cursor: 'pointer', width: '100%' }}
+                      >
+                        <Plus size={14} /> Добавить статью
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -762,6 +871,98 @@ const GuidebookPage = () => {
         )}
       </div>
     </div>
+
+    {/* Editor Modal */}
+    {showEditor && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 24, width: '100%', maxWidth: 720, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>
+              {editingTopic ? 'Редактировать статью' : 'Новая статья'}
+            </span>
+            <button onClick={() => setShowEditor(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Form */}
+          <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
+            {/* Title */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Заголовок *</label>
+              <input
+                value={editorForm.title}
+                onChange={e => setEditorForm(p => ({ ...p, title: e.target.value }))}
+                placeholder="Название статьи..."
+                style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, fontWeight: 700, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Section + Subsection */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Раздел</label>
+                <select
+                  value={editorForm.section}
+                  onChange={e => setEditorForm(p => ({ ...p, section: e.target.value }))}
+                  style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, outline: 'none' }}
+                >
+                  {SECTIONS.filter(s => s.id !== 'faq').map(s => (
+                    <option key={s.id} value={s.id}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Подраздел</label>
+                <input
+                  value={editorForm.subsection}
+                  onChange={e => setEditorForm(p => ({ ...p, subsection: e.target.value }))}
+                  placeholder="Необязательно..."
+                  style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            {/* Content */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Содержимое</label>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>## Заголовок</code>{'  '}
+                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>### Подзаголовок</code>{'  '}
+                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>- Пункт списка</code>{'  '}
+                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>✅ / ⚠️ / ❌ Каллаут</code>
+              </div>
+              <textarea
+                value={editorForm.content}
+                onChange={e => setEditorForm(p => ({ ...p, content: e.target.value }))}
+                placeholder={'## Введение\nОписание раздела...\n\n### Подзаголовок\n- Пункт 1\n- Пункт 2\n\n✅ Важная заметка'}
+                rows={14}
+                style={{ width: '100%', padding: '12px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, fontFamily: 'monospace', lineHeight: 1.7, resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button
+              onClick={() => setShowEditor(false)}
+              style={{ padding: '10px 20px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-secondary)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            >
+              Отмена
+            </button>
+            <button
+              onClick={handleSaveTopic}
+              disabled={savingTopic}
+              style={{ padding: '10px 24px', background: 'var(--accent-purple)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 13, fontWeight: 800, cursor: savingTopic ? 'default' : 'pointer', opacity: savingTopic ? 0.7 : 1 }}
+            >
+              {savingTopic ? 'Сохранение...' : 'Сохранить'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
