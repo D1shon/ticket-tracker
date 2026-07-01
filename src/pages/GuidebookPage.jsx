@@ -62,7 +62,7 @@ const getTopicIcon = (title) => {
 
 const GuidebookPage = () => {
   const { user } = useTickets();
-  const isChef = user?.role === 'chef' || user?.role === 'viewer';
+  const isChef = user?.role === 'chef' || user?.role === 'viewer' || user?.role === 'admin' || user?.role === 'manager';
   const [activeSection, setActiveSection] = useState('Introduction');
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
