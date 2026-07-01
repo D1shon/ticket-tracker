@@ -739,6 +739,34 @@ const MerchPage = () => {
     return Array.from(skus).sort();
   }, [products]);
 
+  const MONTH_NAMES = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  const availableMonths = useMemo(() => {
+    const now = new Date();
+    const months = [];
+    // Show up to 12 months back
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`, year: d.getFullYear(), month: d.getMonth() + 1 });
+    }
+    return months;
+  }, []);
+
+  const selectedMonth = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    const [sy, sm] = startDate.split('-').map(Number);
+    const [ey, em] = endDate.split('-').map(Number);
+    if (sy === ey && sm === em) return `${sy}-${sm}`;
+    return null;
+  }, [startDate, endDate]);
+
+  const setMonth = (year, month) => {
+    const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
+    const key = `${year}-${month}`;
+    if (selectedMonth === key) { setStartDate(''); setEndDate(''); }
+    else { setStartDate(firstDay); setEndDate(lastDay); }
+  };
+
   // ─── Filtered Data ─────────────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
     const list = products.filter(p => {
@@ -1353,6 +1381,31 @@ const MerchPage = () => {
         </div>
       </div>
 
+      {/* Month Selector */}
+      {!isMarketing && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => { setStartDate(''); setEndDate(''); }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${!startDate && !endDate ? 'bg-[var(--accent-purple)] text-white shadow-sm' : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border)] hover:text-[var(--text-primary)]'}`}
+          >
+            Все
+          </button>
+          {availableMonths.map(({ label, year, month }) => {
+            const key = `${year}-${month}`;
+            const isSelected = selectedMonth === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setMonth(year, month)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${isSelected ? 'bg-[var(--accent-purple)] text-white shadow-sm' : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border)] hover:text-[var(--text-primary)]'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Content Body */}
       {activeTab === 'nurly-sales' ? (
         /* --- SALES TOTALS TAB --- */
@@ -1365,7 +1418,8 @@ const MerchPage = () => {
             if (s.createdAt?.seconds) {
               const d = new Date(s.createdAt.seconds * 1000);
               const saleMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-              if (saleMonth !== currentMonthKey) return false;
+              // When date range is set, use it instead of defaulting to current month
+              if (!startDate && !endDate && saleMonth !== currentMonthKey) return false;
             }
             return true;
           });
