@@ -228,9 +228,12 @@ export const TicketProvider = ({ children }) => {
 
     const registered = USER_ROLES[email];
     if (registered) {
+      if (registered.displayName) {
+        localStorage.removeItem('hj_custom_name_' + email);
+      }
       return {
         ...u,
-        displayName: registered.displayName || customName || u.displayName || email.split('@')[0],
+        displayName: registered.displayName || u.displayName || email.split('@')[0],
         role: registered.role,
         club: registered.club
       };
