@@ -560,6 +560,36 @@ export const ScheduleProvider = ({ children }) => {
     try { await updateDoc(doc(db, 'employees', id), { name }); } catch {}
   };
 
+  // ─── updateEmployeeHourlyRate ─────────────────────────────────────────────
+  const updateEmployeeHourlyRate = async (id, val) => {
+    const parsed = val === '' ? null : parseFloat(val) || null;
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, hourlyRate: parsed } : e));
+    try { await updateDoc(doc(db, 'employees', id), { hourlyRate: parsed }); } catch {}
+  };
+
+  // ─── updateEmployeeFixedSalary ────────────────────────────────────────────
+  const updateEmployeeFixedSalary = async (id, val) => {
+    const parsed = val === '' ? null : parseFloat(val) || null;
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, fixedSalary: parsed } : e));
+    try { await updateDoc(doc(db, 'employees', id), { fixedSalary: parsed }); } catch {}
+  };
+
+  // ─── updateNormHours ──────────────────────────────────────────────────────
+  const updateNormHours = async (mKey, employeeId, val) => {
+    const docId = getScheduleDocId(mKey, employeeId);
+    const parsed = val === '' ? null : parseFloat(val) || null;
+    setScheduleData(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], employeeId, monthKey: mKey, normHours: parsed }
+    }));
+    try {
+      setIsSaving(true);
+      await setDoc(doc(db, 'schedules', docId), { employeeId, monthKey: mKey, normHours: parsed }, { merge: true });
+    } catch (e) {
+      console.error('Error updating normHours:', e);
+    } finally { setIsSaving(false); }
+  };
+
   // ─── setEmployeeService ───────────────────────────────────────────────────
   // Marks/unmarks an employee as a service worker (сервисник).
   // Service workers appear in the schedule but are excluded from hours/salary totals.
@@ -636,7 +666,7 @@ export const ScheduleProvider = ({ children }) => {
     <ScheduleContext.Provider value={{
       scheduleData, employees, loading, isSaving,
       currentMonth, setCurrentMonth, monthKey, employeesLoading,
-      updateCell, addEmployee, removeEmployee, updateEmployee, setEmployeeService,
+      updateCell, addEmployee, removeEmployee, updateEmployee, updateEmployeeHourlyRate, updateEmployeeFixedSalary, updateNormHours, setEmployeeService,
       updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees,
       settings, updateSettings,
       dailyRazvozka, updateDailyRazvozka

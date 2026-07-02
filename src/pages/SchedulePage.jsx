@@ -73,6 +73,7 @@ const SHIFT_OPTIONS = [
 
 const COLUMN_LABELS = {
   totalHours: 'Всего часов',
+  normHours: 'Норма ч',
   salary: 'Зарплата',
   salesCommission: '% продажи',
   razvozka: 'Развозка',
@@ -341,7 +342,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
 
 
 const SchedulePage = () => {
-  const { currentMonth, setCurrentMonth, monthKey, employeesLoading, scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, setEmployeeService, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
+  const { currentMonth, setCurrentMonth, monthKey, employeesLoading, scheduleData, employees, loading, isSaving, addEmployee, removeEmployee, updateCell, updateEmployee, updateEmployeeHourlyRate, updateEmployeeFixedSalary, updateNormHours, setEmployeeService, updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees, settings, updateSettings, dailyRazvozka, updateDailyRazvozka } = useSchedule();
   const { user } = useTickets();
 
   const isChef = useMemo(() => user?.role === 'chef', [user]);
@@ -359,6 +360,7 @@ const SchedulePage = () => {
   const userClub = user?.club?.toUpperCase();
 
   const [selectedClub, setSelectedClub] = useState(userClub || null);
+  const isNurlyOrdaClub = selectedClub === 'NURLY ORDA';
   const [view, setView] = useState((!isChef && userClub) ? 'grid' : 'selection');
 
   // Filter clubs based on role
@@ -428,6 +430,45 @@ const SchedulePage = () => {
     return () => { unsubAuth(); if (unsub) unsub(); };
   }, []);
 
+  // ─── Per-employee hourly rates (local state, mirrors employee.hourlyRate in Firestore) ─
+  const [hourlyRates, setHourlyRates] = useState({});
+  useEffect(() => {
+    setHourlyRates(prev => {
+      const fromFirestore = {};
+      employees.forEach(emp => {
+        if (emp.hourlyRate != null) fromFirestore[emp.id] = String(emp.hourlyRate);
+      });
+      // Firestore fills missing entries; in-progress edits (prev) survive
+      return { ...fromFirestore, ...prev };
+    });
+  }, [employees]);
+
+  // ─── Per-employee fixed salaries (оклад) ────────────────────────────────────
+  const [fixedSalaries, setFixedSalaries] = useState({});
+  useEffect(() => {
+    setFixedSalaries(prev => {
+      const fromFirestore = {};
+      employees.forEach(emp => {
+        if (emp.fixedSalary != null) fromFirestore[emp.id] = String(emp.fixedSalary);
+      });
+      return { ...fromFirestore, ...prev };
+    });
+  }, [employees]);
+
+  // ─── Per-employee norm hours (local state, mirrors scheduleData normHours) ──
+  const [normHoursLocal, setNormHoursLocal] = useState({});
+  useEffect(() => {
+    setNormHoursLocal(prev => {
+      const fromData = {};
+      employees.forEach(emp => {
+        const docId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+        const d = scheduleData[docId] || {};
+        if (d.normHours != null) fromData[emp.id] = String(d.normHours);
+      });
+      return { ...fromData, ...prev };
+    });
+  }, [scheduleData, employees, monthKey]);
+
   // financialEdits: tracks in-progress edits for salary/razvozka/advance/correction
   // key: `${empId}-${field}`, value: current string being edited
   const [financialEdits, setFinancialEdits] = useState({});
@@ -488,6 +529,7 @@ const SchedulePage = () => {
     const cols = settings?.visibleCols || { totalHours: true, salary: true, salesCommission: true, razvozka: true, advance: true, correction: true, toPay: true };
     return {
       totalHours: cols.totalHours !== false,
+      normHours: cols.normHours !== false,
       salary: cols.salary !== false,
       salesCommission: cols.salesCommission !== false,
       razvozka: cols.razvozka !== false,
@@ -719,7 +761,18 @@ const SchedulePage = () => {
         }
       });
       
-      const calculatedSalary = totalHours * rate;
+      const baseRate = parseFloat(hourlyRates[emp.id]) || emp.hourlyRate || rate;
+      const empFixedSalary = parseFloat(fixedSalaries[emp.id]) || emp.fixedSalary || null;
+      const empNormHours = parseFloat(normHoursLocal[emp.id]) || data.normHours || null;
+      const isNurlyEmp = empClub === 'NURLY ORDA';
+      // NURLY ORDA: use fixedSalary/normHours formula; others: use hourly rate
+      const effectiveNormHours = isNurlyEmp ? (empNormHours || (empFixedSalary && totalHours > 0 ? totalHours : null)) : null;
+      const autoRate = !!(isNurlyEmp && empFixedSalary && effectiveNormHours && effectiveNormHours > 0);
+      const empRate = autoRate ? empFixedSalary / effectiveNormHours : baseRate;
+      // Overtime: hours beyond saved normHours (only when norm is explicitly saved)
+      const overtimeHours = (isNurlyEmp && empNormHours && empNormHours > 0) ? Math.max(0, totalHours - empNormHours) : 0;
+      const overtimePay = Math.round(overtimeHours * empRate);
+      const calculatedSalary = Math.round(totalHours * empRate);
       const hasSalaryOverride = data.salaryOverride !== undefined && data.salaryOverride !== null && data.salaryOverride !== '';
       const salaryOverrideNum = hasSalaryOverride ? (data.salaryOverride === '-' ? 0 : (parseFloat(data.salaryOverride) || 0)) : null;
       const salary = hasSalaryOverride ? salaryOverrideNum : calculatedSalary;
@@ -741,11 +794,16 @@ const SchedulePage = () => {
       const salesCommission = Math.round(rawCommission);
       const toPay = salary + finalRazvozka - advance + correction + salesCommission;
       
-      stats[emp.id] = { 
-        totalHours, 
-        salary, 
-        calculatedSalary, 
-        salaryOverride: data.salaryOverride, 
+      stats[emp.id] = {
+        totalHours,
+        normHours: empNormHours,
+        overtimeHours,
+        overtimePay,
+        empRate,
+        autoRate,
+        salary,
+        calculatedSalary,
+        salaryOverride: data.salaryOverride,
         razvozka: finalRazvozka, 
         calculatedRazvozka, 
         razvozkaOverride: data.razvozkaOverride, 
@@ -758,20 +816,23 @@ const SchedulePage = () => {
       };
     });
     return stats;
-  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate, dailyRazvozka, merchSales, commissionRatesMap]);
+  }, [scheduleData, employees, daysInMonth, monthKey, settings?.hourlyRate, dailyRazvozka, merchSales, commissionRatesMap, hourlyRates, fixedSalaries, normHoursLocal]);
 
-  const getEmployeeStats = (empId) => employeeStats[empId] || { 
-    totalHours: 0, 
-    salary: 0, 
-    calculatedSalary: 0, 
-    salaryOverride: 0, 
+  const getEmployeeStats = (empId) => employeeStats[empId] || {
+    totalHours: 0,
+    normHours: null,
+    overtimeHours: 0,
+    overtimePay: 0,
+    salary: 0,
+    calculatedSalary: 0,
+    salaryOverride: 0,
     salesCommission: 0,
-    razvozka: 0, 
-    calculatedRazvozka: 0, 
-    razvozkaOverride: 0, 
-    advance: 0, 
-    correction: 0, 
-    toPay: 0 
+    razvozka: 0,
+    calculatedRazvozka: 0,
+    razvozkaOverride: 0,
+    advance: 0,
+    correction: 0,
+    toPay: 0
   };
 
   const getClubTotal = (clubName) => {
@@ -1070,7 +1131,9 @@ const SchedulePage = () => {
                 ))}
                 
                 {visibleCols.totalHours && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[95px]">Всего ч.</th>}
-                {canViewFull && visibleCols.salary && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Зарплата</th>}
+                {canViewFull && isNurlyOrdaClub && visibleCols.normHours && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[90px]">Норма ч.</th>}
+                {canViewFull && !isNurlyOrdaClub && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[90px]">₸/ч</th>}
+                {canViewFull && visibleCols.salary && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[140px]">Зарплата</th>}
                 {canViewFull && visibleCols.salesCommission && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">% продажи</th>}
                 {canViewFull && visibleCols.razvozka && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Развозка</th>}
                 {canViewFull && visibleCols.advance && <th style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }} className="px-4 py-5 text-center min-w-[110px]">Аванс</th>}
@@ -1153,12 +1216,43 @@ const SchedulePage = () => {
                       );
                     })}
                     {visibleCols.totalHours && <td className="px-4 py-4 text-center text-xs text-[var(--accent-purple)] bg-purple-500/5 font-bold border-r border-[var(--border)]">{stats.totalHours.toFixed(1)} ч</td>}
+                    {canViewFull && isNurlyOrdaClub && visibleCols.normHours && (
+                      <td className="px-4 py-4 text-center text-xs bg-emerald-500/5 font-bold border-r border-[var(--border)]">
+                        {stats.normHours ? (
+                          <span className="text-emerald-400">{Number(stats.normHours).toFixed(1)}ч</span>
+                        ) : stats.autoRate ? (
+                          <span className="text-[var(--text-muted)]">{stats.totalHours.toFixed(1)}ч</span>
+                        ) : (
+                          <span className="text-[var(--text-muted)]">—</span>
+                        )}
+                      </td>
+                    )}
+                    {canViewFull && !isNurlyOrdaClub && (
+                      <td className="p-0 bg-violet-500/5 border-r border-[var(--border)]">
+                        {stats.autoRate ? (
+                          <div className="w-full min-h-[46px] flex flex-col items-center justify-center gap-0.5 px-2">
+                            <span className="text-xs font-bold text-violet-400/70">{Math.round(stats.empRate).toLocaleString('ru-RU')}</span>
+                            <span style={{ fontSize: 8, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>авто</span>
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-violet-400 outline-none"
+                            value={hourlyRates[emp.id] ?? ''}
+                            placeholder={String(settings?.hourlyRate || 1500)}
+                            onChange={e => setHourlyRates(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                            onBlur={e => updateEmployeeHourlyRate(emp.id, e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                          />
+                        )}
+                      </td>
+                    )}
                     {canViewFull && visibleCols.salary && (
                       <td className="p-0 bg-blue-500/5 border-r border-[var(--border)]">
                         <input
                           type="text"
                           disabled={!canViewFull}
-                          className="w-full h-full min-h-[46px] bg-transparent text-center text-xs font-bold text-blue-400 outline-none"
+                          className={`w-full bg-transparent text-center text-xs font-bold text-blue-400 outline-none ${isNurlyOrdaClub && stats.overtimeHours > 0 ? 'pt-2 pb-0 min-h-[32px]' : 'min-h-[46px]'}`}
                           value={getFinEdit(emp.id, 'salary', stats.salaryOverride ?? '')}
                           placeholder={String(stats.calculatedSalary || '')}
                           onChange={e => setFinEdit(emp.id, 'salary', e.target.value)}
@@ -1166,6 +1260,11 @@ const SchedulePage = () => {
                           onBlur={e => { updateSalaryOverride(monthKey, emp.id, e.target.value); clearFinEdit(emp.id, 'salary'); }}
                           onKeyDown={e => { if (e.key === 'Enter') { updateSalaryOverride(monthKey, emp.id, e.target.value); e.target.blur(); } }}
                         />
+                        {isNurlyOrdaClub && stats.overtimeHours > 0 && (
+                          <div className="text-center pb-1.5 leading-none" style={{ fontSize: 8, fontWeight: 900, color: '#f97316', whiteSpace: 'nowrap' }}>
+                            +{stats.overtimePay.toLocaleString()} сверхур.
+                          </div>
+                        )}
                       </td>
                     )}
                     {canViewFull && visibleCols.salesCommission && (
@@ -1291,6 +1390,8 @@ const SchedulePage = () => {
                   );
                 })}
                 {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).totalHours, 0).toFixed(1)}ч</td>}
+                {canViewFull && isNurlyOrdaClub && visibleCols.normHours && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--text-muted)]">—</td>}
+                {canViewFull && !isNurlyOrdaClub && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--text-muted)]">—</td>}
                 {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-blue-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salary, 0).toLocaleString()}</td>}
                 {canViewFull && visibleCols.salesCommission && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-yellow-400">{Math.round(clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).salesCommission, 0)).toLocaleString()}</td>}
                 {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: footerBottomOffset, zIndex: 40, backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-emerald-400">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()}</td>}
@@ -1344,6 +1445,8 @@ const SchedulePage = () => {
                     );
                   })}
                   {visibleCols.totalHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
+                  {canViewFull && isNurlyOrdaClub && visibleCols.normHours && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
+                  {canViewFull && !isNurlyOrdaClub && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.salary && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.salesCommission && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-[10px] text-[var(--text-muted)]">—</td>}
                   {canViewFull && visibleCols.razvozka && <td style={{ position: 'sticky', bottom: 0, zIndex: 40, backgroundColor: 'var(--bg-razvozka-cell)', borderTop: '2px solid var(--accent-purple)', borderRight: '1px solid var(--border)' }} className="px-4 py-4 text-center font-black text-xs text-[var(--accent-purple)]">{clubEmployees.reduce((acc, emp) => acc + getEmployeeStats(emp.id).razvozka, 0).toLocaleString()} ₸</td>}
@@ -1416,8 +1519,8 @@ const SchedulePage = () => {
       )}
 
       {showSettingsModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowSettingsModal(false)}>
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 md:px-8 md:py-6 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
               <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Settings size={18} className="text-[var(--accent-purple)]" /> Настройки
@@ -1426,7 +1529,7 @@ const SchedulePage = () => {
                 <X size={20} />
               </button>
             </div>
-            <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto"><div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
               <div className="space-y-4">
                 <h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Смены</h3>
                 <div className="space-y-2">
@@ -1434,13 +1537,185 @@ const SchedulePage = () => {
                   <input type="text" value={settings?.shift2} onChange={e => updateSettings({ ...settings, shift2: e.target.value })} className="w-full bg-[var(--bg-hover)] border border-[var(--border)] rounded-xl p-3 text-[var(--text-primary)] text-sm" />
                   {canViewFull && (
                     <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] font-medium italic">
-                      <span>Ставка:</span>
+                      <span>Базовая ставка:</span>
                       <input type="number" value={settings?.hourlyRate || 1500} onChange={(e) => updateSettings({ ...settings, hourlyRate: parseInt(e.target.value) || 0 })} className="bg-[var(--bg-hover)] border border-[var(--border)] rounded px-1.5 py-0.5 w-16 text-blue-400 font-bold outline-none" />
                       <span>₸/час</span>
                     </div>
                   )}
                 </div>
               </div>
+              {canViewFull && clubEmployees.filter(e => !e.isService && !(e.name||'').toLowerCase().includes('сервис') && !(e.name||'').toLowerCase().includes('техник') && !(e.name||'').toLowerCase().includes('стажер')).length > 0 && (
+                <div className="md:col-span-2 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Ставки сотрудников</h3>
+                    {isNurlyOrdaClub && (
+                      <button
+                        onClick={() => {
+                          clubEmployees.filter(e => !e.isService && !(e.name||'').toLowerCase().includes('сервис') && !(e.name||'').toLowerCase().includes('техник') && !(e.name||'').toLowerCase().includes('стажер')).forEach(emp => {
+                            const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+                            const empScheduleData = scheduleData[empDocId] || {};
+                            const hasSalary = parseFloat(fixedSalaries[emp.id]) || emp.fixedSalary;
+                            const hasNorm = normHoursLocal[emp.id] || empScheduleData.normHours;
+                            const empStats = getEmployeeStats(emp.id);
+                            if (hasSalary && !hasNorm && empStats.totalHours > 0) {
+                              const normVal = String(empStats.totalHours);
+                              setNormHoursLocal(prev => ({ ...prev, [emp.id]: normVal }));
+                              updateNormHours(monthKey, emp.id, normVal);
+                            }
+                          });
+                        }}
+                        className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all"
+                      >
+                        ↑ Норма для всех
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    {clubEmployees.filter(e => !e.isService && !(e.name||'').toLowerCase().includes('сервис') && !(e.name||'').toLowerCase().includes('техник') && !(e.name||'').toLowerCase().includes('стажер')).map(emp => {
+                      const stats = getEmployeeStats(emp.id);
+                      const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
+                      const empScheduleData = scheduleData[empDocId] || {};
+                      const empRate = parseFloat(hourlyRates[emp.id]) || emp.hourlyRate || settings?.hourlyRate || 1500;
+                      const empFixedSalary = parseFloat(fixedSalaries[emp.id]) || emp.fixedSalary || null;
+                      const empNormHours = parseFloat(normHoursLocal[emp.id]) || empScheduleData.normHours || null;
+                      const displayNorm = empNormHours || (empFixedSalary && stats.totalHours > 0 ? stats.totalHours : null);
+                      const calcSalary = empFixedSalary && displayNorm && displayNorm > 0
+                        ? Math.round(stats.totalHours / displayNorm * empFixedSalary)
+                        : Math.round(stats.totalHours * empRate);
+                      return (
+                        <div key={emp.id} className="flex flex-col gap-2.5 bg-[var(--bg-hover)] rounded-xl px-4 py-3">
+                          <span className="text-sm font-bold text-[var(--text-primary)]">{emp.name}</span>
+                          <div className="flex flex-wrap items-center gap-3">
+                            {isNurlyOrdaClub ? (
+                              <>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-black uppercase text-[var(--text-muted)]">Оклад:</span>
+                                  <input
+                                    type="number"
+                                    value={fixedSalaries[emp.id] ?? ''}
+                                    placeholder="—"
+                                    onChange={e => setFixedSalaries(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                    onBlur={e => {
+                                      const val = e.target.value;
+                                      updateEmployeeFixedSalary(emp.id, val);
+                                      const parsed = parseFloat(val);
+                                      const hasNorm = normHoursLocal[emp.id] || empScheduleData.normHours;
+                                      if (parsed && !hasNorm && stats.totalHours > 0) {
+                                        const normVal = String(stats.totalHours);
+                                        setNormHoursLocal(prev => ({ ...prev, [emp.id]: normVal }));
+                                        updateNormHours(monthKey, emp.id, normVal);
+                                      }
+                                    }}
+                                    onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                    className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-2 py-1 w-28 text-blue-400 font-bold text-sm outline-none text-center"
+                                  />
+                                  <span className="text-xs text-[var(--text-muted)]">₸</span>
+                                </div>
+                                {displayNorm && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-black uppercase text-[var(--text-muted)]">Норма:</span>
+                                    <span className={`text-sm font-bold ${empNormHours ? 'text-emerald-400' : 'text-[var(--text-muted)]'}`}>{Number(displayNorm).toFixed(1)}ч</span>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-1.5">
+                                  {empFixedSalary && empNormHours && empNormHours > 0 ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="px-2 py-1 rounded-lg text-violet-400/70 font-bold text-sm text-center w-20" style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.15)' }}>
+                                        {Math.round(empFixedSalary / empNormHours).toLocaleString('ru-RU')}
+                                      </span>
+                                      <span className="text-xs text-[var(--text-muted)]">₸/ч <span style={{ fontSize: 9, opacity: 0.6 }}>(авто)</span></span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <input
+                                        type="number"
+                                        value={hourlyRates[emp.id] ?? ''}
+                                        placeholder={String(settings?.hourlyRate || 1500)}
+                                        onChange={e => setHourlyRates(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        onBlur={e => updateEmployeeHourlyRate(emp.id, e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                        className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-2 py-1 w-20 text-violet-400 font-bold text-sm outline-none text-center"
+                                      />
+                                      <span className="text-xs text-[var(--text-muted)]">₸/ч</span>
+                                    </>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-black uppercase text-[var(--text-muted)]">Оклад:</span>
+                                  <input
+                                    type="number"
+                                    value={fixedSalaries[emp.id] ?? ''}
+                                    placeholder="—"
+                                    onChange={e => setFixedSalaries(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                    onBlur={e => updateEmployeeFixedSalary(emp.id, e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                    className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-2 py-1 w-28 text-blue-400 font-bold text-sm outline-none text-center"
+                                  />
+                                  <span className="text-xs text-[var(--text-muted)]">₸</span>
+                                </div>
+                                {empFixedSalary && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-black uppercase text-[var(--text-muted)]">Норма:</span>
+                                    <input
+                                      type="number"
+                                      value={normHoursLocal[emp.id] ?? ''}
+                                      placeholder={stats.totalHours.toFixed(1)}
+                                      onChange={e => setNormHoursLocal(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                      onBlur={e => updateNormHours(monthKey, emp.id, e.target.value)}
+                                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                      className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg px-2 py-1 w-20 text-emerald-400 font-bold text-sm outline-none text-center"
+                                    />
+                                    <button
+                                      onClick={() => { const v = String(stats.totalHours); setNormHoursLocal(prev => ({ ...prev, [emp.id]: v })); updateNormHours(monthKey, emp.id, v); }}
+                                      title="Использовать текущее количество часов как норму"
+                                      style={{ fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 8, background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                    >
+                                      ↑ {stats.totalHours.toFixed(1)}ч
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <div className="text-xs flex flex-col gap-0.5">
+                            {isNurlyOrdaClub && empFixedSalary && empNormHours && empNormHours > 0 ? (
+                              <>
+                                <span className="text-[var(--text-muted)]">
+                                  Ставка: {Math.round(empFixedSalary / empNormHours).toLocaleString('ru-RU')} ₸/ч
+                                </span>
+                                {stats.overtimeHours > 0 ? (
+                                  <span className="text-[var(--text-secondary)]">
+                                    {empFixedSalary.toLocaleString('ru-RU')}₸ (оклад) + {stats.overtimeHours.toFixed(1)}ч × {Math.round(empFixedSalary / empNormHours).toLocaleString('ru-RU')}₸
+                                    <span className="text-orange-400 font-black ml-1">= {calcSalary.toLocaleString('ru-RU')} ₸</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[var(--text-secondary)]">
+                                    {stats.totalHours.toFixed(1)}ч / {Number(empNormHours).toFixed(1)}ч × {empFixedSalary.toLocaleString('ru-RU')}₸
+                                    <span className="text-emerald-400 font-black ml-1">= {calcSalary.toLocaleString('ru-RU')} ₸</span>
+                                  </span>
+                                )}
+                              </>
+                            ) : empFixedSalary && displayNorm && displayNorm > 0 ? (
+                              <>
+                                <span className="text-[var(--text-secondary)]">{stats.totalHours.toFixed(1)}ч / {Number(displayNorm).toFixed(1)}ч × {empFixedSalary.toLocaleString('ru-RU')}₸</span>
+                                <span className="text-emerald-400 font-black ml-1">= {calcSalary.toLocaleString('ru-RU')} ₸</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-[var(--text-secondary)]">{stats.totalHours.toFixed(1)}ч × {empRate.toLocaleString('ru-RU')}₸</span>
+                                <span className="text-emerald-400 font-black ml-1">= {calcSalary.toLocaleString('ru-RU')} ₸</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="space-y-4">
                 <h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Колонки</h3>
                 <div className="grid grid-cols-1 gap-1">
@@ -1459,7 +1734,7 @@ const SchedulePage = () => {
                   })}
                 </div>
               </div>
-            </div>
+            </div></div>
             <div className="p-4 md:p-6 bg-[var(--bg-hover)] text-right flex-shrink-0">
               <button onClick={() => setShowSettingsModal(false)} className="px-8 py-3 bg-[var(--accent-purple)] text-white font-bold rounded-xl text-xs uppercase tracking-widest">
                 Закрыть

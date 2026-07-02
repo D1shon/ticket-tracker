@@ -38,7 +38,7 @@ export const USER_ROLES = {
   'admin-4you':           { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'       },
   'admin-nurlyorda':      { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda' },
   'ikoperper@gmail.com':              { role: 'admin', club: '4YOU', displayName: 'Искандер'  },
-  'alibekakniet38@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Алибек'    },
+  'alibekakniet38@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Акниет'    },
   'bhtg.l.bhtg.l@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Бахыткуль' },
   'abisheva.alua07@gmail.com':        { role: 'admin', club: '4YOU', displayName: 'Алуа'      },
   'abuzalma8@gmail.com':              { role: 'admin', club: '4YOU', displayName: 'Абулхаир'  },
@@ -230,7 +230,7 @@ export const TicketProvider = ({ children }) => {
     if (registered) {
       return {
         ...u,
-        displayName: customName || registered.displayName || u.displayName || email.split('@')[0],
+        displayName: registered.displayName || customName || u.displayName || email.split('@')[0],
         role: registered.role,
         club: registered.club
       };
