@@ -1,0 +1,148 @@
+import admin from 'firebase-admin'
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  })
+  try { admin.firestore().settings({ preferRest: true }) } catch {}
+}
+
+// All times — Almaty (UTC+5, no DST), minutes from midnight.
+// Each reminder fires once per day (atomic marker in `checklist_reminders`).
+function dueReminders(alm) {
+  const dow = alm.getUTCDay()
+  const weekend = dow === 0 || dow === 6
+  const nowMin = alm.getUTCHours() * 60 + alm.getUTCMinutes()
+  const dateStr = alm.toISOString().slice(0, 10)
+  const due = []
+  // Fires within [t, t+6) — covers ping intervals and small delays
+  const inWin = (t) => nowMin >= t && nowMin < t + 6
+
+  // 1. Daily check-in at 6:30
+  if (inWin(390)) {
+    due.push({ id: `${dateStr}_checkin`, title: '✅ Чекин', body: 'Произведите чекин — отметьтесь в приложении', club: null, url: '/scan' })
+  }
+
+  // 2. Shift checklists — 5 minutes before each shift
+  const shifts = weekend
+    ? [
+        { id: 'morning', name: 'Утренняя смена', time: '9:00',  min: 540 },
+        { id: 'day',     name: 'Дневная смена',  time: '14:00', min: 840 },
+        { id: 'evening', name: 'Вечерняя смена', time: '19:00', min: 1140 },
+      ]
+    : [
+        { id: 'morning', name: 'Утренняя смена', time: '6:30',  min: 390 },
+        { id: 'day',     name: 'Дневная смена',  time: '11:30', min: 690 },
+        { id: 'evening', name: 'Вечерняя смена', time: '16:30', min: 990 },
+        { id: 'night',   name: 'Ночная смена',   time: '21:30', min: 1290 },
+      ]
+  shifts.forEach(s => {
+    if (s.min - nowMin > 0 && s.min - nowMin <= 6) {
+      due.push({ id: `${dateStr}_${s.id}`, title: '📋 Чек-лист смены', body: `${s.name} в ${s.time} — через 5 минут начало, откройте чек-лист`, club: null, url: '/checklists' })
+    }
+  })
+
+  // 3. HR monitors & towels check
+  if (!weekend) {
+    // Weekdays: 22:00, all clubs at once
+    if (inWin(1320)) {
+      due.push({ id: `${dateStr}_mt_all`, title: '💓 Проверка пульсометров и полотенец', body: 'Проведите проверку пульсометров и учёт полотенец', club: null, url: '/hr-monitors' })
+    }
+  } else {
+    // Weekends: per-club times — 4YOU 19:00, VILLA 19:00, COLIBRI 21:00, NURLY ORDA 21:30
+    const perClub = [
+      ['4YOU',       1140],
+      ['VILLA',      1140],
+      ['COLIBRI',    1260],
+      ['NURLY ORDA', 1290],
+    ]
+    perClub.forEach(([club, t]) => {
+      if (inWin(t)) {
+        due.push({ id: `${dateStr}_mt_${club.replace(/\s+/g, '')}`, title: '💓 Проверка пульсометров и полотенец', body: `${club}: проведите проверку пульсометров и учёт полотенец`, club, url: '/hr-monitors' })
+      }
+    })
+  }
+
+  return due
+}
+
+let tokensCache = null
+let tokensCachedAt = 0
+
+async function getTokens(clientTokens) {
+  // Client passes [{ t, club }] — resolved with the client SDK (admin reads hit quota)
+  if (Array.isArray(clientTokens) && clientTokens.length > 0) {
+    return clientTokens
+      .filter(x => x && typeof x.t === 'string' && x.t.length > 20)
+      .slice(0, 500)
+      .map(x => ({ token: x.t, club: x.club || null }))
+  }
+  const now = Date.now()
+  if (tokensCache && now - tokensCachedAt < 10 * 60 * 1000) return tokensCache
+  try {
+    const snap = await admin.firestore().collection('push_tokens').get()
+    tokensCache = snap.docs.map(d => ({ token: d.id, club: d.data().club || null }))
+    tokensCachedAt = now
+    return tokensCache
+  } catch (err) {
+    console.warn('push_tokens read failed:', err.message)
+    return tokensCache ?? []
+  }
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') return res.status(200).end()
+
+  try {
+    const alm = new Date(Date.now() + 5 * 3600 * 1000)
+    const due = dueReminders(alm)
+    if (due.length === 0) return res.json({ ok: true, reason: 'no due reminders' })
+
+    const allTokens = await getTokens(req.body?.tokens)
+    const results = []
+
+    for (const r of due) {
+      // Atomic once-per-day: create() fails if the marker exists
+      try {
+        await admin.firestore().collection('checklist_reminders').doc(r.id).create({
+          sentAtISO: new Date().toISOString(),
+          title: r.title,
+        })
+      } catch (e) {
+        if (String(e.code) === '6' || /already exists/i.test(e.message || '')) {
+          results.push({ id: r.id, skipped: 'already sent' })
+          continue
+        }
+        console.warn('marker create failed, continuing:', e.message)
+      }
+
+      const tokens = allTokens
+        .filter(t => !r.club || !t.club || (t.club || '').toUpperCase() === r.club.toUpperCase())
+        .map(t => t.token)
+      if (tokens.length === 0) { results.push({ id: r.id, sent: 0 }); continue }
+
+      const out = await admin.messaging().sendEachForMulticast({
+        tokens,
+        notification: { title: r.title, body: r.body },
+        webpush: {
+          headers: { Urgency: 'high', TTL: '1800' },
+          notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: r.id },
+          fcmOptions: { link: `https://track.hj.fit${r.url}` },
+        },
+      })
+      results.push({ id: r.id, sent: out.successCount, failed: out.failureCount })
+    }
+
+    return res.json({ ok: true, results })
+  } catch (err) {
+    console.error('scheduled-reminders error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+}

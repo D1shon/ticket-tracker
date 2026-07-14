@@ -7,29 +7,113 @@ import { CallProvider } from './store/CallContext';
 import { Toaster } from 'sonner';
 
 // Components & Pages
+// Layout stays in the main bundle; pages are lazy-loaded per route so
+// slow phones don't download the whole app on first paint.
 import Sidebar from './components/layout/Sidebar';
 import NotificationBell from './components/layout/NotificationBell';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import TicketsPage from './pages/TicketsPage';
-import TicketDetail from './components/tickets/TicketDetail';
-import SchedulePage from './pages/SchedulePage';
-import MerchPage from './pages/MerchPage';
-import SalesPage from './pages/SalesPage';
-import ChecklistPage from './pages/ChecklistPage';
-import ChecklistDetail from './pages/ChecklistDetail';
-import ArchivePage from './pages/ArchivePage';
-import SettingsPage from './pages/SettingsPage';
-import CallsPage from './pages/CallsPage';
-import AttendancePage from './pages/AttendancePage';
 import CallOverlay from './components/layout/CallOverlay';
 import DemoDayBanner from './components/layout/DemoDayBanner';
-import MobileScanner from './pages/MobileScanner';
-import GuidebookPage from './pages/GuidebookPage';
-import PolicyPage from './pages/PolicyPage';
-import HRMonitorsPage from './pages/HRMonitorsPage';
-import TowelsPage from './pages/TowelsPage';
-import ClubVisitsPage from './pages/ClubVisitsPage';
+import NotificationPopup from './components/layout/NotificationPopup';
+
+// After each deploy chunk filenames change; open clients hold the old index
+// and fail to fetch old chunks. On such a failure reload once — the fresh
+// index arrives with matching chunk names.
+const lazyPage = (importer) => React.lazy(() =>
+  importer()
+    .then(m => { try { sessionStorage.removeItem('hj_chunk_reload'); } catch {} return m; })
+    .catch((err) => {
+      let alreadyTried = false;
+      try {
+        alreadyTried = sessionStorage.getItem('hj_chunk_reload') === '1';
+        if (!alreadyTried) sessionStorage.setItem('hj_chunk_reload', '1');
+      } catch {}
+      if (!alreadyTried) {
+        window.location.reload();
+        return new Promise(() => {}); // reloading — keep spinner up
+      }
+      throw err;
+    })
+);
+
+const IMPORTERS = {
+  Dashboard:       () => import('./pages/Dashboard'),
+  TicketsPage:     () => import('./pages/TicketsPage'),
+  TicketDetail:    () => import('./components/tickets/TicketDetail'),
+  SchedulePage:    () => import('./pages/SchedulePage'),
+  MerchPage:       () => import('./pages/MerchPage'),
+  SalesPage:       () => import('./pages/SalesPage'),
+  ChecklistPage:   () => import('./pages/ChecklistPage'),
+  ChecklistDetail: () => import('./pages/ChecklistDetail'),
+  ArchivePage:     () => import('./pages/ArchivePage'),
+  SettingsPage:    () => import('./pages/SettingsPage'),
+  CallsPage:       () => import('./pages/CallsPage'),
+  AttendancePage:  () => import('./pages/AttendancePage'),
+  MobileScanner:   () => import('./pages/MobileScanner'),
+  GuidebookPage:   () => import('./pages/GuidebookPage'),
+  PolicyPage:      () => import('./pages/PolicyPage'),
+  HRMonitorsPage:  () => import('./pages/HRMonitorsPage'),
+  TowelsPage:      () => import('./pages/TowelsPage'),
+  LostItemsPage:   () => import('./pages/LostItemsPage'),
+  ReviewsPage:     () => import('./pages/ReviewsPage'),
+  NewsPage:        () => import('./pages/NewsPage'),
+};
+
+const Dashboard       = lazyPage(IMPORTERS.Dashboard);
+const TicketsPage     = lazyPage(IMPORTERS.TicketsPage);
+const TicketDetail    = lazyPage(IMPORTERS.TicketDetail);
+const SchedulePage    = lazyPage(IMPORTERS.SchedulePage);
+const MerchPage       = lazyPage(IMPORTERS.MerchPage);
+const SalesPage       = lazyPage(IMPORTERS.SalesPage);
+const ChecklistPage   = lazyPage(IMPORTERS.ChecklistPage);
+const ChecklistDetail = lazyPage(IMPORTERS.ChecklistDetail);
+const ArchivePage     = lazyPage(IMPORTERS.ArchivePage);
+const SettingsPage    = lazyPage(IMPORTERS.SettingsPage);
+const CallsPage       = lazyPage(IMPORTERS.CallsPage);
+const AttendancePage  = lazyPage(IMPORTERS.AttendancePage);
+const MobileScanner   = lazyPage(IMPORTERS.MobileScanner);
+const GuidebookPage   = lazyPage(IMPORTERS.GuidebookPage);
+const PolicyPage      = lazyPage(IMPORTERS.PolicyPage);
+const HRMonitorsPage  = lazyPage(IMPORTERS.HRMonitorsPage);
+const TowelsPage      = lazyPage(IMPORTERS.TowelsPage);
+const LostItemsPage   = lazyPage(IMPORTERS.LostItemsPage);
+const ReviewsPage     = lazyPage(IMPORTERS.ReviewsPage);
+const NewsPage        = lazyPage(IMPORTERS.NewsPage);
+
+// Last-resort screen instead of a black page if a chunk still fails
+class PageErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  handleReload = async () => {
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch {}
+    try { sessionStorage.removeItem('hj_chunk_reload'); } catch {}
+    window.location.reload();
+  };
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'var(--bg-primary)', padding: 24 }}>
+        <div style={{ fontSize: 40 }}>🔄</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', textAlign: 'center' }}>Вышло обновление платформы</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 280 }}>Нажмите кнопку, чтобы загрузить свежую версию</div>
+        <button onClick={this.handleReload} style={{ padding: '12px 28px', borderRadius: 14, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+          Обновить
+        </button>
+      </div>
+    );
+  }
+}
+
+const PageLoader = () => (
+  <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ width: 36, height: 36, border: '3px solid rgba(79,142,247,0.2)', borderTop: '3px solid #4f8ef7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+  </div>
+);
 
 // Notification bell is fixed top-right on every authenticated page
 const NotificationCorner = () => (
@@ -80,8 +164,8 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
           flexDirection: 'column',
           minHeight: '100vh',
           minWidth: 0,
-          paddingTop: isMobile ? 52 : 0,
-          paddingBottom: isMobile ? 64 : 0,
+          paddingTop: isMobile ? 'calc(52px + env(safe-area-inset-top))' : 0,
+          paddingBottom: isMobile ? 'calc(64px + env(safe-area-inset-bottom))' : 0,
         }}
       >
         <main style={{
@@ -101,6 +185,15 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
 
 const AppContent = () => {
   const { user } = useTickets();
+
+  // Prefetch all pages shortly after start: navigation then never hits the
+  // network, so a fresh deploy mid-session can't break it (or drop a call)
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      Object.values(IMPORTERS).forEach(imp => { imp().catch(() => {}); });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
 
   const RootRedirect = () => {
     if (!user) return <Navigate to="/login" replace />;
@@ -129,6 +222,8 @@ const AppContent = () => {
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
+      <PageErrorBoundary>
+      <React.Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={user ? <Navigate to={
           user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : user.role === 'viewer' ? '/checklists' : '/tickets'
@@ -232,9 +327,19 @@ const AppContent = () => {
             <TowelsPage />
           </ProtectedLayout>
         } />
-        <Route path="/club-visits" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
-            <ClubVisitsPage />
+        <Route path="/lost-items" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+            <LostItemsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/reviews" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+            <ReviewsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/news" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer']}>
+            <NewsPage />
           </ProtectedLayout>
         } />
         <Route path="/settings" element={
@@ -246,8 +351,11 @@ const AppContent = () => {
         <Route path="/" element={<RootRedirect />} />
         <Route path="*" element={<RootRedirect />} />
       </Routes>
+      </React.Suspense>
+      </PageErrorBoundary>
       <CallOverlay />
       <DemoDayBanner />
+      <NotificationPopup />
     </Router>
   );
 };

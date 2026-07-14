@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
+import { pushNotify } from '../lib/pushNotify';
 import { toast } from 'sonner';
 import { 
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
@@ -31,13 +32,13 @@ const MerchPage = () => {
   const [selectedSku, setSelectedSku] = useState('ALL');
   const [resortValues, setResortValues] = useState({}); // productId -> actual count string
   const [savingResort, setSavingResort] = useState(false);
+  const [autoDistributeBySchedule, setAutoDistributeBySchedule] = useState(true);
   const [commissionRates, setCommissionRates] = useState({}); // salespersonName -> rate string
   const [expandedPersons, setExpandedPersons] = useState({}); // salespersonName -> boolean
-  const [autoDistributeBySchedule, setAutoDistributeBySchedule] = useState(true);
   const [clubEmployees, setClubEmployees] = useState([]);
-  const [clubSchedules, setClubSchedules] = useState({}); // empId -> days object
+  const [clubSchedules, setClubSchedules] = useState({});
 
-  // Load all employees and schedules for the selected club to allow auto-assigning by schedule
+  // Load employees and schedules for the selected club
   useEffect(() => {
     if (selectedClub === 'ALL') {
       setClubEmployees([]);
@@ -49,28 +50,23 @@ const MerchPage = () => {
       const emps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setClubEmployees(emps);
 
-      // Restore saved commission rates from Firestore (Firestore values win on first load)
+      // Reset rates to this club's employees only — prevents bleed-over between clubs
       const rates = {};
       emps.forEach(emp => {
-        const isServ = emp.isService === true || 
-                       (emp.name || '').toLowerCase().includes('сервис') || 
-                       (emp.name || '').toLowerCase().includes('техник') || 
-                       (emp.name || '').toLowerCase().includes('стажер');
+        const isServ = emp.isService === true ||
+                       (emp.name || '').toLowerCase().includes('сервис') ||
+                       (emp.name || '').toLowerCase().includes('техник');
         if (isServ) return;
         if (emp.commissionRate != null && emp.commissionRate !== '') {
           rates[emp.name] = String(emp.commissionRate);
         }
       });
-      // Always let Firestore values fill in missing entries (don't override edits already in state)
-      setCommissionRates(prev => ({ ...rates, ...prev }));
-      
+      setCommissionRates(rates);
+
       const scheds = {};
       await Promise.all(emps.map(async emp => {
-        const schedDocRef = doc(db, 'schedules', emp.id);
-        const schedSnap = await getDoc(schedDocRef);
-        if (schedSnap.exists()) {
-          scheds[emp.id] = schedSnap.data()?.days || {};
-        }
+        const schedSnap = await getDoc(doc(db, 'schedules', emp.id));
+        if (schedSnap.exists()) scheds[emp.id] = schedSnap.data()?.days || {};
       }));
       setClubSchedules(scheds);
     });
@@ -82,65 +78,34 @@ const MerchPage = () => {
     const dayStr = String(saleDate.getDate());
     const hour = saleDate.getHours();
     const min = saleDate.getMinutes();
-    const timeVal = hour * 60 + min; // sale time in minutes since midnight
-    
+    const timeVal = hour * 60 + min;
     const workingAdmins = [];
-    
-    // Filter clubEmployees for this club and month, excluding service employees
     const monthEmps = clubEmployees.filter(emp => {
-      const isServ = emp.isService === true || 
-                     (emp.name || '').toLowerCase().includes('сервис') || 
-                     (emp.name || '').toLowerCase().includes('техник') || 
-                     (emp.name || '').toLowerCase().includes('стажер');
+      const isServ = emp.isService === true ||
+                     (emp.name || '').toLowerCase().includes('сервис') ||
+                     (emp.name || '').toLowerCase().includes('техник');
       return !isServ && emp.monthKey === monthKey && emp.club === clubName;
     });
-    
     monthEmps.forEach(emp => {
       const days = clubSchedules[emp.id];
       if (!days) return;
       const shiftStr = days[dayStr];
       if (!shiftStr) return;
-      
       const cleanShift = shiftStr.trim().toLowerCase();
       if (!cleanShift || cleanShift === 'выходной') return;
-      
-      // Parse shift interval, e.g. "9:00-19:00" or "09:00 - 21:00" or "13:30-23:00"
       const parts = cleanShift.split('-');
       if (parts.length === 2) {
-        const startPart = parts[0].trim();
-        const endPart = parts[1].trim();
-        
-        const parseTimeToMinutes = (tStr) => {
-          const tParts = tStr.split(':');
-          if (tParts.length >= 1) {
-            const h = parseInt(tParts[0]) || 0;
-            const m = parseInt(tParts[1]) || 0;
-            return h * 60 + m;
-          }
-          return null;
-        };
-        
-        const startMin = parseTimeToMinutes(startPart);
-        const endMin = parseTimeToMinutes(endPart);
-        
-        if (startMin !== null && endMin !== null) {
-          if (endMin < startMin) {
-            // Shift spans midnight (e.g. 14:00 - 02:00)
-            if (timeVal >= startMin || timeVal <= endMin) {
-              workingAdmins.push(emp.name);
-            }
-          } else {
-            if (timeVal >= startMin && timeVal <= endMin) {
-              workingAdmins.push(emp.name);
-            }
-          }
+        const parse = t => { const [h, m] = t.trim().split(':'); return parseInt(h) * 60 + (parseInt(m) || 0); };
+        const startMin = parse(parts[0]);
+        const endMin = parse(parts[1]);
+        if (endMin < startMin ? (timeVal >= startMin || timeVal <= endMin) : (timeVal >= startMin && timeVal <= endMin)) {
+          workingAdmins.push(emp.name);
         }
       }
     });
-    
     return workingAdmins;
   }, [clubEmployees, clubSchedules]);
-  
+
   // Sync selectedClub if user updates
   useEffect(() => {
     if (!canSelectAllClubs && managerClub) {
@@ -225,7 +190,7 @@ const MerchPage = () => {
         const empList = snap.docs.map(d => {
           const data = d.data();
           const nLower = (data.name || '').toLowerCase();
-          const isServ = data.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
+          const isServ = data.isService === true || nLower.includes('сервис') || nLower.includes('техник');
           return { id: d.id, ...data, isService: isServ };
         }).filter(e => !e.isService);
         if (empList.length === 0) { setTodayClubEmployees([]); return; }
@@ -518,6 +483,13 @@ const MerchPage = () => {
       });
 
       toast.success(isFree ? 'Товар выдан бесплатно!' : 'Продажа успешно проведена!');
+      pushNotify({
+        title: isFree ? '🎁 Бесплатная выдача' : '🛒 Продажа',
+        body: `${selectedProductForSale.club}: ${selectedProductForSale.name} × ${qty}${isFree ? '' : ` — ${totalSum.toLocaleString('ru-RU')} ₸`}${saleForm.salespersonName ? ` · ${saleForm.salespersonName}` : ''}`,
+        club: selectedProductForSale.club,
+        excludeEmail: user?.email || '',
+        url: '/merch',
+      });
       setShowSaleModal(false);
       setSelectedProductForSale(null);
       setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '', buyerType: 'client', customPrice: '', notes: '', isFree: false, freeReason: 'Бартер', salespersonName: '' });
@@ -604,6 +576,13 @@ const MerchPage = () => {
       });
 
       toast.success('Запасы успешно пополнены!');
+      pushNotify({
+        title: '📦 Поставка товара',
+        body: `${product.club}: ${product.name} +${qty} шт`,
+        club: product.club,
+        excludeEmail: user?.email || '',
+        url: '/merch',
+      });
       setShowSupplyModal(false);
       setSelectedProductForSupply(null);
       setSupplyForm({ qty: '10', notes: '' });
@@ -660,6 +639,13 @@ const MerchPage = () => {
         });
       }));
       toast.success(`Пересорт сохранён: ${changed.length} позиций обновлено`);
+      pushNotify({
+        title: '🔁 Пересорт склада',
+        body: `Обновлено позиций: ${changed.length}`,
+        club: selectedClub !== 'ALL' ? selectedClub : null,
+        excludeEmail: user?.email || '',
+        url: '/merch',
+      });
       setResortValues({});
       setActiveTab('inventory');
     } catch (err) {
@@ -879,7 +865,7 @@ const MerchPage = () => {
     const filterEnd = endDate ? new Date(endDate + 'T23:59:59') : null;
 
     activeSales.forEach(s => {
-      if (s.qty > 0) {
+      if (s.qty > 0 && s.paymentMethod !== 'Пересорт') {
         const saleSum = s.totalSum || 0;
         const saleProfit = s.netProfit || 0;
 
@@ -1389,7 +1375,7 @@ const MerchPage = () => {
           const _now = new Date();
           const currentMonthKey = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
           const nurlySales = sales.filter(s => {
-            if (s.club !== activeClubForSales || (s.qty || 0) <= 0) return false;
+            if (s.club !== activeClubForSales || (s.qty || 0) <= 0 || s.paymentMethod === 'Пересорт') return false;
             if (s.createdAt?.seconds) {
               const d = new Date(s.createdAt.seconds * 1000);
               const saleMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -1407,11 +1393,15 @@ const MerchPage = () => {
             if (endDate && dateStr > endDate) return false;
             return true;
           });
-          // Always distribute by schedule (who was on shift at sale time)
+          // Checkbox (salespersonName) always wins over schedule.
+          // For NURLY ORDA — single name only. For other clubs — split comma-separated names.
+          // Schedule is only used when no salesperson was selected at all.
           const byPerson = {};
           filtered.forEach(s => {
             let names = [];
-            if (autoDistributeBySchedule && s.createdAt?.seconds) {
+            if (s.salespersonName) {
+              names = s.salespersonName.split(',').map(n => n.trim()).filter(Boolean);
+            } else if (activeClubForSales !== 'NURLY ORDA' && autoDistributeBySchedule && s.createdAt?.seconds) {
               const saleDate = new Date(s.createdAt.seconds * 1000);
               names = getAdminsWorkingAt(saleDate, s.club);
             }
@@ -1463,19 +1453,22 @@ const MerchPage = () => {
                   })()}
                 </div>
               </div>
-              
-              {/* Auto distribute toggle */}
-              <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
-                  <input 
-                    type="checkbox"
-                    checked={autoDistributeBySchedule}
-                    onChange={(e) => setAutoDistributeBySchedule(e.target.checked)}
-                    style={{ width: 15, height: 15, accentColor: '#8b5cf6', cursor: 'pointer', borderRadius: 4 }}
-                  />
-                  <span>Распределять продажи по графику смен (по дате и времени смены)</span>
-                </label>
-              </div>
+
+              {/* Schedule distribution toggle — only for clubs other than NURLY ORDA */}
+              {activeClubForSales !== 'NURLY ORDA' && (
+                <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={autoDistributeBySchedule}
+                      onChange={(e) => setAutoDistributeBySchedule(e.target.checked)}
+                      style={{ width: 15, height: 15, accentColor: '#8b5cf6', cursor: 'pointer', borderRadius: 4 }}
+                    />
+                    <span>Распределять продажи по графику смен (по дате и времени смены)</span>
+                  </label>
+                </div>
+              )}
+
               {sortedPersons.length === 0 ? (
                 <div className="py-20 text-center text-[var(--text-muted)]">
                   <TrendingUp size={48} className="mx-auto opacity-35 mb-4 text-purple-400" />
@@ -1497,7 +1490,7 @@ const MerchPage = () => {
                     // Check if this person is a service employee — no commission for them
                     const empRecord = clubEmployees.find(e => e.name.trim().toLowerCase() === name.trim().toLowerCase());
                     const nLower = name.trim().toLowerCase();
-                    const isServicePerson = empRecord?.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
+                    const isServicePerson = empRecord?.isService === true || nLower.includes('сервис') || nLower.includes('техник');
 
                     const rate = commissionRates[name] || '';
                     const parsedCustom = parseFloat(rate);
@@ -1508,7 +1501,11 @@ const MerchPage = () => {
                       data.sales.forEach(s => {
                         const numAdmins = s.autoNames?.length || 1;
                         const shareAmount = (s.totalSum || 0) / numAdmins;
-                        const saleRate = hasCustomRate ? parsedCustom : (numAdmins === 1 ? 8 : 4);
+                        // NURLY ORDA auto: always 8% of the personal share —
+                        // solo → 8% of the sale, pair → 4% of the sale each
+                        const saleRate = hasCustomRate ? parsedCustom
+                          : activeClubForSales === 'NURLY ORDA' ? 8
+                          : (numAdmins === 1 ? 8 : 4);
                         awardRaw += shareAmount * saleRate / 100;
                       });
                     }
@@ -1541,16 +1538,16 @@ const MerchPage = () => {
                                     onChange={async (e) => {
                                       const val = e.target.value;
                                       setCommissionRates(prev => ({ ...prev, [name]: val }));
-                                      const emp = clubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
-                                      if (emp) {
-                                        try {
-                                          const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
-                                          await fsUpdateDoc(fsDoc(db, 'employees', emp.id), {
-                                            commissionRate: val === '' ? null : parseFloat(val)
-                                          });
-                                        } catch (err) {
-                                          console.error('Error saving commission rate:', err);
-                                        }
+                                      // Update every month's doc for this employee — otherwise
+                                      // other months' values re-populate the cleared rate
+                                      const matches = clubEmployees.filter(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
+                                      try {
+                                        const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
+                                        await Promise.all(matches.map(m =>
+                                          fsUpdateDoc(fsDoc(db, 'employees', m.id), { commissionRate: val === '' ? null : parseFloat(val) })
+                                        ));
+                                      } catch (err) {
+                                        console.error('Error saving commission rate:', err);
                                       }
                                     }}
                                     style={{ width: 36, background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 800, outline: 'none', textAlign: 'center' }}
@@ -1562,14 +1559,14 @@ const MerchPage = () => {
                                     title="Сбросить на авто (8% соло / 4% пара)"
                                     onClick={async () => {
                                       setCommissionRates(prev => ({ ...prev, [name]: '' }));
-                                      const emp = clubEmployees.find(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
-                                      if (emp) {
-                                        try {
-                                          const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
-                                          await fsUpdateDoc(fsDoc(db, 'employees', emp.id), { commissionRate: null });
-                                        } catch (err) {
-                                          console.error('Error clearing commission rate:', err);
-                                        }
+                                      const matches = clubEmployees.filter(empObj => empObj.name.trim().toLowerCase() === name.trim().toLowerCase());
+                                      try {
+                                        const { doc: fsDoc, updateDoc: fsUpdateDoc } = await import('firebase/firestore');
+                                        await Promise.all(matches.map(m =>
+                                          fsUpdateDoc(fsDoc(db, 'employees', m.id), { commissionRate: null })
+                                        ));
+                                      } catch (err) {
+                                        console.error('Error clearing commission rate:', err);
                                       }
                                     }}
                                     style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '2px 4px', borderRadius: 6 }}
@@ -1607,19 +1604,30 @@ const MerchPage = () => {
                             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 6, borderLeft: '2px solid rgba(139,92,246,0.2)' }}>
                               {data.sales.map(s => {
                                 const sDate = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
+                                const numAdmins = s.autoNames?.length || 1;
+                                const shareAmount = (s.totalSum || 0) / numAdmins;
+                                const saleRate = hasCustomRate ? parsedCustom : (numAdmins === 1 ? 8 : 4);
+                                const saleAward = isServicePerson ? 0 : Math.round(shareAmount * saleRate / 100);
                                 return (
                                   <div key={s.id} className="flex items-center justify-between text-xs py-1 hover:bg-[var(--bg-primary)] rounded px-1">
                                     <div className="flex flex-col">
-                                      <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({s.autoNames?.length > 1 ? `${((s.qty || 0) / s.autoNames.length).toFixed(1)} из ${s.qty}` : s.qty} шт)</span>
+                                      <span className="font-extrabold text-[var(--text-primary)]">{s.productName} ({numAdmins > 1 ? `${((s.qty || 0) / numAdmins).toFixed(1)} из ${s.qty}` : s.qty} шт)</span>
                                       <span className="text-[9px] text-[var(--text-muted)]">
                                         {sDate.toLocaleDateString('ru-RU')} в {sDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · {s.paymentMethod}
-                                        {s.salespersonName && ` · В чекбоксе: ${s.salespersonName}`}
-                                        {autoDistributeBySchedule && s.autoNames && ` · По графику: ${s.autoNames.join(', ')}`}
+                                        {s.salespersonName && ` · ${s.salespersonName}`}
+                                        {autoDistributeBySchedule && numAdmins > 1 && ` · По графику: ${s.autoNames.join(', ')}`}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <span className="font-bold text-emerald-400">{(s.autoNames?.length > 1 ? (s.totalSum || 0) / s.autoNames.length : (s.totalSum || 0)).toLocaleString('ru-RU')} ₸</span>
-                                      <button 
+                                      <div style={{ textAlign: 'right' }}>
+                                        <div className="font-bold text-emerald-400">{Math.round(shareAmount).toLocaleString('ru-RU')} ₸</div>
+                                        {!isServicePerson && (
+                                          <div style={{ fontSize: 9, fontWeight: 900, color: '#a78bfa' }}>
+                                            {saleRate}% → {saleAward.toLocaleString('ru-RU')} ₸
+                                          </div>
+                                        )}
+                                      </div>
+                                      <button
                                         onClick={() => handleDeleteSale(s)}
                                         className="p-1 hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 rounded transition-all"
                                         title="Удалить продажу"
@@ -1630,6 +1638,14 @@ const MerchPage = () => {
                                   </div>
                                 );
                               })}
+                              {/* Total reward for this person */}
+                              {!isServicePerson && award > 0 && (
+                                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed rgba(139,92,246,0.3)', display: 'flex', justifyContent: 'flex-end' }}>
+                                  <span style={{ fontSize: 11, fontWeight: 900, color: '#10b981' }}>
+                                    Итого награда: {award.toLocaleString('ru-RU')} ₸
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

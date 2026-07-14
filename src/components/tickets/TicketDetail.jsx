@@ -202,7 +202,7 @@ const ReasonPanel = ({ action, onConfirm, onCancel }) => {
 const TicketDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { tickets, user, loading, updateTicket, addComment, uploadFile, deleteTicket } = useTickets();
+  const { tickets, user, loading, updateTicket, addComment, deleteComment, uploadFile, deleteTicket } = useTickets();
 
   // Find real ticket from context (id from URL is always a string)
   const ticket = tickets?.find(t => String(t.id) === String(id));
@@ -291,6 +291,7 @@ const TicketDetail = () => {
   const [editDesc,        setEditDesc]        = useState('');
   const [messages,     setMessages]       = useState(ticket?.comments || []);
   const [msgInput,     setMsgInput]       = useState('');
+  const [hoveredMsg,   setHoveredMsg]     = useState(null);
   const [starred,      setStarred]        = useState(false);
   const chatRef    = useRef(null);
   const fileInputRef = useRef(null);
@@ -548,15 +549,42 @@ const TicketDetail = () => {
                   <MessageSquare size={32} strokeWidth={1.2} />
                   <span style={{ fontSize: 13 }}>Здесь пока пусто. Оставьте первый комментарий.</span>
                 </div>
-              ) : messages.map(m => (
-                <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              ) : messages.map(m => {
+                const canDelete = !!user;
+                return (
+                <div
+                  key={m.id}
+                  onMouseEnter={() => setHoveredMsg(m.id)}
+                  onMouseLeave={() => setHoveredMsg(null)}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, position: 'relative' }}
+                >
+                  {/* delete button */}
+                  {canDelete && hoveredMsg === m.id && (
+                    <button
+                      onClick={() => deleteComment && deleteComment(ticket.id, m.id)}
+                      title="Удалить сообщение"
+                      style={{
+                        position: 'absolute', top: 0, right: 0, transform: 'translate(8px, -8px)',
+                        width: 22, height: 22,
+                        background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+                        borderRadius: 6, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#ef4444', zIndex: 10,
+                        transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.3)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
                   <div style={{ background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }}>
                     {m.text && <div style={{ fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{m.text}</div>}
                     {m.attachment && (
                       <div style={{ marginTop: m.text ? 8 : 0 }}>
                         {m.attachment.type && m.attachment.type.startsWith('image/') ? (
-                          <button 
-                            onClick={() => setPreviewImage(m.attachment.url)} 
+                          <button
+                            onClick={() => setPreviewImage(m.attachment.url)}
                             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block' }}
                           >
                             <img src={m.attachment.url} alt={m.attachment.name} style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 8, objectFit: 'cover' }} />
@@ -574,7 +602,8 @@ const TicketDetail = () => {
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatAuthor(m.author)} · {formatCreatedDate(m.createdAt || m.time)}</div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             
             {/* Attachment Preview Area */}

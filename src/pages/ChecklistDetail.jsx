@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, ChevronLeft, AlertCircle, CheckCircle2, Clock, Wind } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
+import { pushNotify } from '../lib/pushNotify';
 import { useChecklist } from '../store/ChecklistContext';
 import { CHECK_ITEMS, SHIFTS_DATA, getShiftsForDate } from '../data/checklistData';
 import { format, startOfToday } from 'date-fns';
@@ -12,7 +13,7 @@ const ChecklistDetail = () => {
   const { shiftId, cardId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { addTicket } = useTickets();
+  const { addTicket, user } = useTickets();
   const { checklistData, updateCheckState, saveSessionInspector } = useChecklist();
   
   const dateKey = searchParams.get('date') || format(startOfToday(), 'yyyy-MM-dd');
@@ -129,6 +130,13 @@ const ChecklistDetail = () => {
     }
     
     toast.success('Проверка завершена');
+    pushNotify({
+      title: hasIssues ? '📋 Чек-лист: есть проблемы' : '📋 Чек-лист выполнен',
+      body: `${club}: «${cardData.title}» (${shift.name} ${shift.time})${hasIssues ? ` — проблем: ${issueIndices.length}` : ' — всё в порядке'}${inspectorName.trim() ? ` · ${inspectorName.trim()}` : ''}`,
+      club,
+      excludeEmail: user?.email || '',
+      url: '/checklists',
+    });
     navigate(`/checklists?club=${club}&date=${dateKey}`);
   };
 

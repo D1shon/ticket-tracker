@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Shirt, AlertTriangle, Clock, Users } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
+import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
 import {
   collection, onSnapshot, doc, setDoc, query, where, getDocs,
@@ -371,11 +372,23 @@ const TowelsPage = () => {
         dirtyTotal,
         remainder: ac,
       }, { merge: true });
+      // Notify when the actual count is filled in — the day is done.
+      // Same tag → repeated edits replace the notification instead of spamming.
+      if (ac !== null) {
+        pushNotify({
+          title: '🧺 Полотенца учтены',
+          body: `${club} за ${date}: чистых ${cleanTotal ?? '—'}, факт ${ac}${dirtyTotal !== null ? `, грязных ${dirtyTotal}` : ''}`,
+          club,
+          excludeEmail: user?.email || '',
+          url: '/towels',
+          tag: `towels-${date}-${club}`,
+        });
+      }
     } catch (e) {
       console.error('[towel_records]', e);
       toast.error('Не удалось сохранить');
     }
-  }, [club, getPrevCarry]);
+  }, [club, getPrevCarry, user]);
 
   // Summary strip for today
   const todayRec    = records[today];

@@ -3,7 +3,8 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Ticket, CheckSquare, Calendar,
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
-  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2
+  MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
+  RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper
 } from 'lucide-react';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
@@ -43,8 +44,31 @@ const useTowelAlert = (club) => {
   return alert;
 };
 
+// Green dot on «Новости» while the freshest post is newer than the last visit
+const useNewsAlert = () => {
+  const [latest, setLatest] = useState(null);
+  const [seenTick, setSeenTick] = useState(0);
+  useEffect(() => {
+    const onSeen = () => setSeenTick(t => t + 1);
+    window.addEventListener('hj-news-seen', onSeen);
+    return () => window.removeEventListener('hj-news-seen', onSeen);
+  }, []);
+  useEffect(() => {
+    return onSnapshot(collection(db, 'news_posts'), snap => {
+      let max = '';
+      snap.docs.forEach(d => { const t = d.data().postedAtISO || ''; if (t > max) max = t; });
+      setLatest(max || null);
+    }, () => setLatest(null));
+  }, []);
+  let seen = '';
+  try { seen = localStorage.getItem('hj_news_seen') || ''; } catch {}
+  void seenTick;
+  return !!latest && latest > seen;
+};
+
 /* ─── All nav items ──────────────────────────────────────────── */
 const ALL_NAV = [
+  { icon: Newspaper,       label: 'Новости',      path: '/news',        primary: true  },
   { icon: Ticket,          label: 'Заявки',     path: '/tickets',     primary: true  },
   { icon: Calendar,        label: 'График',      path: '/schedule',    primary: true  },
   { icon: CheckSquare,     label: 'Чек-листы',  path: '/checklists',  primary: true  },
@@ -54,8 +78,9 @@ const ALL_NAV = [
   { icon: Archive,         label: 'Архив',       path: '/archive',     primary: false },
   { icon: Heart,           label: 'Пульсометры', path: '/hr-monitors', primary: false },
   { icon: Shirt,           label: 'Учет полотенец', path: '/towels',   primary: false },
+  { icon: ShoppingBag,     label: 'Утерянные вещи', path: '/lost-items', primary: false },
+  { icon: Star,            label: 'Отзывы',       path: '/reviews',     primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
-  { icon: BarChart2,       label: 'Посещения',   path: '/club-visits', primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
   { icon: FileText,        label: 'Соглашение',  path: '/policy',      primary: false },
@@ -72,10 +97,17 @@ const DesktopSidebar = () => {
   const _alertClub = (user?.role === 'admin' || user?.role === 'manager') ? (user?.club?.toUpperCase() || null) : null;
   const towelAlert   = useTowelAlert(_alertClub);
   const monitorAlert = useMonitorAlert(_alertClub);
+  const newsAlert    = useNewsAlert();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     localStorage.setItem('hjtrack-theme', isDark ? 'dark' : 'light');
+    // Android status bar follows the app theme
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim();
+      themeMeta.setAttribute('content', bg || (isDark ? '#0f0f14' : '#FFFFFF'));
+    }
   }, [isDark]);
 
   const timeAgo = (iso) => {
@@ -87,11 +119,11 @@ const DesktopSidebar = () => {
     return `${Math.floor(d / 86400)} д назад`;
   };
 
-  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive']);
+  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews']);
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
@@ -113,6 +145,7 @@ const DesktopSidebar = () => {
           const isTowelAlert   = item.path === '/towels'       && towelAlert;
           const isMonitorAlert = item.path === '/hr-monitors'  && monitorAlert;
           const isAlerted      = isTowelAlert || isMonitorAlert;
+          const isNewsAlert    = item.path === '/news' && newsAlert;
           return (
             <NavLink
               key={item.path}
@@ -124,6 +157,9 @@ const DesktopSidebar = () => {
               <span>{item.label}</span>
               {isAlerted && (
                 <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0, boxShadow: '0 0 6px #ef4444' }} />
+              )}
+              {isNewsAlert && (
+                <span style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, boxShadow: '0 0 6px #22c55e' }} />
               )}
             </NavLink>
           );
@@ -208,8 +244,27 @@ const MobileNav = () => {
   const _alertClubM  = (user?.role === 'admin' || user?.role === 'manager') ? (user?.club?.toUpperCase() || null) : null;
   const towelAlert   = useTowelAlert(_alertClubM);
   const monitorAlert = useMonitorAlert(_alertClubM);
+  const newsAlert    = useNewsAlert();
   const [showMore, setShowMore] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [reloading, setReloading] = useState(false);
+
+  // Hard reload: drop SW caches + re-register so fresh deploy is picked up immediately
+  const handleReload = async () => {
+    if (reloading) return;
+    setReloading(true);
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+      if (navigator.serviceWorker?.getRegistrations) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.update().catch(() => {})));
+      }
+    } catch {}
+    window.location.reload();
+  };
   const sheetRef = useRef(null);
   const [isDemoDayActive, setIsDemoDayActive] = useState(false);
 
@@ -228,6 +283,12 @@ const MobileNav = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     localStorage.setItem('hjtrack-theme', isDark ? 'dark' : 'light');
+    // Android status bar follows the app theme
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim();
+      themeMeta.setAttribute('content', bg || (isDark ? '#0f0f14' : '#FFFFFF'));
+    }
   }, [isDark]);
 
   // Close sheet on outside tap
@@ -252,11 +313,11 @@ const MobileNav = () => {
     return `${Math.floor(d / 86400)} д`;
   };
 
-  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive']);
+  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews']);
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
@@ -286,11 +347,12 @@ const MobileNav = () => {
       {/* ── Mobile Top Bar ── */}
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0,
-        height: 52,
+        height: 'calc(52px + env(safe-area-inset-top))',
+        paddingTop: 'env(safe-area-inset-top)',
         background: 'var(--bg-card)',
         borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 16px',
+        paddingLeft: 16, paddingRight: 16,
         zIndex: 200,
         backdropFilter: 'blur(12px)',
       }}>
@@ -314,38 +376,55 @@ const MobileNav = () => {
           )}
         </div>
 
-        {/* Demo Day Link in Header */}
-        {isDemoDayActive && (
-          <a
-            href="https://meet.google.com/zur-yyin-zdm?time=18:00"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Demo Day Link in Header */}
+          {isDemoDayActive && (
+            <a
+              href="https://meet.google.com/zur-yyin-zdm?time=18:00"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 10px',
+                borderRadius: 10,
+                background: 'rgba(123, 61, 255, 0.12)',
+                border: '1px solid rgba(123, 61, 255, 0.35)',
+                color: '#c084fc',
+                textDecoration: 'none',
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: '0.05em',
+                animation: 'pulse-header-border 2s infinite',
+              }}
+            >
+              <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#a855f7', animation: 'pulse-header-dot 1.5s infinite' }}></span>
+              DEMO DAY 18:00
+            </a>
+          )}
+
+          {/* Reload — pick up fresh deploy instantly */}
+          <button
+            onClick={handleReload}
+            title="Обновить приложение"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 10px',
-              borderRadius: 10,
-              background: 'rgba(123, 61, 255, 0.12)',
-              border: '1px solid rgba(123, 61, 255, 0.35)',
-              color: '#c084fc',
-              textDecoration: 'none',
-              fontSize: 10,
-              fontWeight: 900,
-              letterSpacing: '0.05em',
-              animation: 'pulse-header-border 2s infinite',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 36, height: 36, borderRadius: 10,
+              background: 'var(--bg-hover)', border: '1px solid var(--border)',
+              color: reloading ? 'var(--accent-purple)' : 'var(--text-secondary)',
+              cursor: 'pointer', padding: 0,
             }}
           >
-            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#a855f7', animation: 'pulse-header-dot 1.5s infinite' }}></span>
-            DEMO DAY 18:00
-          </a>
-        )}
+            <RefreshCw size={17} strokeWidth={2} style={reloading ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+          </button>
+        </div>
       </div>
 
       {/* ── Bottom Tab Bar ── */}
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
-        height: 64,
+        height: 'calc(64px + env(safe-area-inset-bottom))',
         background: 'var(--bg-card)',
         borderTop: '1px solid var(--border)',
         display: 'flex', alignItems: 'stretch',
@@ -356,6 +435,7 @@ const MobileNav = () => {
       }}>
         {primaryTabs.map(item => {
           const active = isActive(item.path);
+          const isNewsTab = item.path === '/news' && newsAlert;
           return (
             <button
               key={item.path}
@@ -363,7 +443,7 @@ const MobileNav = () => {
               style={{
                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center',
                 gap: 3, border: 'none', background: 'transparent', cursor: 'pointer',
-                color: active ? 'var(--accent-purple)' : 'var(--text-muted)',
+                color: active ? 'var(--accent-purple)' : isNewsTab ? '#22c55e' : 'var(--text-muted)',
                 transition: 'color 0.2s',
                 position: 'relative',
               }}
@@ -373,6 +453,9 @@ const MobileNav = () => {
                   position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
                   width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px',
                 }} />
+              )}
+              {isNewsTab && (
+                <span style={{ position: 'absolute', top: 7, right: 'calc(50% - 16px)', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' }} />
               )}
               <item.icon size={active ? 22 : 20} strokeWidth={active ? 2.2 : 1.8} />
               <span style={{ fontSize: 9, fontWeight: active ? 800 : 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
@@ -396,6 +479,9 @@ const MobileNav = () => {
             {(showMore || isMoreActive) && (
               <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />
             )}
+            {newsAlert && secondaryItems.some(i => i.path === '/news') && !(towelAlert || monitorAlert) && (
+              <span style={{ position: 'absolute', top: 6, right: 'calc(50% - 14px)', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' }} />
+            )}
             {(towelAlert && secondaryItems.some(i => i.path === '/towels') || monitorAlert && secondaryItems.some(i => i.path === '/hr-monitors')) && (
               <span style={{ position: 'absolute', top: 6, right: 'calc(50% - 14px)', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />
             )}
@@ -415,7 +501,7 @@ const MobileNav = () => {
           <div
             ref={sheetRef}
             style={{
-              position: 'fixed', bottom: 64, left: 0, right: 0,
+              position: 'fixed', bottom: 'calc(64px + env(safe-area-inset-bottom))', left: 0, right: 0,
               background: 'var(--bg-card)',
               borderRadius: '20px 20px 0 0',
               border: '1px solid var(--border)',
@@ -424,6 +510,7 @@ const MobileNav = () => {
               padding: '12px 0 8px',
               boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
               animation: 'slideUp 0.25s cubic-bezier(0.4,0,0.2,1)',
+              maxHeight: 'calc(100dvh - 140px)', overflowY: 'auto',
             }}
           >
             {/* Handle */}
@@ -432,24 +519,27 @@ const MobileNav = () => {
             {secondaryItems.map(item => {
               const active   = isActive(item.path);
               const isAl     = (item.path === '/towels' && towelAlert) || (item.path === '/hr-monitors' && monitorAlert);
+              const isNews   = item.path === '/news' && newsAlert;
               return (
                 <button
                   key={item.path}
                   onClick={() => handleTabClick(item.path)}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                    padding: '14px 24px', background: isAl ? 'rgba(239,68,68,0.04)' : 'transparent', border: 'none',
+                    padding: '14px 24px', background: isAl ? 'rgba(239,68,68,0.04)' : isNews ? 'rgba(34,197,94,0.05)' : 'transparent', border: 'none',
                     cursor: 'pointer', textAlign: 'left',
-                    color: active ? 'var(--accent-purple)' : isAl ? '#ef4444' : 'var(--text-primary)',
-                    borderLeft: active ? '3px solid var(--accent-purple)' : isAl ? '3px solid #ef4444' : '3px solid transparent',
+                    color: active ? 'var(--accent-purple)' : isAl ? '#ef4444' : isNews ? '#22c55e' : 'var(--text-primary)',
+                    borderLeft: active ? '3px solid var(--accent-purple)' : isAl ? '3px solid #ef4444' : isNews ? '3px solid #22c55e' : '3px solid transparent',
                     transition: 'all 0.15s',
                   }}
                 >
                   <item.icon size={20} strokeWidth={1.8} />
-                  <span style={{ flex: 1, fontSize: 15, fontWeight: active || isAl ? 700 : 500 }}>{item.label}</span>
+                  <span style={{ flex: 1, fontSize: 15, fontWeight: active || isAl || isNews ? 700 : 500 }}>{item.label}</span>
                   {isAl
                     ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
-                    : <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+                    : isNews
+                      ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
+                      : <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
                   }
                 </button>
               );
@@ -498,12 +588,12 @@ const MobileNav = () => {
           <div
             ref={sheetRef}
             style={{
-              position: 'fixed', bottom: 64, left: 0, right: 0,
+              position: 'fixed', bottom: 'calc(64px + env(safe-area-inset-bottom))', left: 0, right: 0,
               background: 'var(--bg-card)', borderRadius: '20px 20px 0 0',
               border: '1px solid var(--border)', borderBottom: 'none',
               zIndex: 301, boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
               animation: 'slideUp 0.25s cubic-bezier(0.4,0,0.2,1)',
-              maxHeight: '70vh', display: 'flex', flexDirection: 'column',
+              maxHeight: '70dvh', display: 'flex', flexDirection: 'column',
             }}
           >
             <div style={{ padding: '16px 20px 0', flexShrink: 0 }}>

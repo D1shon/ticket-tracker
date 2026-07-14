@@ -1,8 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { REVIEW_BRANCHES, fetchReviews } from '../lib/reviews2gis';
+import { pushNotify } from '../lib/pushNotify';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
+import { formatAuthor } from '../utils/formatters';
 
 const NotificationContext = createContext();
 export const useNotifications = () => useContext(NotificationContext);
@@ -51,6 +54,31 @@ const EVENT_TYPES = {
 
 function makeId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+// Soft two-tone chime, synthesized — no audio file needed
+let audioCtx = null;
+function playDing() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    const tone = (freq, at, dur, vol) => {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      o.connect(g);
+      g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime + at;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    };
+    tone(880, 0, 0.35, 0.12);      // ля
+    tone(1318.5, 0.12, 0.45, 0.1); // ми (выше)
+  } catch {}
 }
 
 function loadStored() {
@@ -113,7 +141,10 @@ export const NotificationProvider = ({ children }) => {
   });
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [popupNotif, setPopupNotif] = useState(null);
   const prevTicketsRef = useRef(null); // null means "first load — don't fire"
+  const pendingPopupRef = useRef([]);
+  const popupTimerRef = useRef(null);
 
   // Persist notifications
   useEffect(() => {
@@ -148,6 +179,26 @@ export const NotificationProvider = ({ children }) => {
 
   // ─── Push a notification ─────────────────────────────────────────────────
   const pushNotification = useCallback((type, title, description, meta = {}) => {
+    if (currentUserEmail) {
+      const emailKey = currentUserEmail.toLowerCase().trim();
+
+      // Self-filter: don't show popup to the person who triggered the action.
+      // Primary check: exact email match (reliable for new comments with authorEmail).
+      // Fallback: compare formatted names (for old comments without authorEmail).
+      if (meta.authorEmail) {
+        if (meta.authorEmail.toLowerCase() === emailKey) return;
+      } else if (meta.author) {
+        const myFormatted = formatAuthor(emailKey).toLowerCase();
+        if (myFormatted && meta.author.toLowerCase() === myFormatted) return;
+      }
+
+      // Club filter: only show notifications for the user's own club (chefs see all)
+      if (meta.club) {
+        const myClub = USER_ROLES[emailKey]?.club;
+        if (myClub && (meta.club || '').toUpperCase() !== myClub.toUpperCase()) return;
+      }
+    }
+
     const notif = {
       id: makeId(),
       type,
@@ -158,6 +209,28 @@ export const NotificationProvider = ({ children }) => {
     };
 
     setNotifications(prev => [notif, ...prev]);
+
+    // Debounced batch popup: collect all notifications in a 2-second window,
+    // then show one popup ("У вас X новых сообщений" if multiple arrive at once).
+    pendingPopupRef.current.push(notif);
+    if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+    popupTimerRef.current = setTimeout(() => {
+      const queue = pendingPopupRef.current;
+      pendingPopupRef.current = [];
+      if (queue.length === 0) return;
+      playDing();
+      if (queue.length === 1) {
+        setPopupNotif(queue[0]);
+      } else {
+        setPopupNotif({
+          id: makeId(),
+          type: 'batch',
+          title: `У вас ${queue.length} новых сообщений`,
+          description: '',
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }, 2000);
 
     // Show toast popup in top-right corner
     const statusMeta = STATUS_LABELS[meta.status];
@@ -176,7 +249,7 @@ export const NotificationProvider = ({ children }) => {
       },
       icon: statusMeta?.icon || (type === EVENT_TYPES.NEW_MESSAGE ? '💬' : type === EVENT_TYPES.FILE_ATTACHED ? '📎' : '🔔'),
     });
-  }, []);
+  }, [currentUserEmail]);
 
   // ─── Watch Firestore tickets ──────────────────────────────────────────────
   useEffect(() => {
@@ -263,7 +336,7 @@ export const NotificationProvider = ({ children }) => {
                 EVENT_TYPES.NEW_TICKET,
                 '🆕 Новая заявка',
                 `"${ticket.title || 'Без названия'}"`,
-                { ticketId: ticket.id, ticketTitle: ticket.title, club: ticket.club }
+                { ticketId: ticket.id, ticketTitle: ticket.title, club: ticket.club, authorEmail: ticket.createdByEmail || '' }
               );
               return;
             }
@@ -279,7 +352,7 @@ export const NotificationProvider = ({ children }) => {
                   EVENT_TYPES.STATUS_CHANGE,
                   `${statusInfo.icon} ${statusInfo.label}`,
                   `Заявка: "${ticket.title || 'Без названия'}"`,
-                  { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status, club: ticket.club }
+                  { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status, club: ticket.club, authorEmail: ticket.lastActionBy || '' }
                 );
               }
 
@@ -292,26 +365,27 @@ export const NotificationProvider = ({ children }) => {
                   const hasFile = !!comment.attachment;
                   const hasText = comment.text && comment.text.trim().length > 0;
 
+                  const commentMeta = { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, authorEmail: comment.authorEmail || '', club: ticket.club };
                   if (hasFile && hasText) {
                     pushNotification(
                       EVENT_TYPES.FILE_ATTACHED,
                       `📎 Сообщение с файлом`,
                       `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, club: ticket.club }
+                      commentMeta
                     );
                   } else if (hasFile) {
                     pushNotification(
                       EVENT_TYPES.FILE_ATTACHED,
                       `📎 Прикреплён файл`,
                       `В заявке "${ticket.title || 'Без названия'}" — ${comment.attachment.name || 'файл'}`,
-                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, club: ticket.club }
+                      commentMeta
                     );
                   } else if (hasText) {
                     pushNotification(
                       EVENT_TYPES.NEW_MESSAGE,
                       `💬 Новое сообщение`,
                       `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                      { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, club: ticket.club }
+                      commentMeta
                     );
                   }
                 });
@@ -338,8 +412,85 @@ export const NotificationProvider = ({ children }) => {
     return () => {
       unsubscribeAuth();
       if (unsubscribeTickets) unsubscribeTickets();
+      if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
     };
   }, [pushNotification]);
+
+  // ─── Scheduled reminders: ping the server inside notification windows ────
+  // Covers: checklists 5 min before shifts, daily check-in 6:30, monitors &
+  // towels checks (weekdays 22:00, weekends per-club). The endpoint dedups
+  // atomically, so many clients pinging at once is safe.
+  useEffect(() => {
+    if (!currentUserEmail) return;
+    const check = async () => {
+      try {
+        const now = new Date();
+        const day = now.getDay();
+        const isWeekend = day === 0 || day === 6;
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+
+        const windows = [];
+        const shiftMins = isWeekend ? [540, 840, 1140] : [390, 690, 990, 1290];
+        shiftMins.forEach(t => windows.push([t - 6, t]));          // чек-листы: за 5 мин до смены
+        windows.push([390, 396]);                                  // чекин 6:30
+        if (!isWeekend) {
+          windows.push([1320, 1326]);                              // будни 22:00 — пульсометры/полотенца
+        } else {
+          windows.push([1140, 1146], [1260, 1266], [1290, 1296]);  // выходные по клубам
+        }
+
+        const inWindow = windows.some(([a, b]) => nowMin >= a && nowMin < b);
+        if (!inWindow) return;
+
+        const snap = await getDocs(collection(db, 'push_tokens'));
+        const tokens = snap.docs.map(d => ({ t: d.id, club: d.data().club || null }));
+        await fetch('/api/scheduled-reminders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokens }),
+        });
+      } catch {}
+    };
+    check();
+    const iv = setInterval(check, 60_000);
+    return () => clearInterval(iv);
+  }, [currentUserEmail]);
+
+  // ─── New 2GIS reviews watcher: push when a fresh review appears ──────────
+  // Checks on app start and every 30 min; Firestore marker per review id
+  // dedups across clients, and the push `tag` collapses rare races on phones.
+  useEffect(() => {
+    if (!currentUserEmail) return;
+    let cancelled = false;
+    const check = async () => {
+      for (const [club, branchId] of Object.entries(REVIEW_BRANCHES)) {
+        if (cancelled) return;
+        try {
+          const { reviews } = await fetchReviews(branchId, { limit: 5 });
+          const cutoff = Date.now() - 3 * 86400000; // смотрим только свежие (3 дня)
+          for (const r of reviews) {
+            const created = new Date(r.date_created).getTime();
+            if (!(created > cutoff)) continue;
+            const markerRef = doc(db, 'reviews_notified', String(r.id));
+            const snap = await getDoc(markerRef);
+            if (snap.exists()) continue;
+            await setDoc(markerRef, { club, rating: r.rating || 0, notifiedAtISO: new Date().toISOString() });
+            const stars = '⭐'.repeat(Math.max(1, Math.min(5, r.rating || 0)));
+            pushNotify({
+              title: `${(r.rating || 0) <= 3 ? '⚠️' : '⭐'} Новый отзыв 2ГИС · ${club}`,
+              body: `${stars} ${r.user?.name || 'Аноним'}: ${(r.text || '').slice(0, 100)}`,
+              club,
+              url: '/reviews',
+              tag: `review-${r.id}`,
+            });
+          }
+        } catch {}
+      }
+    };
+    const t = setTimeout(check, 8000); // после старта, когда приложение прогрузилось
+    const iv = setInterval(check, 30 * 60 * 1000);
+    return () => { cancelled = true; clearTimeout(t); clearInterval(iv); };
+  }, [currentUserEmail]);
 
   // ─── Helpers for UI ───────────────────────────────────────────────────────
   // Safe guard: readIds could be a plain object after JSON parse/hydration edge cases
@@ -370,6 +521,8 @@ export const NotificationProvider = ({ children }) => {
       markAllRead,
       markRead,
       clearAll,
+      popupNotif,
+      dismissPopup: () => setPopupNotif(null),
     }}>
       {children}
     </NotificationContext.Provider>

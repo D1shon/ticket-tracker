@@ -9,6 +9,7 @@ export const USER_ROLES = {
   'dilshat.r@hj.fit': { role: 'chef', club: null, displayName: 'Дильшат' },
   'magzhan@hj.fit':   { role: 'chef', club: null, displayName: 'Магжан' },
   'iliyas.s@hj.fit':  { role: 'chef', club: null, displayName: 'Илияс' },
+  'anuar@hj.fit':     { role: 'chef', club: null, displayName: 'Ануар' },
 
   // ── 4YOU ─────────────────────────────────────────────────────────────────
   'saniya@hj.fit':              { role: 'manager', club: '4YOU', displayName: 'Сания' },
@@ -49,7 +50,6 @@ export const USER_ROLES = {
   'kasel00405@gmail.com':             { role: 'admin', club: 'COLIBRI', displayName: 'Асель'     },
   'zhaniya.m12@gmail.com':            { role: 'admin', club: 'COLIBRI', displayName: 'Жания'     },
   'utemisovazarina1912@gmail.com':    { role: 'admin', club: 'COLIBRI', displayName: 'Зарина'    },
-  'sakenulyabylaj6@gmail.com':        { role: 'admin', club: 'COLIBRI', displayName: 'Сакен'     },
 
   // ── VILLA ─────────────────────────────────────────────────────────────────
   'asemnurkabek@gmail.com':  { role: 'admin', club: 'VILLA', displayName: 'Ермекқызы Әсем'  },
@@ -64,24 +64,83 @@ export const USER_ROLES = {
   'nurali.m@hj.fit': { role: 'viewer', club: null, displayName: 'Нурали' },
 };
 
+// ─── Dynamic users (added by managers via Settings → Админы) ──────────────────
+// Stored in Firestore collection `app_users` (doc id = email), merged into
+// USER_ROLES at runtime and cached in localStorage so login works instantly.
+// A doc with { revoked: true } removes access for a hardcoded admin account.
+const DYNAMIC_USERS_CACHE_KEY = 'dynamic_users_v1';
+const dynamicUserKeys = new Set();
+const revokedStaticKeys = new Set();
+// Snapshot of the hardcoded whitelist, taken before any dynamic data is merged —
+// used to restore a static account if its revocation is later removed.
+const STATIC_USER_ROLES = { ...USER_ROLES };
+
+export function applyDynamicUsers(usersMap) {
+  // Reset previous dynamic state: drop dynamic entries, restore revoked statics
+  for (const key of [...dynamicUserKeys]) {
+    delete USER_ROLES[key];
+    dynamicUserKeys.delete(key);
+  }
+  for (const key of [...revokedStaticKeys]) {
+    if (STATIC_USER_ROLES[key]) USER_ROLES[key] = STATIC_USER_ROLES[key];
+    revokedStaticKeys.delete(key);
+  }
+
+  for (const [email, profile] of Object.entries(usersMap)) {
+    const key = (email || '').toLowerCase().trim();
+    if (!key || !profile) continue;
+
+    if (profile.revoked) {
+      // Revocation only applies to admin accounts — managers can't lock out
+      // chefs/managers this way
+      if (STATIC_USER_ROLES[key]?.role === 'admin') {
+        delete USER_ROLES[key];
+        revokedStaticKeys.add(key);
+      }
+      continue;
+    }
+
+    // A dynamic entry never overrides a hardcoded account
+    if (key in STATIC_USER_ROLES) continue;
+    USER_ROLES[key] = {
+      role: 'admin', // dynamic accounts are always restricted admins
+      club: profile.club || null,
+      displayName: profile.displayName || key.split('@')[0],
+    };
+    dynamicUserKeys.add(key);
+  }
+  try { localStorage.setItem(DYNAMIC_USERS_CACHE_KEY, JSON.stringify(usersMap)); } catch {}
+}
+
+// Hydrate from cache synchronously so isEmailAllowed works before Firestore loads
+try {
+  const cached = JSON.parse(localStorage.getItem(DYNAMIC_USERS_CACHE_KEY) || '{}');
+  applyDynamicUsers(cached);
+} catch {}
+
 function isEmailAllowed(email) {
   if (!email) return false;
   const normalized = email.toLowerCase().trim();
   return normalized in USER_ROLES;
 }
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
+import {
+  collection,
+  query,
+  onSnapshot,
+  addDoc,
+  updateDoc,
   deleteDoc,
-  doc, 
+  setDoc,
+  doc,
+  getDoc,
+  getDocs,
   serverTimestamp
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../lib/firebase';
 import { formatAuthor } from '../utils/formatters';
+import { refreshPushToken } from '../lib/push';
+import { pushNotify } from '../lib/pushNotify';
 import { toast } from 'sonner';
 
 const TicketContext = createContext();
@@ -211,6 +270,31 @@ export const TicketProvider = ({ children }) => {
   const allTicketsRef = useRef(tickets);
   useEffect(() => { allTicketsRef.current = tickets; }, [tickets]);
 
+  // Keep the push token fresh for devices that already opted in
+  useEffect(() => {
+    if (user?.email) refreshPushToken(user);
+  }, [user?.email]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync the self-edited display name from Firestore (survives re-login,
+  // works across devices)
+  useEffect(() => {
+    if (!user?.email) return;
+    const emailKey = user.email.toLowerCase().trim();
+    return onSnapshot(doc(db, 'user_profiles', emailKey), snap => {
+      const saved = snap.exists() ? (snap.data().displayName || null) : null;
+      try {
+        if (saved) localStorage.setItem('hj_custom_name_' + emailKey, saved);
+        else localStorage.removeItem('hj_custom_name_' + emailKey);
+      } catch {}
+      const fallback = USER_ROLES[emailKey]?.displayName || emailKey.split('@')[0];
+      setUser(prev => {
+        if (!prev) return prev;
+        const next = saved || fallback;
+        return prev.displayName === next ? prev : { ...prev, displayName: next };
+      });
+    }, () => {});
+  }, [user?.email]);
+
   // ─── Persist cache ────────────────────────────────────────────────────────
   useEffect(() => {
     if (tickets.length > 0) {
@@ -228,12 +312,10 @@ export const TicketProvider = ({ children }) => {
 
     const registered = USER_ROLES[email];
     if (registered) {
-      if (registered.displayName) {
-        localStorage.removeItem('hj_custom_name_' + email);
-      }
+      // Self-edited name (synced via user_profiles) wins over the hardcoded one
       return {
         ...u,
-        displayName: registered.displayName || u.displayName || email.split('@')[0],
+        displayName: customName || registered.displayName || u.displayName || email.split('@')[0],
         role: registered.role,
         club: registered.club
       };
@@ -283,6 +365,22 @@ export const TicketProvider = ({ children }) => {
 
   const login = async (email) => {
     const normalizedEmail = (email || '').toLowerCase().trim();
+
+    // Not in the static whitelist or local cache — check Firestore for a
+    // dynamically added account (manager-created admin) before rejecting.
+    if (!isEmailAllowed(normalizedEmail) && normalizedEmail) {
+      try {
+        await signInAnonymously(auth);
+        const snap = await getDoc(doc(db, 'app_users', normalizedEmail));
+        if (snap.exists()) {
+          const cached = JSON.parse(localStorage.getItem(DYNAMIC_USERS_CACHE_KEY) || '{}');
+          applyDynamicUsers({ ...cached, [normalizedEmail]: snap.data() });
+        }
+      } catch (e) {
+        console.error('[TicketContext] app_users lookup failed:', e);
+      }
+    }
+
     if (!isEmailAllowed(normalizedEmail)) {
       throw new Error('Этот email не зарегистрирован в системе. Обратитесь к администратору.');
     }
@@ -329,6 +427,26 @@ export const TicketProvider = ({ children }) => {
     setUser(null);
     toast.success('Вы вышли из системы');
   };
+
+  // ─── Dynamic users live sync (app_users → USER_ROLES) ────────────────────
+  useEffect(() => {
+    let unsubUsers = null;
+    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser && !unsubUsers) {
+        unsubUsers = onSnapshot(collection(db, 'app_users'), (snap) => {
+          const usersMap = {};
+          snap.docs.forEach(d => { usersMap[d.id.toLowerCase().trim()] = d.data(); });
+          applyDynamicUsers(usersMap);
+          // Refresh the logged-in user's profile in case their own entry changed
+          setUser(prev => prev ? enrichUserWithRole({ email: prev.email, uid: prev.uid }) : prev);
+        }, (err) => console.error('[app_users] listener error:', err));
+      } else if (!firebaseUser && unsubUsers) {
+        unsubUsers();
+        unsubUsers = null;
+      }
+    });
+    return () => { unsubAuth(); if (unsubUsers) unsubUsers(); };
+  }, [enrichUserWithRole]);
 
   // ─── Firestore live listener ──────────────────────────────────────────────
   useEffect(() => {
@@ -390,16 +508,33 @@ export const TicketProvider = ({ children }) => {
     };
   }, []);
 
+  // Fire-and-forget push to the club's staff + chefs, excluding the actor
+  const sendPush = useCallback((title, body, club, url, tag) => {
+    pushNotify({ title, body, club, excludeEmail: user?.email || '', url: url || '/', tag: tag || '' });
+  }, [user]);
+
+  const PUSH_STATUS_LABELS = {
+    new: 'Новая заявка', in_progress: 'Принята в работу', paused: 'Пауза',
+    waiting: 'Ожидание', closed: 'Закрыта',
+  };
+
   const updateTicket = useCallback(async (ticketId, updates) => {
     if (!ticketId) return;
+    const ticket = allTicketsRef.current.find(t => String(t.id) === String(ticketId));
     setTickets(prev => prev.map(t => String(t.id) === String(ticketId) ? { ...t, ...updates } : t));
     if (!isFirebaseId(String(ticketId))) return;
     try {
-      await updateDoc(doc(db, 'tickets', String(ticketId)), updates);
+      // Record who acted — NotificationContext uses it to skip the actor's own popup
+      const withActor = updates.status ? { ...updates, lastActionBy: user?.email || '' } : updates;
+      await updateDoc(doc(db, 'tickets', String(ticketId)), withActor);
+      if (updates.status && ticket && updates.status !== ticket.status) {
+        const label = PUSH_STATUS_LABELS[updates.status] || updates.status;
+        sendPush(`Статус: ${label}`, `Заявка «${ticket.title || 'Без названия'}»`, ticket.club, `/tickets/${ticketId}`, `status-${ticketId}`);
+      }
     } catch (error) {
       toast.error('Ошибка сохранения в облаке');
     }
-  }, []);
+  }, [sendPush, user]);
 
   const deleteTicket = useCallback(async (ticketId) => {
     if (!ticketId) return;
@@ -426,11 +561,24 @@ export const TicketProvider = ({ children }) => {
         comments: [],
       });
       toast.success(ticketData.status === 'scheduled' ? 'Задача запланирована' : 'Задача создана');
+      sendPush('🆕 Новая заявка', `«${ticketData.title || 'Без названия'}»`, ticketData.club, '/tickets');
     } catch (error) {
       toast.error('Ошибка создания задачи');
       throw error;
     }
-  }, [user]);
+  }, [user, sendPush]);
+
+  const deleteComment = useCallback(async (ticketId, commentId) => {
+    const ticket = allTicketsRef.current.find(t => String(t.id) === String(ticketId));
+    const updatedComments = (ticket?.comments || []).filter(c => c.id !== commentId);
+    setTickets(prev => prev.map(t => String(t.id) === String(ticketId) ? { ...t, comments: updatedComments } : t));
+    if (!isFirebaseId(String(ticketId))) return;
+    try {
+      await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: updatedComments });
+    } catch {
+      toast.error('Ошибка удаления сообщения');
+    }
+  }, []);
 
   const addComment = useCallback(async (ticketId, commentText, attachment = null) => {
     const ticket = allTicketsRef.current.find(t => String(t.id) === String(ticketId));
@@ -438,6 +586,7 @@ export const TicketProvider = ({ children }) => {
       id: Math.random().toString(36).slice(2, 11),
       text: commentText,
       author: formatAuthor(user),
+      authorEmail: user?.email || '',
       createdAt: new Date().toISOString(),
       attachment,
     };
@@ -447,10 +596,12 @@ export const TicketProvider = ({ children }) => {
     try {
       await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: updatedComments });
       toast.success('Комментарий добавлен');
+      const preview = (commentText || '').slice(0, 80) || (attachment ? '📎 Файл' : '');
+      sendPush('💬 Новое сообщение', `«${ticket?.title || 'Заявка'}»: ${preview}`, ticket?.club, `/tickets/${ticketId}`, `msg-${ticketId}`);
     } catch (error) {
       toast.error('Ошибка добавления комментария');
     }
-  }, [user]);
+  }, [user, sendPush]);
 
   const uploadFile = useCallback(async (rawFile, onProgress) => {
     if (!rawFile) return null;
@@ -560,16 +711,22 @@ export const TicketProvider = ({ children }) => {
   const updateDisplayName = useCallback((name) => {
     if (!user?.email) return;
     const trimmed = name.trim();
+    const emailKey = user.email.toLowerCase().trim();
     if (trimmed) {
-      localStorage.setItem('hj_custom_name_' + user.email, trimmed);
+      localStorage.setItem('hj_custom_name_' + emailKey, trimmed);
     } else {
-      localStorage.removeItem('hj_custom_name_' + user.email);
+      localStorage.removeItem('hj_custom_name_' + emailKey);
     }
-    setUser(prev => prev ? { ...prev, displayName: trimmed || USER_ROLES[user.email]?.displayName || user.email } : prev);
+    // Persist in Firestore so the name survives re-login and syncs across devices
+    setDoc(doc(db, 'user_profiles', emailKey), {
+      displayName: trimmed || null,
+      updatedAtISO: new Date().toISOString(),
+    }, { merge: true }).catch(() => {});
+    setUser(prev => prev ? { ...prev, displayName: trimmed || USER_ROLES[emailKey]?.displayName || user.email } : prev);
   }, [user?.email]);
 
   return (
-    <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, deleteTicket, addComment, uploadFile, updateDisplayName }}>
+    <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, deleteTicket, addComment, deleteComment, uploadFile, updateDisplayName }}>
       {children}
     </TicketContext.Provider>
   );

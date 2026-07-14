@@ -1,0 +1,21 @@
+name: Checklist reminders
+
+# Пинает /api/checklist-reminder за ~5 минут до начала каждой смены.
+# Время в cron — UTC (Алматы = UTC+5).
+# Будни (смены 6:30/11:30/16:30/21:30): пинг в 6:24 и 6:26 и т.д. по Алматы.
+# Выходные (смены 9:00/14:00/19:00): пинг в 8:54 и 8:56 и т.д. по Алматы.
+# Endpoint сам решает, пора ли слать (окно 6 минут до смены) и не шлёт дважды.
+on:
+  schedule:
+    - cron: '24,26 1,6,11,16 * * 1-5'
+    - cron: '54,56 3,8,13 * * 0,6'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping reminder endpoint
+        run: |
+          curl -s -X POST -H "Content-Type: application/json" \
+            https://ticket-tracker-inky.vercel.app/api/checklist-reminder

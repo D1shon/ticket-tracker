@@ -3,6 +3,7 @@ import { ShieldCheck, CheckCircle2, X, Smartphone } from 'lucide-react';
 import { onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
+import { pushNotify } from '../lib/pushNotify';
 
 async function getLocalIPs() {
   return new Promise(resolve => {
@@ -59,7 +60,10 @@ const MobileScanner = () => {
 
   const displayName = user?.displayName || adminName || 'Сотрудник';
 
-  const handleCheckin = async () => {
+  const [checkType, setCheckType] = useState('in'); // 'in' | 'out'
+
+  const handleCheckin = async (type = 'in') => {
+    setCheckType(type);
     setStatus('verifying');
     setResult(null);
     try {
@@ -81,11 +85,21 @@ const MobileScanner = () => {
           userId: user?.email || adminName || 'unknown',
           userName: user?.displayName || adminName || null,
           localSubnetOk,
+          checkType: type,
         }),
       });
       const data = await res.json();
       setResult(data);
       setStatus(data.allowed ? 'success' : 'error');
+      if (data.allowed) {
+        pushNotify({
+          title: type === 'out' ? '🏁 Check-out' : '✅ Check-in',
+          body: `${displayName} — ${type === 'out' ? 'ушёл(ла) со смены' : 'отметился(лась)'} · ${data.clubId}`,
+          club: data.clubId,
+          excludeEmail: user?.email || '',
+          url: '/attendance',
+        });
+      }
     } catch (err) {
       console.error('checkin fetch error:', err);
       setResult({ allowed: false, ip: null });
@@ -114,9 +128,11 @@ const MobileScanner = () => {
         <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, animation: 'scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
           <CheckCircle2 size={40} color="#000" strokeWidth={3} />
         </div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.03em' }}>Чекин прошёл</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.03em' }}>
+          {checkType === 'out' ? 'Check-out прошёл' : 'Check-in прошёл'}
+        </h1>
         <p style={{ color: '#8e8e93', fontSize: 14, marginBottom: 8 }}>
-          Добро пожаловать, <b style={{ color: '#fff' }}>{displayName}</b>
+          {checkType === 'out' ? <>Хорошего отдыха, <b style={{ color: '#fff' }}>{displayName}</b></> : <>Добро пожаловать, <b style={{ color: '#fff' }}>{displayName}</b></>}
         </p>
         {result?.clubId && (
           <p style={{ color: '#22c55e', fontSize: 13, fontWeight: 700, marginBottom: 40, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -181,13 +197,22 @@ const MobileScanner = () => {
               Нажмите кнопку, чтобы<br />подтвердить своё присутствие.
             </p>
           </div>
-          <button
-            onClick={handleCheckin}
-            style={{ width: '100%', padding: '24px', borderRadius: 24, background: 'var(--accent-purple)', color: '#fff', fontSize: 16, fontWeight: 800, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 20px 40px rgba(139,92,246,0.25)', cursor: 'pointer' }}
-          >
-            <ShieldCheck size={22} />
-            ОТМЕТИТЬСЯ
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <button
+              onClick={() => handleCheckin('in')}
+              style={{ width: '100%', padding: '22px', borderRadius: 24, background: 'var(--accent-purple)', color: '#fff', fontSize: 16, fontWeight: 800, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 20px 40px rgba(139,92,246,0.25)', cursor: 'pointer' }}
+            >
+              <ShieldCheck size={22} />
+              CHECK-IN
+            </button>
+            <button
+              onClick={() => handleCheckin('out')}
+              style={{ width: '100%', padding: '22px', borderRadius: 24, background: '#1c1c1e', color: '#f59e0b', fontSize: 16, fontWeight: 800, border: '1px solid rgba(245,158,11,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer' }}
+            >
+              <X size={22} />
+              CHECK-OUT
+            </button>
+          </div>
         </div>
       )}
 

@@ -87,7 +87,7 @@ const SalesPage = () => {
           const data = d.data();
           const trimmedName = (data.name || '').trim();
           const nLower = trimmedName.toLowerCase();
-          const isServ = data.isService === true || nLower.includes('сервис') || nLower.includes('техник') || nLower.includes('стажер');
+          const isServ = data.isService === true || nLower.includes('сервис') || nLower.includes('техник');
           return { id: d.id, ...data, name: trimmedName, isService: isServ };
         }).filter(e => !e.isService);
         if (empList.length === 0) { setTodayClubEmployees([]); return; }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Heart, Plus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer } from 'lucide-react';
+import { Heart, Plus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer, Package } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
+import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
@@ -131,6 +132,13 @@ const HRMonitorsPage = () => {
   const activityDateRef  = React.useRef(null);
   const [shiftEmployees, setShiftEmployees] = useState([]);
 
+  // Delivery tab state
+  const [deliveryItems,  setDeliveryItems]  = useState([]);
+  const [deliveryQty,    setDeliveryQty]    = useState('');
+  const [deliveryNote,   setDeliveryNote]   = useState('');
+  const [deliveryDate,   setDeliveryDate]   = useState(new Date().toISOString().slice(0, 10));
+  const [addingDelivery, setAddingDelivery] = useState(false);
+
   const canSeeActivity = isChef || user?.role === 'manager';
   const todayStr = new Date().toISOString().slice(0, 10);
   const [activityDate, setActivityDate] = useState(todayStr);
@@ -205,6 +213,59 @@ const HRMonitorsPage = () => {
     getEmployeesWithShifts(club, dateObj).then(setShiftEmployees);
   }, [canSeeActivity, activityDate, activeClub, isChef, userClub]);
 
+  // Delivery subscription
+  useEffect(() => {
+    const q = query(collection(db, 'hr_monitor_deliveries'), where('club', '==', activeClub));
+    return onSnapshot(q, snap => {
+      const items = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const ta = a.createdAt?.seconds ?? 0;
+          const tb = b.createdAt?.seconds ?? 0;
+          return tb - ta;
+        });
+      setDeliveryItems(items);
+    }, err => console.error('[hr_monitor_deliveries]', err));
+  }, [activeClub]);
+
+  const handleAddDelivery = async () => {
+    const qty = parseInt(deliveryQty, 10);
+    if (!qty || qty <= 0) return;
+    setAddingDelivery(true);
+    try {
+      await addDoc(collection(db, 'hr_monitor_deliveries'), {
+        club: activeClub,
+        quantity: qty,
+        note: deliveryNote.trim() || '',
+        date: deliveryDate,
+        createdBy: user?.displayName || user?.email || 'Неизвестно',
+        createdAt: serverTimestamp(),
+      });
+      setDeliveryQty('');
+      setDeliveryNote('');
+      toast.success(`Поставка ${qty} шт. добавлена`);
+      pushNotify({
+        title: '📦 Поставка пульсометров',
+        body: `${activeClub}: принято ${qty} шт.${deliveryNote.trim() ? ` (${deliveryNote.trim()})` : ''}`,
+        club: activeClub,
+        excludeEmail: user?.email || '',
+        url: '/hr-monitors',
+      });
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    } finally {
+      setAddingDelivery(false);
+    }
+  };
+
+  const handleDeleteDelivery = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'hr_monitor_deliveries', id));
+    } catch (e) {
+      toast.error('Не удалось удалить запись');
+    }
+  };
+
   useEffect(() => {
     const close = () => setOpenDropdown(null);
     document.addEventListener('click', close);
@@ -212,6 +273,7 @@ const HRMonitorsPage = () => {
   }, []);
 
   const canEdit = isChef || isAdmin || user?.role === 'manager';
+  const canDeleteDelivery = user?.role === 'chef' || user?.role === 'manager';
   const visibleClubs = isChef ? CLUBS : [userClub].filter(Boolean);
 
   const stats = useMemo(() => ({
@@ -292,6 +354,15 @@ const HRMonitorsPage = () => {
     } catch (e) {
       console.error('[hr_monitor_history] addDoc failed:', e);
     }
+
+    const stNew = getStatus(newStatus);
+    pushNotify({
+      title: `${newStatus === 'working' ? '💓' : newStatus === 'broken' ? '🔧' : '⚠️'} Пульсометр: ${stNew.label.toLowerCase()}`,
+      body: `${activeClub}: пульсометр ${monitorId} — ${getStatus(currentStatus).label.toLowerCase()} → ${stNew.label.toLowerCase()}`,
+      club: activeClub,
+      excludeEmail: user?.email || '',
+      url: '/hr-monitors',
+    });
   };
 
   const handleDelete = async (docId) => {
@@ -333,6 +404,13 @@ const HRMonitorsPage = () => {
           durationMs:    durMs,
           durationText:  durText,
           totalMonitors: monitors.length,
+        });
+        pushNotify({
+          title: '💓 Пульсометры проверены',
+          body: `${activeClub}: ${user.displayName} проверил все ${monitors.length} шт. за ${durText}`,
+          club: activeClub,
+          excludeEmail: user?.email || '',
+          url: '/hr-monitors',
         });
       }
     } catch (e) {
@@ -383,11 +461,12 @@ const HRMonitorsPage = () => {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8, flexWrap: 'wrap' }}>
         {[
-          { id: 'monitors', label: 'Пульсометры', icon: Heart },
+          { id: 'monitors',  label: 'Пульсометры', icon: Heart },
           ...( !isAdmin ? [{ id: 'history',  label: 'История',    icon: History }] : [] ),
           ...( canSeeActivity ? [{ id: 'activity', label: 'Активность', icon: Activity }] : [] ),
+          { id: 'delivery',  label: 'Поставка',    icon: Package },
         ].map(tab => {
           const active = activeTab === tab.id;
           return (
@@ -827,6 +906,127 @@ const HRMonitorsPage = () => {
           </div>
         );
       })()}
+      {/* ── DELIVERY TAB ── */}
+      {activeTab === 'delivery' && (() => {
+        const totalQty = deliveryItems.reduce((sum, d) => sum + (d.quantity || 0), 0);
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* Summary card */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.25)', borderRadius: 12, padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 24, fontWeight: 900, color: '#4f8ef7', lineHeight: 1 }}>{totalQty}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#4f8ef7', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Всего принято</span>
+              </div>
+              <div style={{ background: 'rgba(123,61,255,0.08)', border: '1px solid rgba(123,61,255,0.25)', borderRadius: 12, padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--accent-purple)', lineHeight: 1 }}>{deliveryItems.length}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-purple)', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Поставок</span>
+              </div>
+            </div>
+
+            {/* Add form */}
+            {canEdit && (
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Новая поставка</div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Количество</label>
+                    <input
+                      type="number" min="1"
+                      placeholder="0"
+                      value={deliveryQty}
+                      onChange={e => setDeliveryQty(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddDelivery()}
+                      style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', outline: 'none', width: 100, textAlign: 'center' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Дата</label>
+                    <input
+                      type="date"
+                      value={deliveryDate}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={e => e.target.value && setDeliveryDate(e.target.value)}
+                      style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1, minWidth: 140 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Примечание</label>
+                    <input
+                      placeholder="Опционально..."
+                      value={deliveryNote}
+                      onChange={e => setDeliveryNote(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddDelivery()}
+                      style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', outline: 'none', width: '100%' }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddDelivery}
+                    disabled={addingDelivery || !deliveryQty || parseInt(deliveryQty, 10) <= 0}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 12,
+                      border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 13, fontWeight: 800,
+                      cursor: 'pointer', opacity: addingDelivery || !deliveryQty || parseInt(deliveryQty, 10) <= 0 ? 0.5 : 1, whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Plus size={15} /> Добавить
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Records list */}
+            {deliveryItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed var(--border)', borderRadius: 20, color: 'var(--text-muted)', fontSize: 14, fontWeight: 600 }}>
+                Поставок пока нет
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {deliveryItems.map(entry => {
+                  const dateLabel = (() => {
+                    try { return format(new Date(entry.date + 'T12:00:00'), 'd MMMM yyyy', { locale: ru }); } catch { return entry.date || '—'; }
+                  })();
+                  return (
+                    <div key={entry.id} style={{
+                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                      borderLeft: '3px solid #4f8ef7',
+                      borderRadius: 14, padding: '12px 16px',
+                      display: 'flex', alignItems: 'center', gap: 14, position: 'relative',
+                    }}>
+                      {/* Quantity badge */}
+                      <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: 12, background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 20, fontWeight: 900, color: '#4f8ef7', lineHeight: 1 }}>{entry.quantity}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#4f8ef7', opacity: 0.7, textTransform: 'uppercase' }}>шт.</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 3 }}>{dateLabel}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Принял: {entry.createdBy}</span>
+                          {entry.note && (
+                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: 6 }}>
+                              {entry.note}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {canDeleteDelivery && (
+                        <button onClick={() => handleDeleteDelivery(entry.id)} style={{
+                          background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                          padding: 6, borderRadius: 8, lineHeight: 0, opacity: 0.4, flexShrink: 0, transition: 'opacity 0.15s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                        onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                        ><Trash2 size={14} /></button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
     </div>
   );
 };

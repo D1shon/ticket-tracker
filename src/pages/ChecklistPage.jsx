@@ -97,11 +97,12 @@ const ChecklistPage = () => {
     return answered === total && total > 0;
   };
 
+
   return (
     <div className="animate-fade" style={{ background: 'var(--bg-primary)', minHeight: '100%', color: 'var(--text-primary)', fontFamily: 'var(--font-primary)' }}>
       
       {/* Header Area */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex items-start justify-between mb-8 gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <ShieldCheck style={{ color: '#a855f7' }} size={24} strokeWidth={2.5} />

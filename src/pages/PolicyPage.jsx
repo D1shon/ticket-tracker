@@ -31,7 +31,8 @@ const PolicyPage = () => {
   const userClubUpper = user?.club?.toUpperCase();
 
   const [activeTab, setActiveTab]         = useState('');
-  const [docData, setDocData]             = useState({});   // { [clubName]: { sections, updatedAt } | null }
+  const [docType, setDocType]             = useState('offer'); // 'offer' | 'privacy'
+  const [docData, setDocData]             = useState({});   // { [docId]: { sections, updatedAt } | null }
   const [searchQuery, setSearchQuery]     = useState('');
   const [isEditing, setIsEditing]         = useState(false);
   const [editSections, setEditSections]   = useState([]);
@@ -49,16 +50,19 @@ const PolicyPage = () => {
     }
   }, [userClubUpper, isChef]);
 
-  // Load Firestore document for active club
+  // Оферта хранится под именем клуба (как раньше), политика — под `${club}_privacy`
+  const docId = docType === 'privacy' ? `${activeTab}_privacy` : activeTab;
+
+  // Load Firestore document for active club + doc type
   useEffect(() => {
     if (!activeTab) return;
-    const unsub = onSnapshot(doc(db, 'policy_documents', activeTab), snap => {
-      setDocData(prev => ({ ...prev, [activeTab]: snap.exists() ? snap.data() : null }));
+    const unsub = onSnapshot(doc(db, 'policy_documents', docId), snap => {
+      setDocData(prev => ({ ...prev, [docId]: snap.exists() ? snap.data() : null }));
     });
     return unsub;
-  }, [activeTab]);
+  }, [activeTab, docId]);
 
-  const current    = docData[activeTab];
+  const current    = docData[docId];
   const sections   = current?.sections || [];
   const activeClub = CLUBS.find(c => c.name === activeTab);
 
@@ -79,7 +83,7 @@ const PolicyPage = () => {
   const saveEdit = async () => {
     setSaving(true);
     try {
-      await setDoc(doc(db, 'policy_documents', activeTab), {
+      await setDoc(doc(db, 'policy_documents', docId), {
         sections:   editSections.filter(s => (s.title || '').trim() || (s.body || '').trim()),
         updatedAt:  new Date(),
       });
@@ -191,12 +195,12 @@ const PolicyPage = () => {
       {!isEditing && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {/* Club header card */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Club header card + doc type switcher */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <ShieldCheck size={20} color={activeClub?.color || 'var(--accent-purple)'} />
             <div>
               <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                Договор-Оферта · {activeTab}
+                {docType === 'privacy' ? 'Политика Конфиденциальности' : 'Договор-Оферта'} · {activeTab}
               </div>
               {current?.updatedAt && (
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>
@@ -208,6 +212,23 @@ const PolicyPage = () => {
                 </div>
               )}
             </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {[['offer', 'Оферта'], ['privacy', 'Политика Конфиденциальности']].map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => { setDocType(id); setSearchQuery(''); setCollapsed({}); }}
+                  style={{
+                    padding: '8px 14px', borderRadius: 10, fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                    border: '1px solid ' + (docType === id ? 'var(--accent-purple)' : 'var(--border)'),
+                    background: docType === id ? 'var(--accent-purple)' : 'transparent',
+                    color: docType === id ? '#fff' : 'var(--text-muted)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Empty state */}
@@ -215,7 +236,7 @@ const PolicyPage = () => {
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '48px 24px', textAlign: 'center' }}>
               <FileText size={40} color="var(--text-muted)" style={{ marginBottom: 12, opacity: 0.4 }} />
               <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
-                Соглашение не добавлено
+                {docType === 'privacy' ? 'Политика конфиденциальности не добавлена' : 'Соглашение не добавлено'}
               </div>
               {isChef && (
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>

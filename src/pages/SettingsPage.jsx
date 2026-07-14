@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil } from 'lucide-react';
-import { useTickets } from '../store/TicketContext';
-import { collection, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users } from 'lucide-react';
+import { useTickets, USER_ROLES } from '../store/TicketContext';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { toast } from 'sonner';
+import { enablePush, disablePush, isPushEnabled, getPushToken } from '../lib/push';
 
 const DEFAULT_POLICY_URLS = {
   '4YOU': 'https://herosjourney.kz/policy/4you',
@@ -19,9 +21,31 @@ const SettingsPage = () => {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
-  const [pushEnabled, setPushEnabled] = useState(true);
+  const [pushEnabled, setPushEnabled] = useState(() => isPushEnabled());
+  const [pushBusy, setPushBusy] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [emailReports, setEmailReports] = useState(false);
+
+  const handlePushToggle = async (next) => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (next) {
+        await enablePush(user);
+        setPushEnabled(true);
+        toast.success('Push-уведомления включены на этом устройстве');
+      } else {
+        await disablePush();
+        setPushEnabled(false);
+        toast.success('Push-уведомления отключены');
+      }
+    } catch (e) {
+      toast.error(e?.message || 'Не удалось включить push');
+      setPushEnabled(isPushEnabled());
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const [clubsConfig, setClubsConfig] = useState({});
   const [editingClub, setEditingClub] = useState(null); // clubName being edited
@@ -37,6 +61,114 @@ const SettingsPage = () => {
   const [newGw, setNewGw]           = useState('');
   const [newGwClub, setNewGwClub]   = useState('4YOU');
   const [savingGw, setSavingGw]     = useState(false);
+
+  // Admin accounts management (chef + manager)
+  const isManagerRole = user?.role === 'manager';
+  const canManageAdmins = isChef || isManagerRole;
+  const [appUsers, setAppUsers]           = useState({}); // { email: {displayName, club, ...} }
+  const [newAdminName, setNewAdminName]   = useState('');
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminClub, setNewAdminClub]   = useState(user?.club || '4YOU');
+  const [savingAdmin, setSavingAdmin]     = useState(false);
+
+  // Load dynamic admin accounts
+  useEffect(() => {
+    if (!canManageAdmins) return;
+    return onSnapshot(collection(db, 'app_users'), (snap) => {
+      const map = {};
+      snap.docs.forEach(d => { map[d.id] = d.data(); });
+      setAppUsers(map);
+    }, err => console.error('[app_users]', err));
+  }, [canManageAdmins]);
+
+  // Live push subscription status per email (who actually receives notifications)
+  const [pushByEmail, setPushByEmail] = useState({});
+  useEffect(() => {
+    if (!canManageAdmins) return;
+    return onSnapshot(collection(db, 'push_tokens'), (snap) => {
+      const map = {};
+      snap.docs.forEach(d => {
+        const t = d.data();
+        const email = (t.email || '').toLowerCase();
+        if (!email) return;
+        // Working subscription: installed app (standalone) or Android.
+        // Legacy iOS Safari-tab tokens don't deliver — treated as not working.
+        const isAndroid = /Android/i.test(t.ua || '');
+        const isIOSSafariTab = /iPhone|iPad/.test(t.ua || '') && t.standalone !== true && /Safari\//.test(t.ua || '');
+        const working = t.standalone === true || isAndroid || !isIOSSafariTab;
+        if (working) map[email] = true;
+        else if (!(email in map)) map[email] = false;
+      });
+      setPushByEmail(map);
+    }, err => console.error('[push_tokens]', err));
+  }, [canManageAdmins]);
+
+  const PushBadge = ({ email }) => {
+    const key = (email || '').toLowerCase();
+    const st = pushByEmail[key]; // true = работает, false = подписка битая, undefined = нет
+    const ok = st === true;
+    return (
+      <span style={{
+        fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap',
+        background: ok ? 'rgba(16,185,129,0.12)' : 'rgba(148,163,184,0.12)',
+        color: ok ? '#10b981' : 'var(--text-muted)',
+        border: `1px solid ${ok ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+      }}>
+        {ok ? '🔔 Push вкл' : '🔕 Push выкл'}
+      </span>
+    );
+  };
+
+  const handleAddAdmin = async () => {
+    const email = newAdminEmail.trim().toLowerCase();
+    const name  = newAdminName.trim();
+    const club  = isManagerRole ? user?.club : newAdminClub;
+    if (!email || !name || !club) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error('Некорректный email');
+      return;
+    }
+    if (email in USER_ROLES || email in appUsers) {
+      toast.error('Этот email уже зарегистрирован в системе');
+      return;
+    }
+    setSavingAdmin(true);
+    try {
+      await setDoc(doc(db, 'app_users', email), {
+        role: 'admin', // manager-created accounts are always admins
+        club,
+        displayName: name,
+        addedBy: user?.email || '',
+        createdAtISO: new Date().toISOString(),
+      });
+      setNewAdminName('');
+      setNewAdminEmail('');
+      toast.success(`Аккаунт для ${name} создан — вход по почте ${email}`);
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    } finally {
+      setSavingAdmin(false);
+    }
+  };
+
+  const handleRemoveAdmin = async (a) => {
+    try {
+      if (a.dynamic) {
+        // Manager-created account — just delete the doc
+        await deleteDoc(doc(db, 'app_users', a.email));
+      } else {
+        // Hardcoded account — mark as revoked in Firestore
+        await setDoc(doc(db, 'app_users', a.email), {
+          revoked: true,
+          revokedBy: user?.email || '',
+          revokedAtISO: new Date().toISOString(),
+        });
+      }
+      toast.success(`Доступ для ${a.name} удалён`);
+    } catch (e) {
+      toast.error('Не удалось удалить доступ');
+    }
+  };
 
   // Load clubs config from Firestore
   useEffect(() => {
@@ -153,7 +285,7 @@ const SettingsPage = () => {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 24, marginBottom: 40 }}>
+      <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 24, marginBottom: 40 }}>
         {/* Profile Card */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 32, display: 'flex', flexDirection: 'column', gap: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
@@ -237,9 +369,36 @@ const SettingsPage = () => {
               <div style={{ display: 'flex', itemsCenter: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Push-уведомления</h4>
-                  <p style={{ fontSize: 11, color: pushEnabled ? '#22c55e' : 'var(--text-muted)', fontWeight: 600 }}>{pushEnabled ? '✓ Включены' : '× Отключены'}</p>
+                  <p style={{ fontSize: 11, color: pushEnabled ? '#22c55e' : 'var(--text-muted)', fontWeight: 600 }}>
+                    {pushBusy ? '⏳ Подключение…' : pushEnabled ? '✓ Включены на этом устройстве' : '× Отключены'}
+                  </p>
                 </div>
-                <Toggle enabled={pushEnabled} setEnabled={setPushEnabled} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {pushEnabled && (
+                    <button
+                      onClick={async () => {
+                        const token = getPushToken();
+                        if (!token) { toast.error('Токен не найден — выключите и включите тумблер'); return; }
+                        toast.info('Тест придёт через ~7 секунд — сверните приложение или заблокируйте телефон');
+                        setTimeout(async () => {
+                          try {
+                            const r = await fetch('/api/send-push', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ title: '🔔 Тест уведомлений', body: 'Всё работает! Это тестовое уведомление HJ Track.', url: '/settings', tokens: [token] }),
+                            });
+                            const j = await r.json();
+                            if (j.sent !== 1) toast.error('Отправка не удалась — выключите и включите тумблер');
+                          } catch {}
+                        }, 6000);
+                      }}
+                      style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid var(--accent-purple)', background: 'transparent', color: 'var(--accent-purple)', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      Тест
+                    </button>
+                  )}
+                  <Toggle enabled={pushEnabled} setEnabled={handlePushToggle} />
+                </div>
               </div>
               <div style={{ display: 'flex', itemsCenter: 'center', justifyContent: 'space-between' }}>
                 <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Звуковые алерты (SLA)</h4>
@@ -536,59 +695,30 @@ const SettingsPage = () => {
             <div style={{ background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 16, padding: '12px 16px', marginBottom: 8, fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.6 }}>
               Видит все клубы · Все заявки · График и финансы всех · Управление командой · Архив
             </div>
-            {[
-              { name: 'Дильшат', email: 'dilshat.r@hj.fit' },
-              { name: 'Магжан',  email: 'magzhan@hj.fit' },
-            ].map(u => (
+            {Object.entries(USER_ROLES)
+              .filter(([, u]) => u.role === 'chef')
+              .map(([email, u]) => ({ name: u.displayName, email }))
+              .map(u => (
               <div key={u.email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(245,158,11,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: '#f59e0b', flexShrink: 0 }}>{u.name[0]}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{u.name}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{u.email}</div>
                 </div>
+                <PushBadge email={u.email} />
                 <span style={{ fontSize: 9, fontWeight: 900, background: '#f59e0b', color: '#000', padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>ШЕФ</span>
               </div>
             ))}
           </div>
 
-          {/* Clubs with managers */}
-          {[
-            {
-              club: '4YOU', color: '#4f8ef7',
-              desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
-              members: [
-                { name: 'Сания',  email: 'saniya@hj.fit' },
-                { name: 'Тимур',  email: 'kurbanovtimur585@gmail.com' },
-                { name: 'Нурлы',  email: 'nurly@hj.fit' },
-              ]
-            },
-            {
-              club: 'COLIBRI', color: '#9b5de5',
-              desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
-              members: [
-                { name: 'Анастасия', email: '19.anastasiya.tkachenko.88@gmail.com' },
-                { name: 'Аружан',    email: 'daewure@mail.ru' },
-                { name: 'Диас',      email: 'diasbakyt3773@gmail.com' },
-              ]
-            },
-            {
-              club: 'VILLA', color: '#f59e0b',
-              desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
-              members: [
-                { name: 'Алина',    email: 'kelessovaan@gmail.com' },
-                { name: 'Салтанат', email: 'blinsalta19@gmail.com' },
-                { name: 'Диас',     email: 'diassd9806@gmail.com' },
-              ]
-            },
-            {
-              club: 'NURLY ORDA', color: '#22c55e',
-              desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
-              members: [
-                { name: 'Айнур', email: 'ainura030594@gmail.com' },
-                { name: 'Азиз',  email: 'azimuus@gmail.com' },
-              ]
-            },
-          ].map(section => (
+          {/* Clubs with managers — derived from the real account list */}
+          {CLUBS.map(c => ({
+            club: c.name, color: c.color,
+            desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
+            members: Object.entries(USER_ROLES)
+              .filter(([, u]) => u.role === 'manager' && (u.club || '').toUpperCase() === c.name.toUpperCase())
+              .map(([email, u]) => ({ name: u.displayName, email })),
+          })).map(section => (
             <div key={section.club} style={{ marginBottom: 28 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: section.color }} />
@@ -605,9 +735,10 @@ const SettingsPage = () => {
                   <div key={u.email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8, flexWrap: 'wrap' }}>
                     <div style={{ width: 34, height: 34, borderRadius: 10, background: `${section.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: section.color, flexShrink: 0 }}>{u.name[0]}</div>
                     <div style={{ flex: 1, minWidth: 150 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         {u.name}
                         <span style={{ fontSize: 9, fontWeight: 900, background: `${section.color}20`, color: section.color, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>МЕН.</span>
+                        <PushBadge email={u.email} />
                       </div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{u.email}</div>
                     </div>
@@ -640,6 +771,171 @@ const SettingsPage = () => {
               })}
             </div>
           ))}
+
+          {/* Other roles: marketing, viewer */}
+          {(() => {
+            const ROLE_META = {
+              marketing: { label: 'Маркетинг', badge: 'МАРК.', color: '#ec4899', desc: 'Доступ к складу и мерчу всех клубов' },
+              viewer:    { label: 'Наблюдатель', badge: 'VIEW', color: '#64748b', desc: 'Просмотр чек-листов, склада, продаж и посещений без редактирования' },
+            };
+            const others = Object.entries(USER_ROLES)
+              .filter(([, u]) => u.role === 'marketing' || u.role === 'viewer');
+            if (others.length === 0) return null;
+            return (
+              <div style={{ marginBottom: 28 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#64748b' }} />
+                  <span style={{ fontSize: 10, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    Другие роли
+                  </span>
+                </div>
+                {others.map(([email, u]) => {
+                  const meta = ROLE_META[u.role];
+                  return (
+                    <div key={email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: `${meta.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: meta.color, flexShrink: 0 }}>{(u.displayName || '?')[0]}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          {u.displayName}
+                          <span style={{ fontSize: 9, fontWeight: 900, background: `${meta.color}20`, color: meta.color, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>{meta.badge}</span>
+                          <PushBadge email={email} />
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{email} · {meta.desc}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── Admin Accounts — chef/manager can create admin access ── */}
+      {canManageAdmins && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40, marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <Users size={22} color="var(--accent-purple)" />
+            <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', margin: 0 }}>
+              Админы
+            </h2>
+          </div>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 32 }}>
+            Аккаунты с доступом к платформе · роль ADMIN
+          </p>
+
+          {(isChef ? CLUBS.map(c => c.name) : [user?.club]).filter(Boolean).map(clubName => {
+            const clubColor = (CLUBS.find(c => c.name === clubName) || {}).color || 'var(--accent-purple)';
+            const staticAdmins = Object.entries(USER_ROLES)
+              .filter(([email, u]) => u.role === 'admin' && u.club === clubName && !(email in appUsers));
+            const dynamicAdmins = Object.entries(appUsers)
+              .filter(([, u]) => !u.revoked && (u.club || '').toUpperCase() === clubName.toUpperCase());
+            const allAdmins = [
+              ...staticAdmins.map(([email, u]) => ({ email, name: u.displayName, dynamic: false })),
+              ...dynamicAdmins.map(([email, u]) => ({ email, name: u.displayName, dynamic: true, addedBy: u.addedBy })),
+            ];
+            return (
+              <div key={clubName} style={{ marginBottom: 28 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: clubColor }} />
+                  <span style={{ fontSize: 10, fontWeight: 900, color: clubColor, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    {clubName} · Админы ({allAdmins.length})
+                  </span>
+                </div>
+                {allAdmins.length === 0 ? (
+                  <div style={{ padding: '14px 16px', border: '1px dashed var(--border)', borderRadius: 14, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                    Пока нет админов
+                  </div>
+                ) : allAdmins.map(a => (
+                  <div key={a.email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: `${clubColor}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: clubColor, flexShrink: 0 }}>
+                      {(a.name || '?')[0]}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {a.name}
+                        <span style={{ fontSize: 9, fontWeight: 900, background: `${clubColor}20`, color: clubColor, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>ADMIN</span>
+                        {a.dynamic && (
+                          <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '3px 8px', borderRadius: 6 }}>
+                            добавлен вручную
+                          </span>
+                        )}
+                        <PushBadge email={a.email} />
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.email}</div>
+                    </div>
+                    <button onClick={() => handleRemoveAdmin(a)} title="Удалить доступ" style={{
+                      background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                      padding: 6, borderRadius: 8, lineHeight: 0, opacity: 0.4, flexShrink: 0, transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                    onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                    ><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* Add new admin */}
+          <div style={{ background: 'rgba(123,61,255,0.05)', border: '1px solid rgba(123,61,255,0.2)', borderRadius: 20, padding: '20px 24px', marginTop: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <UserPlus size={15} color="var(--accent-purple)" />
+              <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Добавить сотрудника
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 160, flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Имя</label>
+                <input
+                  placeholder="Имя сотрудника..."
+                  value={newAdminName}
+                  onChange={e => setNewAdminName(e.target.value)}
+                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', outline: 'none', width: '100%' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 200, flex: 1.4 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Почта (для входа)</label>
+                <input
+                  type="email"
+                  placeholder="email@example.com"
+                  value={newAdminEmail}
+                  onChange={e => setNewAdminEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddAdmin()}
+                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', outline: 'none', width: '100%' }}
+                />
+              </div>
+              {isChef && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Клуб</label>
+                  <select
+                    value={newAdminClub}
+                    onChange={e => setNewAdminClub(e.target.value)}
+                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', outline: 'none', cursor: 'pointer' }}
+                  >
+                    {CLUBS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <button
+                onClick={handleAddAdmin}
+                disabled={savingAdmin || !newAdminName.trim() || !newAdminEmail.trim()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '11px 20px', borderRadius: 12,
+                  border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 13, fontWeight: 800,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                  opacity: savingAdmin || !newAdminName.trim() || !newAdminEmail.trim() ? 0.5 : 1,
+                }}
+              >
+                <Plus size={15} /> Добавить
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 14, lineHeight: 1.6 }}>
+              Новый сотрудник получит роль <b style={{ color: 'var(--accent-purple)' }}>ADMIN</b>{isManagerRole ? <> клуба <b style={{ color: 'var(--accent-purple)' }}>{user?.club}</b></> : null}.
+              Вход — просто по почте, без пароля. Чекин будет работать сразу после первого входа.
+            </p>
+          </div>
         </div>
       )}
     </div>

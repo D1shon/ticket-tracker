@@ -8,13 +8,16 @@ if (!admin.apps.length) {
       privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     }),
   })
+  // REST instead of gRPC — avoids RESOURCE_EXHAUSTED on serverless cold starts
+  try { admin.firestore().settings({ preferRest: true }) } catch {}
 }
 
 // Fallback ip_map used when Firestore is unavailable (quota exhausted, cold start)
 const FALLBACK_IP_MAP = {
-  '77.240.35.17':  'COLIBRI',
+  '77.240.35.17':   'COLIBRI',
   '95.161.225.166': 'VILLA',
-  '92.46.44.66':   '4YOU',
+  '92.46.44.66':    '4YOU',
+  '95.141.141.57':  'NURLY ORDA',
 }
 
 // In-memory cache — persists across warm invocations, reloads on cold start
@@ -49,7 +52,7 @@ export default async function handler(req, res) {
     .split(',')[0]
     .trim()
 
-  const { userId, userName, localSubnetOk } = req.body ?? {}
+  const { userId, userName, localSubnetOk, checkType } = req.body ?? {}
   if (!userId) return res.status(400).json({ error: 'userId required' })
 
   try {
@@ -63,6 +66,7 @@ export default async function handler(req, res) {
       clubId,
       ipAddress: ip,
       localSubnetOk: localSubnetOk ?? null,
+      checkType: checkType === 'out' ? 'out' : 'in',
       status: clubId ? 'verified' : 'failed',
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       date: new Date().toISOString().split('T')[0],

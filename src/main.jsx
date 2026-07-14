@@ -10,6 +10,19 @@ import './index.css'
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+// PWA: service worker makes the app installable on Android/Chrome
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+// Clear the app-icon badge whenever the app is opened or focused
+const clearAppBadge = () => { try { navigator.clearAppBadge?.(); } catch {} };
+clearAppBadge();
+window.addEventListener('focus', clearAppBadge);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) clearAppBadge(); });
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
