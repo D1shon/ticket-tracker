@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users } from 'lucide-react';
+import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users, FileText } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -244,7 +244,7 @@ const SettingsPage = () => {
   // User details from context
   const userName = user?.displayName || "Пользователь";
   const userEmail = user?.email || "—";
-  const userRole = user?.role?.toUpperCase() || "ADMIN";
+  const userRole = user?.role === 'komdir' ? 'КОМ-ДИР' : user?.role === 'rop' ? 'РОП' : (user?.role?.toUpperCase() || "ADMIN");
   const userClub = user?.club || "Все Клубы";
 
   const CLUBS = [
@@ -339,6 +339,13 @@ const SettingsPage = () => {
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', width: 120 }}>Привязанный клуб</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginLeft: 'auto' }}>{userClub}</span>
             </div>
+            {user?.role === 'manager' && (
+              <a href="/policy" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: 'var(--bg-hover)', borderRadius: 16, border: '1px solid var(--border)', textDecoration: 'none' }}>
+                <FileText size={14} color="var(--accent-purple)" />
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Соглашение и оферта</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-purple)', marginLeft: 'auto' }}>Открыть →</span>
+              </a>
+            )}
           </div>
 
           <button 
@@ -775,11 +782,13 @@ const SettingsPage = () => {
           {/* Other roles: marketing, viewer */}
           {(() => {
             const ROLE_META = {
+              komdir:    { label: 'Ком-Дир', badge: 'КД', color: '#0ea5e9', desc: 'Коммерческий директор · Новости, отзывы, лиды, склад, утерянные вещи, соглашения' },
+              rop:       { label: 'РОП', badge: 'РОП', color: '#8b5cf6', desc: 'Руководитель отдела продаж · Права как у Ком-Дира' },
               marketing: { label: 'Маркетинг', badge: 'МАРК.', color: '#ec4899', desc: 'Доступ к складу и мерчу всех клубов' },
               viewer:    { label: 'Наблюдатель', badge: 'VIEW', color: '#64748b', desc: 'Просмотр чек-листов, склада, продаж и посещений без редактирования' },
             };
             const others = Object.entries(USER_ROLES)
-              .filter(([, u]) => u.role === 'marketing' || u.role === 'viewer');
+              .filter(([, u]) => u.role === 'komdir' || u.role === 'rop' || u.role === 'marketing' || u.role === 'viewer');
             if (others.length === 0) return null;
             return (
               <div style={{ marginBottom: 28 }}>

@@ -1,15 +1,17 @@
 // Web Push subscription via Firebase Cloud Messaging.
 // Works in Chrome/Android and iOS 16.4+ (app must be added to Home Screen).
-import { getMessaging, getToken, deleteToken, isSupported } from 'firebase/messaging';
+// The messaging SDK is imported lazily — it's not needed for first paint.
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from './firebase';
-import { app } from './firebase';
+import { db, app } from './firebase';
+
+const fcm = () => import('firebase/messaging');
 
 const VAPID_KEY = 'BGrDPo3-dAUmEEm6KwqcdFTIk_5mkXZ2v6QNUm0L6P8ZoWEsF4M_X6Gw2lvb5BO7UUbbpOEOFV0C7FoOzvf2080';
 const TOKEN_STORAGE_KEY = 'hj_push_token';
 
 export async function pushSupported() {
   try {
+    const { isSupported } = await fcm();
     return (await isSupported()) && 'Notification' in window && 'serviceWorker' in navigator;
   } catch {
     return false;
@@ -39,6 +41,7 @@ export async function enablePush(user) {
   }
   const registration = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
+  const { getMessaging, getToken } = await fcm();
   const messaging = getMessaging(app);
   const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
   if (!token) throw new Error('Не удалось получить push-токен');
@@ -73,6 +76,7 @@ export async function refreshPushToken(user) {
 async function enablePushSilent(user) {
   const registration = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
+  const { getMessaging, getToken } = await fcm();
   const messaging = getMessaging(app);
   const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
   if (!token) return null;
@@ -95,6 +99,7 @@ export async function disablePush() {
   try {
     const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (stored) await deleteDoc(doc(db, 'push_tokens', stored));
+    const { getMessaging, deleteToken } = await fcm();
     const messaging = getMessaging(app);
     await deleteToken(messaging).catch(() => {});
   } finally {

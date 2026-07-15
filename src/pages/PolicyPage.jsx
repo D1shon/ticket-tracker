@@ -28,6 +28,8 @@ function highlightText(text, query) {
 const PolicyPage = () => {
   const { user } = useTickets();
   const isChef = user?.role === 'chef';
+  // Ком-Дир и РОП видят соглашения всех клубов, но не редактируют
+  const canSeeAllClubs = isChef || user?.role === 'komdir' || user?.role === 'rop';
   const userClubUpper = user?.club?.toUpperCase();
 
   const [activeTab, setActiveTab]         = useState('');
@@ -41,14 +43,14 @@ const PolicyPage = () => {
 
   // Initial tab
   useEffect(() => {
-    if (isChef) {
+    if (canSeeAllClubs) {
       setActiveTab('4YOU');
     } else if (userClubUpper && CLUBS.find(c => c.name === userClubUpper)) {
       setActiveTab(userClubUpper);
     } else {
       setActiveTab('COLIBRI');
     }
-  }, [userClubUpper, isChef]);
+  }, [userClubUpper, canSeeAllClubs]);
 
   // Оферта хранится под именем клуба (как раньше), политика — под `${club}_privacy`
   const docId = docType === 'privacy' ? `${activeTab}_privacy` : activeTab;
@@ -154,8 +156,8 @@ const PolicyPage = () => {
         )}
       </div>
 
-      {/* ── Club tabs (chefs only) ── */}
-      {isChef && (
+      {/* ── Club tabs (chefs + komdir) ── */}
+      {canSeeAllClubs && (
         <div style={{ display: 'flex', gap: 8, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 6, marginBottom: 20, overflowX: 'auto' }}>
           {CLUBS.map(club => {
             const active = activeTab === club.name;

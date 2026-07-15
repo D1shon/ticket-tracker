@@ -176,7 +176,8 @@ const LostItemsPage = () => {
     try { return Math.floor((now - new Date(iso).getTime()) / 86400000); } catch { return 0; }
   };
 
-  const visibleClubs = isChef ? CLUBS : [userClub].filter(Boolean);
+  // Аккаунты без клуба (шефы, Ком-Дир) видят все клубы
+  const visibleClubs = (isChef || !userClub) ? CLUBS : [userClub];
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingBottom: 40 }}>

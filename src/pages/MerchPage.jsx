@@ -24,8 +24,11 @@ const MerchPage = () => {
   // Role & Permissions check
   const isChef = useMemo(() => user?.role === 'chef' || user?.role === 'viewer', [user]);
   const isMarketing = useMemo(() => user?.role === 'marketing', [user]);
+  // Ком-Дир и РОП: мониторинг всего склада (включая себестоимость и выручку), но без продаж и редактирования
+  const isKomdir = useMemo(() => user?.role === 'komdir' || user?.role === 'rop', [user]);
+  const canSeeCost = isChef || isKomdir;
   const managerClub = useMemo(() => user?.club || null, [user]);
-  const canSelectAllClubs = useMemo(() => isChef || isMarketing, [isChef, isMarketing]);
+  const canSelectAllClubs = useMemo(() => isChef || isMarketing || isKomdir, [isChef, isMarketing, isKomdir]);
 
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'resort'
   const [selectedClub, setSelectedClub] = useState(() => (!canSelectAllClubs && managerClub) ? managerClub : 'ALL');
@@ -506,12 +509,14 @@ const MerchPage = () => {
     
     try {
       await deleteDoc(doc(db, 'merch_sales', sale.id));
-      
-      if (sale.productId) {
+
+      // Возврат остатка — только если позиция ещё существует на складе
+      // (товар могли удалить при чистке нулевых остатков, история продаж при этом живёт отдельно)
+      if (sale.productId && products.some(p => p.id === sale.productId)) {
         await updateDoc(doc(db, 'merch_products', sale.productId), {
           stock: increment(sale.qty), // Reverts sale (adds qty back to stock) or supply (subtracts negative qty from stock)
           updatedAt: serverTimestamp()
-        });
+        }).catch(() => {}); // позиция могла исчезнуть между проверкой и записью
       }
 
       await addDoc(collection(db, 'merch_history'), {
@@ -662,7 +667,7 @@ const MerchPage = () => {
     let rows = [];
     
     if (activeTab === 'inventory') {
-      if (isChef) {
+      if (canSeeCost) {
         headers = ['Артикул', 'Название', 'Категория', 'Клуб', 'Себестоимость', 'Цена продажи', 'Остаток', 'Мин. остаток'];
         rows = filteredProducts.map(p => [
           p.sku || '', p.name, p.category, p.club, p.costPrice, p.salePrice, p.stock, p.minStock
@@ -682,7 +687,7 @@ const MerchPage = () => {
         ];
       });
     } else {
-      if (isChef) {
+      if (canSeeCost) {
         headers = ['Дата', 'Клуб', 'Товар', 'Артикул', 'Категория', 'Количество', 'Себестоимость', 'Цена продажи', 'Сумма чека', 'Прибыль', 'Оплата', 'Клиент', 'Провел'];
         rows = filteredSales.map(s => {
           const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
@@ -1036,9 +1041,9 @@ const MerchPage = () => {
               </div>
             </div>
           </>
-        ) : isChef ? (
+        ) : canSeeCost ? (
           <>
-            {/* Total Cost Value (Chef only) */}
+            {/* Total Cost Value (Chef + Komdir) */}
             <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-black uppercase text-[var(--text-muted)] tracking-wider block">Стоимость склада</span>
@@ -1839,7 +1844,7 @@ const MerchPage = () => {
                   <tr className="border-b border-[var(--border)] text-left bg-[var(--bg-hover)]/30">
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Товар / Категория</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest">Клуб</th>
-                    {isChef && <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Себестоимость</th>}
+                    {canSeeCost && <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Себестоимость</th>}
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Цена сотрудника</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-right">Цена продажи</th>
                     <th className="px-6 py-4 text-[10px] font-black uppercase text-[var(--text-muted)] tracking-widest text-center">В наличии</th>
@@ -1887,7 +1892,7 @@ const MerchPage = () => {
                             {p.club}
                           </span>
                         </td>
-                        {isChef && (
+                        {canSeeCost && (
                           <td className="px-6 py-4 text-right">
                             <span className="font-bold text-xs text-[var(--text-secondary)]">{(p.costPrice || 0).toLocaleString()} ₸</span>
                           </td>
@@ -1917,8 +1922,8 @@ const MerchPage = () => {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2.5">
-                            {/* Sell Button */}
-                            {!isMarketing && (
+                            {/* Sell Button — Ком-Дир только смотрит, не продаёт */}
+                            {!isMarketing && !isKomdir && (
                               <button
                                 disabled={isOut}
                                 onClick={() => {

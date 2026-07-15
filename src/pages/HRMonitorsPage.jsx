@@ -213,6 +213,22 @@ const HRMonitorsPage = () => {
     getEmployeesWithShifts(club, dateObj).then(setShiftEmployees);
   }, [canSeeActivity, activityDate, activeClub, isChef, userClub]);
 
+  // Журнал отметок за выбранную дату (постоянный, не затирается)
+  const [dayChecks, setDayChecks] = useState([]);
+  useEffect(() => {
+    if (!canSeeActivity) return;
+    const club = isChef ? activeClub : userClub;
+    if (!club) return;
+    const q = query(
+      collection(db, 'hr_monitor_checks'),
+      where('club', '==', club),
+      where('date', '==', activityDate)
+    );
+    return onSnapshot(q, snap => {
+      setDayChecks(snap.docs.map(d => d.data()));
+    }, () => setDayChecks([]));
+  }, [canSeeActivity, activityDate, activeClub, isChef, userClub]);
+
   // Delivery subscription
   useEffect(() => {
     const q = query(collection(db, 'hr_monitor_deliveries'), where('club', '==', activeClub));
@@ -376,6 +392,18 @@ const HRMonitorsPage = () => {
         lastCheckedDate: todayStr,
         lastCheckedAt:   now.toISOString(),
       });
+
+      // Постоянный журнал отметок — не затирается на следующий день,
+      // по нему «Активность» показывает сколько проверено за любую дату
+      const monitor = monitors.find(m => m.docId === docId);
+      addDoc(collection(db, 'hr_monitor_checks'), {
+        club: activeClub,
+        date: todayStr,
+        monitorDocId: docId,
+        monitorId: monitor?.monitorId || '',
+        adminName: user?.displayName || user?.email || '',
+        timeISO: now.toISOString(),
+      }).catch(() => {});
 
       // If all OTHER monitors are already checked today → this was the last one
       const others = monitors.filter(m => m.docId !== docId);
@@ -820,6 +848,44 @@ const HRMonitorsPage = () => {
                 </span>
               )}
             </div>
+
+            {/* Проверено за выбранную дату — из постоянного журнала */}
+            {(() => {
+              const uniqueMonitors = new Set(dayChecks.map(c => c.monitorDocId));
+              const checkedCount = uniqueMonitors.size;
+              const totalCount = monitors.length;
+              const times = dayChecks.map(c => c.timeISO).sort();
+              const admins = [...new Set(dayChecks.map(c => c.adminName).filter(Boolean))];
+              const fmtT = (iso) => { try { return format(new Date(iso), 'HH:mm'); } catch { return '—'; } };
+              const done = totalCount > 0 && checkedCount >= totalCount;
+              return (
+                <div style={{
+                  background: done ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
+                  border: `1px solid ${done ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+                  borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <Heart size={15} style={{ color: done ? '#10b981' : '#ef4444' }} />
+                    <span style={{ fontSize: 10, fontWeight: 900, color: done ? '#10b981' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      Проверка пульсометров · {formattedDate}
+                    </span>
+                    <span style={{ marginLeft: 'auto', fontSize: 16, fontWeight: 900, color: done ? '#10b981' : checkedCount > 0 ? '#f59e0b' : 'var(--text-muted)' }}>
+                      {checkedCount} / {totalCount}
+                    </span>
+                  </div>
+                  {checkedCount > 0 ? (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.6 }}>
+                      Отметки с {fmtT(times[0])} до {fmtT(times[times.length - 1])}
+                      {admins.length > 0 && <> · отмечали: {admins.join(', ')}</>}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+                      Отметок за этот день нет{activityDate < '2026-07-14' ? ' (журнал ведётся с 14 июля — более ранние дни могли проверяться, но не фиксировались)' : ''}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Employees on shift grouped by time */}
             {(() => {

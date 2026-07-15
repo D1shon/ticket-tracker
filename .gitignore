@@ -28,3 +28,11 @@ dist-ssr
 
 # Local scratch scripts (contain service-account keys) — never commit
 scratch/
+
+# WhatsApp bridge session keys — never commit
+wa-bridge/auth/
+wa-bridge/*.png
+
+2gis-bridge/profile/
+2gis-bridge/debug/
+2gis-bridge/node_modules/

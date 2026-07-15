@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Ticket, CheckSquare, Calendar,
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
-  RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper
+  RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
+  ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target
 } from 'lucide-react';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
@@ -44,10 +45,12 @@ const useTowelAlert = (club) => {
   return alert;
 };
 
-// Green dot on «Новости» while the freshest post is newer than the last visit
-const useNewsAlert = () => {
+// Green dot on «Новости» while the freshest VISIBLE post is newer than the last visit
+const useNewsAlert = (role) => {
   const [latest, setLatest] = useState(null);
   const [seenTick, setSeenTick] = useState(0);
+  const canSeeManagers = role === 'manager' || role === 'chef';
+  const canSeeSales = role === 'komdir' || role === 'rop' || role === 'chef'; // отдел продаж: КД + РОПы
   useEffect(() => {
     const onSeen = () => setSeenTick(t => t + 1);
     window.addEventListener('hj-news-seen', onSeen);
@@ -56,10 +59,16 @@ const useNewsAlert = () => {
   useEffect(() => {
     return onSnapshot(collection(db, 'news_posts'), snap => {
       let max = '';
-      snap.docs.forEach(d => { const t = d.data().postedAtISO || ''; if (t > max) max = t; });
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data.audience === 'managers' && !canSeeManagers) return;
+        if (data.audience === 'sales' && !canSeeSales) return;
+        const t = data.postedAtISO || '';
+        if (t > max) max = t;
+      });
       setLatest(max || null);
     }, () => setLatest(null));
-  }, []);
+  }, [canSeeManagers, canSeeSales]);
   let seen = '';
   try { seen = localStorage.getItem('hj_news_seen') || ''; } catch {}
   void seenTick;
@@ -80,12 +89,32 @@ const ALL_NAV = [
   { icon: Shirt,           label: 'Учет полотенец', path: '/towels',   primary: false },
   { icon: ShoppingBag,     label: 'Утерянные вещи', path: '/lost-items', primary: false },
   { icon: Star,            label: 'Отзывы',       path: '/reviews',     primary: false },
+  { icon: Target,          label: 'Лиды',         path: '/leads',       primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
   { icon: FileText,        label: 'Соглашение',  path: '/policy',      primary: false },
   { icon: Settings,        label: 'Настройки',   path: '/settings',    primary: false },
 ];
+
+/* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
+const NAV_GROUPS = [
+  { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/archive', '/dashboard', '/merch'] },
+  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/towels', '/lost-items', '/attendance', '/guidebook', '/leads'] },
+];
+const groupOf = (path) => NAV_GROUPS.find(g => g.paths.includes(path));
+
+const useNavGroups = () => {
+  const [openGroups, setOpenGroups] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('hj_nav_groups') || '{}'); } catch { return {}; }
+  });
+  const toggleGroup = (id) => setOpenGroups(prev => {
+    const next = { ...prev, [id]: !prev[id] };
+    try { localStorage.setItem('hj_nav_groups', JSON.stringify(next)); } catch {}
+    return next;
+  });
+  return [openGroups, toggleGroup];
+};
 
 /* ─── Desktop Sidebar ────────────────────────────────────────── */
 const DesktopSidebar = () => {
@@ -97,7 +126,7 @@ const DesktopSidebar = () => {
   const _alertClub = (user?.role === 'admin' || user?.role === 'manager') ? (user?.club?.toUpperCase() || null) : null;
   const towelAlert   = useTowelAlert(_alertClub);
   const monitorAlert = useMonitorAlert(_alertClub);
-  const newsAlert    = useNewsAlert();
+  const newsAlert    = useNewsAlert(user?.role);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -119,20 +148,64 @@ const DesktopSidebar = () => {
     return `${Math.floor(d / 86400)} д назад`;
   };
 
-  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews']);
+  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads']);
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
     }
+    if (user?.role === 'komdir' || user?.role === 'rop') {
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/leads' || item.path === '/lost-items';
+    }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN.has(item.path);
     }
+    // У менеджеров «Соглашение» живёт в Настройках
+    if (user?.role === 'manager' && item.path === '/policy') return false;
     return true;
   });
+
+  // Группировка шторками — только у шефов и менеджеров
+  const useGrouping = user?.role === 'chef' || user?.role === 'manager';
+  const [openGroups, toggleGroup] = useNavGroups();
+  const location = useLocation();
+
+  const renderItem = (item, indent = false) => {
+    const isTowelAlert   = item.path === '/towels'       && towelAlert;
+    const isMonitorAlert = item.path === '/hr-monitors'  && monitorAlert;
+    const isAlerted      = isTowelAlert || isMonitorAlert;
+    const isNewsAlert    = item.path === '/news' && newsAlert;
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        style={{
+          ...(isAlerted ? { boxShadow: '0 0 0 1.5px #ef4444', borderRadius: 10, position: 'relative' } : {}),
+          ...(indent ? { paddingLeft: 34 } : {}),
+        }}
+      >
+        <item.icon size={17} strokeWidth={1.8} />
+        <span>{item.label}</span>
+        {isAlerted && (
+          <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0, boxShadow: '0 0 6px #ef4444' }} />
+        )}
+        {isNewsAlert && (
+          <span style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, boxShadow: '0 0 6px #22c55e' }} />
+        )}
+      </NavLink>
+    );
+  };
+
+  const groups = useGrouping
+    ? NAV_GROUPS.map(g => ({ ...g, items: allowedNav.filter(i => g.paths.includes(i.path)) })).filter(g => g.items.length)
+    : [];
+  const ungrouped = useGrouping ? allowedNav.filter(i => !groupOf(i.path)) : allowedNav;
+  const newsItem = ungrouped.find(i => i.path === '/news');
+  const restItems = ungrouped.filter(i => i.path !== '/news');
 
   return (
     <aside className="sidebar">
@@ -141,29 +214,33 @@ const DesktopSidebar = () => {
       </div>
 
       <nav style={{ flex: 1, paddingTop: 8 }}>
-        {allowedNav.map(item => {
-          const isTowelAlert   = item.path === '/towels'       && towelAlert;
-          const isMonitorAlert = item.path === '/hr-monitors'  && monitorAlert;
-          const isAlerted      = isTowelAlert || isMonitorAlert;
-          const isNewsAlert    = item.path === '/news' && newsAlert;
+        {newsItem && renderItem(newsItem)}
+
+        {groups.map(g => {
+          const active = g.paths.includes(location.pathname);
+          const open = !!openGroups[g.id] || active;
+          const groupAlert = g.paths.includes('/towels') && towelAlert || g.paths.includes('/hr-monitors') && monitorAlert;
+          const GIcon = g.icon;
           return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              style={isAlerted ? { boxShadow: '0 0 0 1.5px #ef4444', borderRadius: 10, position: 'relative' } : undefined}
-            >
-              <item.icon size={17} strokeWidth={1.8} />
-              <span>{item.label}</span>
-              {isAlerted && (
-                <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0, boxShadow: '0 0 6px #ef4444' }} />
-              )}
-              {isNewsAlert && (
-                <span style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, boxShadow: '0 0 6px #22c55e' }} />
-              )}
-            </NavLink>
+            <div key={g.id}>
+              <button
+                onClick={() => toggleGroup(g.id)}
+                className="nav-item"
+                style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+              >
+                <GIcon size={17} strokeWidth={1.8} />
+                <span style={{ fontWeight: 700 }}>{g.label}</span>
+                {groupAlert && !open && (
+                  <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0, boxShadow: '0 0 6px #ef4444' }} />
+                )}
+                <ChevronDownIcon size={14} style={{ marginLeft: groupAlert && !open ? 6 : 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0, opacity: 0.6 }} />
+              </button>
+              {open && g.items.map(item => renderItem(item, true))}
+            </div>
           );
         })}
+
+        {restItems.map(item => renderItem(item))}
       </nav>
 
       <div style={{ borderTop: '1px solid var(--sidebar-border)', paddingTop: 4, paddingBottom: 8, position: 'relative' }}>
@@ -244,7 +321,8 @@ const MobileNav = () => {
   const _alertClubM  = (user?.role === 'admin' || user?.role === 'manager') ? (user?.club?.toUpperCase() || null) : null;
   const towelAlert   = useTowelAlert(_alertClubM);
   const monitorAlert = useMonitorAlert(_alertClubM);
-  const newsAlert    = useNewsAlert();
+  const newsAlert    = useNewsAlert(user?.role);
+  const [openGroupsM, toggleGroupM] = useNavGroups();
   const [showMore, setShowMore] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -313,18 +391,23 @@ const MobileNav = () => {
     return `${Math.floor(d / 86400)} д`;
   };
 
-  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews']);
+  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads']);
 
   const allowedNav = ALL_NAV.filter(item => {
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news';
+      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy';
     }
+    if (user?.role === 'komdir' || user?.role === 'rop') {
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/leads' || item.path === '/lost-items';
+    }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN_M.has(item.path);
     }
+    // У менеджеров «Соглашение» живёт в Настройках
+    if (user?.role === 'manager' && item.path === '/policy') return false;
     return true;
   });
 
@@ -516,34 +599,75 @@ const MobileNav = () => {
             {/* Handle */}
             <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
 
-            {secondaryItems.map(item => {
-              const active   = isActive(item.path);
-              const isAl     = (item.path === '/towels' && towelAlert) || (item.path === '/hr-monitors' && monitorAlert);
-              const isNews   = item.path === '/news' && newsAlert;
+            {(() => {
+              const useGrouping = user?.role === 'chef' || user?.role === 'manager';
+              const sheetGroups = useGrouping
+                ? NAV_GROUPS.map(g => ({ ...g, items: secondaryItems.filter(i => g.paths.includes(i.path)) })).filter(g => g.items.length)
+                : [];
+              const sheetRest = useGrouping ? secondaryItems.filter(i => !groupOf(i.path)) : secondaryItems;
+
+              const renderRow = (item, indent = false) => {
+                const active   = isActive(item.path);
+                const isAl     = (item.path === '/towels' && towelAlert) || (item.path === '/hr-monitors' && monitorAlert);
+                const isNews   = item.path === '/news' && newsAlert;
+                return (
+                  <button
+                    key={item.path}
+                    onClick={() => handleTabClick(item.path)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+                      padding: indent ? '12px 24px 12px 44px' : '14px 24px',
+                      background: isAl ? 'rgba(239,68,68,0.04)' : isNews ? 'rgba(34,197,94,0.05)' : 'transparent', border: 'none',
+                      cursor: 'pointer', textAlign: 'left',
+                      color: active ? 'var(--accent-purple)' : isAl ? '#ef4444' : isNews ? '#22c55e' : 'var(--text-primary)',
+                      borderLeft: active ? '3px solid var(--accent-purple)' : isAl ? '3px solid #ef4444' : isNews ? '3px solid #22c55e' : '3px solid transparent',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <item.icon size={indent ? 18 : 20} strokeWidth={1.8} />
+                    <span style={{ flex: 1, fontSize: indent ? 14 : 15, fontWeight: active || isAl || isNews ? 700 : 500 }}>{item.label}</span>
+                    {isAl
+                      ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
+                      : isNews
+                        ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
+                        : <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+                    }
+                  </button>
+                );
+              };
+
               return (
-                <button
-                  key={item.path}
-                  onClick={() => handleTabClick(item.path)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                    padding: '14px 24px', background: isAl ? 'rgba(239,68,68,0.04)' : isNews ? 'rgba(34,197,94,0.05)' : 'transparent', border: 'none',
-                    cursor: 'pointer', textAlign: 'left',
-                    color: active ? 'var(--accent-purple)' : isAl ? '#ef4444' : isNews ? '#22c55e' : 'var(--text-primary)',
-                    borderLeft: active ? '3px solid var(--accent-purple)' : isAl ? '3px solid #ef4444' : isNews ? '3px solid #22c55e' : '3px solid transparent',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <item.icon size={20} strokeWidth={1.8} />
-                  <span style={{ flex: 1, fontSize: 15, fontWeight: active || isAl || isNews ? 700 : 500 }}>{item.label}</span>
-                  {isAl
-                    ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
-                    : isNews
-                      ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
-                      : <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
-                  }
-                </button>
+                <>
+                  {sheetGroups.map(g => {
+                    const open = !!openGroupsM[g.id] || g.paths.includes(location.pathname);
+                    const groupAlert = (g.paths.includes('/towels') && towelAlert) || (g.paths.includes('/hr-monitors') && monitorAlert);
+                    const GIcon = g.icon;
+                    return (
+                      <div key={g.id}>
+                        <button
+                          onClick={() => toggleGroupM(g.id)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+                            padding: '14px 24px', background: 'var(--bg-hover)', border: 'none',
+                            cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)',
+                            borderLeft: '3px solid transparent',
+                          }}
+                        >
+                          <GIcon size={20} strokeWidth={1.8} style={{ color: 'var(--accent-purple)' }} />
+                          <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>{g.label}</span>
+                          {groupAlert && !open && (
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
+                          )}
+                          <ChevronDownIcon size={16} style={{ color: 'var(--text-muted)', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
+                        </button>
+                        {open && g.items.map(item => renderRow(item, true))}
+                      </div>
+                    );
+                  })}
+                  {sheetRest.map(item => renderRow(item))}
+                </>
               );
-            })}
+            })()}
 
             <div style={{ margin: '8px 24px 0', paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>Тема</span>

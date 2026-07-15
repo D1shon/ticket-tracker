@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCPAitt8EX3ialTb2-_1FQimmlpw5blFYk",
@@ -26,4 +25,8 @@ try {
   _db = getFirestore(app);
 }
 export const db = _db;
-export const storage = getStorage(app);
+// Storage SDK загружается лениво — нужен только при загрузке файлов
+export const getStorageLazy = async () => {
+  const { getStorage } = await import("firebase/storage");
+  return getStorage(app);
+};

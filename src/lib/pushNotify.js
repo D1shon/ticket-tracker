@@ -5,7 +5,7 @@
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
-export async function pushNotify({ title, body = '', club = null, excludeEmail = '', url = '/', tag = '' }) {
+export async function pushNotify({ title, body = '', club = null, excludeEmail = '', url = '/', tag = '', roles = null }) {
   try {
     const snap = await getDocs(collection(db, 'push_tokens'));
     const exclude = (excludeEmail || '').toLowerCase();
@@ -14,6 +14,7 @@ export async function pushNotify({ title, body = '', club = null, excludeEmail =
       const t = d.data();
       if (exclude && (t.email || '').toLowerCase() === exclude) return;
       if (club && t.club && (t.club || '').toUpperCase() !== (club || '').toUpperCase()) return;
+      if (Array.isArray(roles) && roles.length > 0 && !roles.includes(t.role || '')) return;
       tokens.push(d.id);
     });
     if (tokens.length === 0) return;

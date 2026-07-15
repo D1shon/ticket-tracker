@@ -136,6 +136,7 @@ const ChecklistDetail = () => {
       club,
       excludeEmail: user?.email || '',
       url: '/checklists',
+      roles: ['manager', 'chef'],
     });
     navigate(`/checklists?club=${club}&date=${dateKey}`);
   };

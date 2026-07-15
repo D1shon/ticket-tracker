@@ -26,8 +26,6 @@ export const USER_ROLES = {
   // ── VILLA ─────────────────────────────────────────────────────────────────
   'diassd9806@gmail.com':   { role: 'manager', club: 'VILLA', displayName: 'Диас' },
   'kelessovaan@gmail.com':  { role: 'manager', club: 'VILLA', displayName: 'Алина' },
-  'saltanat@hj.fit':        { role: 'manager', club: 'VILLA', displayName: 'Салтанат' },
-  'blinsalta19@gmail.com':  { role: 'manager', club: 'VILLA', displayName: 'Салтанат' },
 
   // ── NURLY ORDA ────────────────────────────────────────────────────────────
   'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнур' },
@@ -59,6 +57,16 @@ export const USER_ROLES = {
 
   // ── Marketing (restricted warehouse views, all clubs) ─────────────────────
   'guldana.k@hj.fit': { role: 'marketing', club: null, displayName: 'Гульдана' },
+
+  // ── Коммерческий директор (новости, склад, соглашения, настройки) ─────────
+  'madina@hj.fit': { role: 'komdir', club: null, displayName: 'Мадина' },
+
+  // ── РОПы (руководители отделов продаж) — права как у Ком-Дира ────────────
+  'saltanat@hj.fit':       { role: 'rop', club: null, displayName: 'Салтанат' }, // РОП VILLA
+  'blinsalta19@gmail.com': { role: 'rop', club: null, displayName: 'Салтанат' }, // РОП VILLA
+  'umitony99@gmail.com':   { role: 'rop', club: null, displayName: 'Умида' },    // РОП COLIBRI
+  'aiman.k@hj.fit':        { role: 'rop', club: null, displayName: 'Айман' },    // РОП 4YOU
+  'iamkamilya23@gmail.com': { role: 'rop', club: null, displayName: 'Камиля' },  // РОП NURLY ORDA
 
   // ── Viewer (no tickets, schedule, calls, dashboard, archive) ──────────────
   'nurali.m@hj.fit': { role: 'viewer', club: null, displayName: 'Нурали' },
@@ -136,8 +144,7 @@ import {
   getDocs,
   serverTimestamp
 } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from '../lib/firebase';
+import { auth, db, getStorageLazy } from '../lib/firebase';
 import { formatAuthor } from '../utils/formatters';
 import { refreshPushToken } from '../lib/push';
 import { pushNotify } from '../lib/pushNotify';
@@ -639,6 +646,8 @@ export const TicketProvider = ({ children }) => {
     }
 
     const fileId = Math.random().toString(36).slice(2, 11);
+    const { ref, uploadBytesResumable, getDownloadURL } = await import('firebase/storage');
+    const storage = await getStorageLazy();
     const storageRef = ref(storage, `attachments/${fileId}_${file.name}`);
     const task = uploadBytesResumable(storageRef, file);
 

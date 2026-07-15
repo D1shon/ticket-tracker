@@ -57,6 +57,8 @@ const IMPORTERS = {
   LostItemsPage:   () => import('./pages/LostItemsPage'),
   ReviewsPage:     () => import('./pages/ReviewsPage'),
   NewsPage:        () => import('./pages/NewsPage'),
+  WaDemoPage:      () => import('./pages/WaDemoPage'),
+  LeadsPage:       () => import('./pages/LeadsPage'),
 };
 
 const Dashboard       = lazyPage(IMPORTERS.Dashboard);
@@ -79,6 +81,8 @@ const TowelsPage      = lazyPage(IMPORTERS.TowelsPage);
 const LostItemsPage   = lazyPage(IMPORTERS.LostItemsPage);
 const ReviewsPage     = lazyPage(IMPORTERS.ReviewsPage);
 const NewsPage        = lazyPage(IMPORTERS.NewsPage);
+const WaDemoPage      = lazyPage(IMPORTERS.WaDemoPage);
+const LeadsPage       = lazyPage(IMPORTERS.LeadsPage);
 
 // Last-resort screen instead of a black page if a chunk still fails
 class PageErrorBoundary extends React.Component {
@@ -99,8 +103,8 @@ class PageErrorBoundary extends React.Component {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'var(--bg-primary)', padding: 24 }}>
         <div style={{ fontSize: 40 }}>🔄</div>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', textAlign: 'center' }}>Вышло обновление платформы</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 280 }}>Нажмите кнопку, чтобы загрузить свежую версию</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', textAlign: 'center' }}>Не удалось открыть страницу</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 300 }}>Нажмите кнопку — страница перезагрузится. Если повторяется, напишите Дильшату, какой раздел не открывается</div>
         <button onClick={this.handleReload} style={{ padding: '12px 28px', borderRadius: 14, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
           Обновить
         </button>
@@ -147,6 +151,7 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     const fallback = user.role === 'admin' ? '/schedule'
       : user.role === 'marketing' ? '/merch'
+      : (user.role === 'komdir' || user.role === 'rop') ? '/news'
       : user.role === 'viewer'    ? '/checklists'
       : '/tickets';
     return <Navigate to={fallback} replace />;
@@ -199,6 +204,7 @@ const AppContent = () => {
     if (!user) return <Navigate to="/login" replace />;
     const home = user.role === 'admin' ? '/schedule'
       : user.role === 'marketing' ? '/merch'
+      : (user.role === 'komdir' || user.role === 'rop') ? '/news'
       : user.role === 'viewer'    ? '/checklists'
       : '/tickets';
     return <Navigate to={home} replace />;
@@ -226,7 +232,7 @@ const AppContent = () => {
       <React.Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={user ? <Navigate to={
-          user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : user.role === 'viewer' ? '/checklists' : '/tickets'
+          user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : (user.role === 'komdir' || user.role === 'rop') ? '/news' : user.role === 'viewer' ? '/checklists' : '/tickets'
         } replace /> : <Login />} />
         
         <Route path="/scan" element={
@@ -276,7 +282,7 @@ const AppContent = () => {
         } />
 
         <Route path="/merch" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'marketing', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'marketing', 'viewer', 'komdir', 'rop']}>
             <MerchPage />
           </ProtectedLayout>
         } />
@@ -313,7 +319,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/policy" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'marketing', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'marketing', 'viewer', 'komdir', 'rop']}>
             <PolicyPage />
           </ProtectedLayout>
         } />
@@ -328,22 +334,32 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/lost-items" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'komdir', 'rop']}>
             <LostItemsPage />
           </ProtectedLayout>
         } />
         <Route path="/reviews" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'komdir', 'rop']}>
             <ReviewsPage />
           </ProtectedLayout>
         } />
         <Route path="/news" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer', 'komdir', 'rop']}>
             <NewsPage />
           </ProtectedLayout>
         } />
+        <Route path="/wa-demo" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+            <WaDemoPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/leads" element={
+          <ProtectedLayout allowedRoles={['chef', 'komdir', 'rop', 'manager', 'admin']}>
+            <LeadsPage />
+          </ProtectedLayout>
+        } />
         <Route path="/settings" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer', 'komdir', 'rop']}>
             <SettingsPage />
           </ProtectedLayout>
         } />

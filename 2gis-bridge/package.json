@@ -1,0 +1,15 @@
+{
+  "name": "hj-2gis-bridge",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "HJ Track — мост публикации ответов на отзывы 2ГИС через личный кабинет",
+  "scripts": {
+    "start": "node bridge.mjs",
+    "login": "node bridge.mjs login"
+  },
+  "dependencies": {
+    "firebase": "^12.0.0",
+    "playwright": "^1.49.0"
+  }
+}

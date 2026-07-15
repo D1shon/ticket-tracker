@@ -128,12 +128,12 @@ const GuidebookPage = () => {
 
   // Filter Guidebook Sections
   const getFilteredData = () => {
-    const sectionItems = guidebookData.filter(item => item.section === activeSection);
-    if (!searchQuery) return sectionItems;
-    
+    if (!searchQuery) return guidebookData.filter(item => item.section === activeSection);
+
+    // Поиск идёт по ВСЕМ разделам, а не только по открытому
     const query = searchQuery.toLowerCase();
-    return sectionItems.filter(item => 
-      item.title.toLowerCase().includes(query) || 
+    return guidebookData.filter(item =>
+      item.title.toLowerCase().includes(query) ||
       (item.subsection && item.subsection.toLowerCase().includes(query)) ||
       (item.blocks && item.blocks.some(block => block.text && block.text.toLowerCase().includes(query)))
     );
@@ -682,7 +682,7 @@ const GuidebookPage = () => {
           <div>
             {filteredItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                <span>В данном разделе регламентов по запросу ничего не найдено.</span>
+                <span>{searchQuery ? 'По запросу ничего не найдено ни в одном разделе регламентов.' : 'В данном разделе пока нет статей.'}</span>
                 {isChef && !searchQuery && (
                   <button
                     onClick={openNewEditor}
@@ -731,7 +731,9 @@ const GuidebookPage = () => {
                             </h4>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                               <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {item.subsection || 'Общее'}
+                                {searchQuery
+                                  ? (SECTIONS.find(s => s.id === item.section)?.label || item.section)
+                                  : (item.subsection || 'Общее')}
                               </span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, background: 'rgba(255,255,255,0.03)', padding: '2px 6px', borderRadius: 4 }}>

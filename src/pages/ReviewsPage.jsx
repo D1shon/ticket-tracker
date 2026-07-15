@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Star, ExternalLink, MessageCircle, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Star, ExternalLink, MessageCircle, RefreshCw, CheckCircle2, Send, Clock, AlertTriangle, X } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { REVIEW_BRANCHES, REVIEW_CLUB_URLS, fetchReviews } from '../lib/reviews2gis';
+import WaPanel from './WaDemoPage';
+import { db } from '../lib/firebase';
+import { collection, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
@@ -21,10 +25,57 @@ const ReviewsPage = () => {
   const userClub = (user?.club || '').toUpperCase();
 
   const clubAvailable = CLUBS.includes(userClub);
+  const [source, setSource] = useState('2gis'); // '2gis' | 'whatsapp'
   const [activeClub, setActiveClub] = useState(clubAvailable ? userClub : CLUBS[0]);
   const [state, setState] = useState({ loading: true, rating: null, count: null, reviews: [], nextLink: null, error: null });
   const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState('all'); // all | bad | unanswered
+
+  // Ответы через мост 2ГИС: review_replies/{reviewId} + статус моста gis_bridge/_bridge
+  const [replies, setReplies] = useState({});
+  const [gisBridge, setGisBridge] = useState(null);
+  const [replyFor, setReplyFor] = useState(null); // id отзыва с открытой формой
+  const [replyText, setReplyText] = useState('');
+
+  useEffect(() => {
+    const u1 = onSnapshot(collection(db, 'review_replies'), snap => {
+      const m = {};
+      snap.docs.forEach(d => { m[d.id] = d.data(); });
+      setReplies(m);
+    }, () => {});
+    const u2 = onSnapshot(doc(db, 'gis_bridge', '_bridge'), d => setGisBridge(d.data() || null), () => {});
+    return () => { u1(); u2(); };
+  }, []);
+
+  const bridgeOnline = gisBridge?.heartbeatISO && (Date.now() - new Date(gisBridge.heartbeatISO).getTime()) < 12 * 60 * 1000;
+
+  const submitReply = async (r) => {
+    const text = replyText.trim();
+    if (!text) return;
+    try {
+      await setDoc(doc(db, 'review_replies', String(r.id)), {
+        reviewId: String(r.id),
+        club: activeClub,
+        branchId: REVIEW_BRANCHES[activeClub],
+        reviewAuthor: r.user?.name || '',
+        reviewDateISO: r.date_created || '',
+        reviewSnippet: (r.text || '').slice(0, 300),
+        reviewRating: r.rating || 0,
+        text,
+        author: user?.displayName || '',
+        authorEmail: user?.email || '',
+        status: 'pending',
+        errorNote: null,
+        createdAtISO: new Date().toISOString(),
+        updatedAt: serverTimestamp(),
+      });
+      setReplyFor(null);
+      setReplyText('');
+      toast.success('Ответ поставлен в очередь на публикацию в 2ГИС');
+    } catch {
+      toast.error('Не удалось сохранить ответ');
+    }
+  };
 
   const load = useCallback(async (club) => {
     setState(s => ({ ...s, loading: true, error: null }));
@@ -84,7 +135,7 @@ const ReviewsPage = () => {
             <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, margin: 0 }}>Отзывы клиентов из всех источников</p>
           </div>
         </div>
-        {visibleClubs.length > 1 && (
+        {source === '2gis' && visibleClubs.length > 1 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {visibleClubs.map(club => (
               <button key={club} onClick={() => setActiveClub(club)} style={{
@@ -98,6 +149,39 @@ const ReviewsPage = () => {
         )}
       </div>
 
+      {/* Sources — переключение прямо здесь, без переходов */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Источники:</span>
+        <button onClick={() => setSource('2gis')} style={{
+          padding: '6px 14px', borderRadius: 10, fontSize: 11, fontWeight: 800, cursor: 'pointer',
+          border: '1px solid ' + (source === '2gis' ? 'rgba(46,204,64,0.6)' : 'var(--border)'),
+          background: source === '2gis' ? 'rgba(46,204,64,0.15)' : 'transparent',
+          color: source === '2gis' ? '#2ecc40' : 'var(--text-muted)',
+        }}>2ГИС</button>
+        <button onClick={() => setSource('whatsapp')} style={{
+          padding: '6px 14px', borderRadius: 10, fontSize: 11, fontWeight: 800, cursor: 'pointer',
+          border: '1px solid ' + (source === 'whatsapp' ? 'rgba(37,211,102,0.6)' : 'var(--border)'),
+          background: source === 'whatsapp' ? 'rgba(37,211,102,0.15)' : 'transparent',
+          color: source === 'whatsapp' ? '#25D366' : 'var(--text-muted)',
+        }}>WhatsApp</button>
+        <span style={{ padding: '6px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, border: '1px dashed var(--border)', color: 'var(--text-muted)', opacity: 0.7 }}>Техподдержка · скоро</span>
+      </div>
+
+      {/* ═══ WhatsApp — рабочее окно прямо здесь ═══ */}
+      {source === 'whatsapp' && <WaPanel embedded />}
+
+      {source === '2gis' && (<>
+      {/* Статус моста публикации ответов */}
+      {gisBridge && !bridgeOnline && (
+        <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', fontSize: 12, fontWeight: 700, color: '#f59e0b' }}>
+          ⚠️ Мост 2ГИС офлайн — новые ответы сохранятся и опубликуются, когда включится компьютер в офисе
+        </div>
+      )}
+      {isChef && bridgeOnline && gisBridge?.auth === 'need_login' && (
+        <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', fontSize: 12, fontWeight: 700, color: '#ef4444' }}>
+          🔑 Нужен вход в личный кабинет 2ГИС на офисном компьютере — ответы не публикуются
+        </div>
+      )}
       {/* Rating summary + actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '12px 18px' }}>
@@ -117,15 +201,6 @@ const ReviewsPage = () => {
         >
           <ExternalLink size={14} /> Открыть в 2ГИС
         </a>
-      </div>
-
-      {/* Sources — 2GIS live, остальные подключаются следующими */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Источники:</span>
-        <span style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, fontWeight: 800, background: 'rgba(46,204,64,0.12)', border: '1px solid rgba(46,204,64,0.4)', color: '#2ecc40' }}>2ГИС ✓</span>
-        {['Техподдержка', 'Slack'].map(s => (
-          <span key={s} style={{ padding: '5px 12px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: 'transparent', border: '1px dashed var(--border)', color: 'var(--text-muted)', opacity: 0.7 }}>{s} · скоро</span>
-        ))}
       </div>
 
       {/* Filters */}
@@ -181,14 +256,29 @@ const ReviewsPage = () => {
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 800, color: '#22c55e', background: 'rgba(34,197,94,0.1)', padding: '4px 8px', borderRadius: 8, whiteSpace: 'nowrap' }}>
                     <CheckCircle2 size={10} /> Отвечено
                   </span>
-                ) : (
-                  <a
-                    href={REVIEW_CLUB_URLS[activeClub]}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 800, color: 'var(--accent-purple)', background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', padding: '5px 10px', borderRadius: 8, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                ) : replies[String(r.id)]?.status === 'pending' ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '4px 8px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                    <Clock size={10} /> Публикуется…
+                  </span>
+                ) : replies[String(r.id)]?.status === 'sent' ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 800, color: '#22c55e', background: 'rgba(34,197,94,0.1)', padding: '4px 8px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                    <CheckCircle2 size={10} /> Ответ отправлен
+                  </span>
+                ) : replies[String(r.id)]?.status === 'error' ? (
+                  <button
+                    onClick={() => { setReplyFor(r.id); setReplyText(replies[String(r.id)]?.text || ''); }}
+                    title={replies[String(r.id)]?.errorNote || 'Ошибка публикации'}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '4px 8px', borderRadius: 8, whiteSpace: 'nowrap', cursor: 'pointer' }}
                   >
-                    <MessageCircle size={11} /> Ответить в 2ГИС
-                  </a>
+                    <AlertTriangle size={10} /> Ошибка · повторить
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setReplyFor(replyFor === r.id ? null : r.id); setReplyText(''); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 800, color: 'var(--accent-purple)', background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', padding: '5px 10px', borderRadius: 8, whiteSpace: 'nowrap', cursor: 'pointer' }}
+                  >
+                    <MessageCircle size={11} /> Ответить
+                  </button>
                 )}
               </div>
 
@@ -208,6 +298,48 @@ const ReviewsPage = () => {
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{r.official_answer.text}</div>
                 </div>
               )}
+
+              {/* Наш ответ, отправленный через платформу (пока 2ГИС его не показал в official_answer) */}
+              {!r.official_answer && ['pending', 'sent'].includes(replies[String(r.id)]?.status) && (
+                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: 'rgba(245,158,11,0.05)', border: '1px dashed rgba(245,158,11,0.3)' }}>
+                  <div style={{ fontSize: 10, fontWeight: 900, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                    Ответ {replies[String(r.id)].author ? `· ${replies[String(r.id)].author}` : ''} {replies[String(r.id)].status === 'pending' ? '· ждёт публикации' : '· отправлен в 2ГИС'}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{replies[String(r.id)].text}</div>
+                </div>
+              )}
+
+              {/* Форма ответа */}
+              {replyFor === r.id && !r.official_answer && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <textarea
+                    autoFocus
+                    rows={4}
+                    placeholder={`Ответ от имени Hero's Journey ${activeClub}…`}
+                    value={replyText}
+                    onChange={e => setReplyText(e.target.value)}
+                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 12px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', fontWeight: 500, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.55 }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      onClick={() => submitReply(r)}
+                      disabled={!replyText.trim()}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: replyText.trim() ? 1 : 0.5 }}
+                    >
+                      <Send size={12} /> Опубликовать в 2ГИС
+                    </button>
+                    <button
+                      onClick={() => { setReplyFor(null); setReplyText(''); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      <X size={12} /> Отмена
+                    </button>
+                    {!bridgeOnline && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>Мост офлайн — опубликуется, когда включится компьютер в офисе</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 
@@ -221,6 +353,7 @@ const ReviewsPage = () => {
           )}
         </div>
       )}
+      </>)}
     </div>
   );
 };
