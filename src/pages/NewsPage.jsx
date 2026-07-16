@@ -100,16 +100,16 @@ const NewsPage = () => {
             <div key={p.id} style={{
               background: 'var(--bg-card)', borderRadius: 16, padding: '16px 18px',
               border: '1px solid var(--border)',
-              borderLeft: `3px solid ${p.source === 'telegram' ? '#2AABEE' : 'var(--accent-purple)'}`,
+              borderLeft: `3px solid ${p.source === 'release' ? '#4f8ef7' : p.source === 'telegram' ? '#2AABEE' : 'var(--accent-purple)'}`,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                 <span style={{
                   display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7,
-                  background: p.source === 'telegram' ? 'rgba(42,171,238,0.12)' : 'rgba(139,92,246,0.12)',
-                  color: p.source === 'telegram' ? '#2AABEE' : 'var(--accent-purple)',
+                  background: p.source === 'release' ? 'rgba(79,142,247,0.12)' : p.source === 'telegram' ? 'rgba(42,171,238,0.12)' : 'rgba(139,92,246,0.12)',
+                  color: p.source === 'release' ? '#4f8ef7' : p.source === 'telegram' ? '#2AABEE' : 'var(--accent-purple)',
                   textTransform: 'uppercase', letterSpacing: '0.05em',
                 }}>
-                  {p.source === 'telegram' ? <><Send size={9} /> Telegram</> : `HJ Track${p.author ? ` · ${p.author}` : ''}`}
+                  {p.source === 'release' ? <>📦 Обновление{p.product ? ` · ${p.product}` : ''}</> : p.source === 'telegram' ? <><Send size={9} /> Telegram</> : `HJ Track${p.author ? ` · ${p.author}` : ''}`}
                 </span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{fmtDate(p.postedAtISO)}</span>
                 {canPost && (
