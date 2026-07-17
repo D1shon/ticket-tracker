@@ -36,3 +36,12 @@ wa-bridge/*.png
 2gis-bridge/profile/
 2gis-bridge/debug/
 2gis-bridge/node_modules/
+
+admin-bridge/profile/
+admin-bridge/node_modules/
+admin-bridge/capture.json
+
+# Paused/exploratory scripts — not for the repo
+admin-bridge/
+2gis-bridge/branches.mjs
+2gis-bridge/check-orgs.mjs

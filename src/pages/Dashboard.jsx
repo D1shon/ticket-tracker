@@ -118,7 +118,7 @@ const Dashboard = () => {
 
         {!userClub && (
           <div className="flex items-center gap-2 bg-[var(--bg-card)] p-1.5 rounded-2xl border border-[var(--border)] shadow-2xl backdrop-blur-md overflow-x-auto max-w-full no-scrollbar flex-nowrap">
-            {['ВCE КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'].map(tab => (
+            {['ВCE КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}

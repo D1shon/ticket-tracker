@@ -8,6 +8,7 @@ const clubColors = {
   'COLIBRI': 'badge-colibri',
   'VILLA': 'badge-villa',
   'NURLY ORDA': 'badge-nurly',
+  'PROMENADE': 'badge-promenade',
   'PRIME': 'badge-prime',
 };
 

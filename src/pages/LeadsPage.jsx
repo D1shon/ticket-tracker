@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
-const CLUB_COLORS = { '4YOU': '#4f8ef7', 'COLIBRI': '#9b5de5', 'VILLA': '#f59e0b', 'NURLY ORDA': '#22c55e' };
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+const CLUB_COLORS = { '4YOU': '#4f8ef7', 'COLIBRI': '#9b5de5', 'VILLA': '#f59e0b', 'NURLY ORDA': '#22c55e', 'PROMENADE': '#14b8a6' };
 
 const STATUS_META = {
   new:       { label: 'Новый',     color: '#4f8ef7' },
@@ -22,10 +22,10 @@ const STATUS_META = {
 // отмечают «Принято» и «Связались».
 const LeadsPage = () => {
   const { user } = useTickets();
-  // Менеджеры и админы: видят лиды своего клуба и добавляют «живые» визиты.
-  // Обрабатывают лиды (Принято/Связались) — Ком-Дир и шефы.
-  const clubScoped = user?.role === 'manager' || user?.role === 'admin';
+  // Менеджеры, админы и РОПы видят лиды только своего клуба; Ком-Дир и шефы — все.
+  // Обрабатывают лиды (Принято/Связались) — Ком-Дир, РОПы и шефы.
   const myClub = (user?.club || '').toUpperCase();
+  const clubScoped = user?.role === 'manager' || user?.role === 'admin' || (user?.role === 'rop' && !!myClub);
   const canHandle = user?.role === 'chef' || user?.role === 'komdir' || user?.role === 'rop';
 
   const [leads, setLeads] = useState([]);
@@ -63,6 +63,7 @@ const LeadsPage = () => {
         body: `👋 Живой визит: ${name} — ${text.slice(0, 80)}`,
         excludeEmail: user?.email || '',
         url: '/leads',
+        club, // РОП чужого клуба пуш не получит (у Ком-Дира club=null — получит всё)
         roles: ['komdir', 'rop'],
       });
       setShowAdd(false);
@@ -189,11 +190,16 @@ const LeadsPage = () => {
                       <UserPlus size={10} /> Живой визит{l.createdBy ? ` · ${l.createdBy}` : ''}
                     </span>
                   )}
-                  {l.phone && (
+                  {l.phone ? (
                     <a href={`https://wa.me/${l.phone}`} target="_blank" rel="noopener noreferrer"
                       style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#25D366', textDecoration: 'none' }}>
                       <Phone size={11} /> +{l.phone}
                     </a>
+                  ) : l.source !== 'manual' && (
+                    <span title="WhatsApp скрыл номер клиента (приватность). Ответьте в ленте WhatsApp клуба."
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#25D366' }}>
+                      <MessageCircle size={11} /> WhatsApp · номер скрыт
+                    </span>
                   )}
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', marginLeft: 'auto' }}>
                     <Clock size={10} /> {fmtDate(l.timestampISO)}

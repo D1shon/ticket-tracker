@@ -11,6 +11,7 @@ const DEFAULT_POLICY_URLS = {
   'COLIBRI': 'https://herosjourney.kz/policy/colibri',
   'VILLA': 'https://herosjourney.kz/policy/villa',
   'NURLY ORDA': 'https://herosjourney.kz/policy/nurlyorda',
+  'PROMENADE': 'https://herosjourney.kz/policy/promenade',
 };
 
 const SettingsPage = () => {
@@ -252,6 +253,7 @@ const SettingsPage = () => {
     { name: 'COLIBRI', color: '#9b5de5' },
     { name: 'VILLA', color: '#f59e0b' },
     { name: 'NURLY ORDA', color: '#22c55e' },
+    { name: 'PROMENADE', color: '#14b8a6' },
   ];
 
   const Toggle = ({ enabled, setEnabled }) => (

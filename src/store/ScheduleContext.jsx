@@ -306,7 +306,7 @@ export const ScheduleProvider = ({ children }) => {
   useEffect(() => {
     if (employeesLoading || loading) return;
 
-    const clubs = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+    const clubs = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
     
     // Find clubs that have no employees in the current month
     const emptyClubs = clubs.filter(club => {

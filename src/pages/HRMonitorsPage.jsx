@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 
 const STATUS_OPTIONS = [
   { value: 'working', label: 'Работает', color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: CheckCircle2 },

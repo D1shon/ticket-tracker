@@ -45,20 +45,17 @@ async function saveDebug(page, tag) {
   } catch (e) { log('debug save fail', e.message); }
 }
 
-// Форма входа у 2ГИС живёт на том же URL (account.2gis.com), поэтому
-// проверяем содержимое страницы: поле пароля видно — значит не залогинены.
-async function hasLoginForm(page) {
-  const pwd = page.locator('input[type="password"]:visible');
-  if (await pwd.count()) return true;
-  const body = await page.innerText('body').catch(() => '');
-  return /Забыли пароль|СберБизнес ID/i.test(body) && /Войти/i.test(body);
+// Признак входа, независимый от языка интерфейса (ru/kk): после логина
+// кабинет всегда редиректит на /orgs/<id>/... — форма входа живёт на корне.
+function urlLoggedIn(page) {
+  return /\/orgs\//.test(page.url());
 }
 
 async function isLoggedIn(page) {
   try {
     await page.goto(CABINET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    await page.waitForTimeout(5000);
-    return !(await hasLoginForm(page));
+    await page.waitForTimeout(6000);
+    return urlLoggedIn(page);
   } catch { return false; }
 }
 
@@ -156,9 +153,12 @@ async function main() {
   db = getFirestore(fb);
   log('[2gis-bridge] Firestore подключён');
 
+  // 2ГИС убивает сессию при детекте headless-браузера, поэтому мост ВСЕГДА
+  // работает в видимом окне (и при логине, и в рабочем режиме). На офисном ПК
+  // это отдельное окно Chrome — его можно свернуть, оно не мешает.
   const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: !LOGIN_MODE,
-    viewport: { width: 1440, height: 900 },
+    headless: false,
+    viewport: { width: 1280, height: 800 },
     locale: 'ru-RU',
   });
   const page = ctx.pages()[0] || await ctx.newPage();
@@ -166,13 +166,12 @@ async function main() {
   if (LOGIN_MODE) {
     log('Открываю личный кабинет 2ГИС — войдите в аккаунт в этом окне.');
     await page.goto(CABINET_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    // Ждём входа до 15 минут, проверяя каждые 10 секунд
+    // Ждём входа до 15 минут: вход засчитан, только когда URL стал /orgs/…
     for (let i = 0; i < 90; i++) {
       await page.waitForTimeout(10000);
-      const stillLogin = await hasLoginForm(page).catch(() => true);
-      if (!stillLogin) {
+      if (urlLoggedIn(page)) {
         await page.waitForTimeout(5000); // дать кабинету догрузиться
-        log('Вход выполнен, профиль сохранён. Запустите мост: npm start');
+        log('Вход выполнен (кабинет открыт: ' + page.url().slice(0, 60) + '…). Профиль сохранён.');
         await setBridge({ auth: 'ok', heartbeatISO: new Date().toISOString() });
         await ctx.close();
         process.exit(0);

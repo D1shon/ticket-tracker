@@ -3,16 +3,19 @@
 const KEY = '6e7e1929-4ea9-4a5d-8c05-d601860389bd';
 
 export const REVIEW_BRANCHES = {
-  '4YOU':    '70000001105005291',
-  'COLIBRI': '70000001085349944',
-  'VILLA':   '70000001102000129',
-  // 'NURLY ORDA': пока нет карточки в 2ГИС
+  '4YOU':       '70000001105005291',
+  'COLIBRI':    '70000001085349944',
+  'VILLA':      '70000001102000129',
+  'NURLY ORDA': '70000001055382008', // БЦ Нурлы Орда, Кабанбай батыра 11/5, Астана
+  'PROMENADE':  '70000001099794659', // ТРЦ PROMENADE, Абая 44а, Алматы
 };
 
 export const REVIEW_CLUB_URLS = {
-  '4YOU':    'https://2gis.kz/almaty/firm/70000001105005291/tab/reviews',
-  'COLIBRI': 'https://2gis.kz/almaty/firm/70000001085349944/tab/reviews',
-  'VILLA':   'https://2gis.kz/almaty/firm/70000001102000129/tab/reviews',
+  '4YOU':       'https://2gis.kz/almaty/firm/70000001105005291/tab/reviews',
+  'COLIBRI':    'https://2gis.kz/almaty/firm/70000001085349944/tab/reviews',
+  'VILLA':      'https://2gis.kz/almaty/firm/70000001102000129/tab/reviews',
+  'NURLY ORDA': 'https://2gis.kz/astana/firm/70000001055382008/tab/reviews',
+  'PROMENADE':  'https://2gis.kz/almaty/firm/70000001099794659/tab/reviews',
 };
 
 /** Fetch reviews page. Returns { meta: {rating, count}, reviews: [...], nextLink } */

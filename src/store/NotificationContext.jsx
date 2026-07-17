@@ -443,12 +443,48 @@ export const NotificationProvider = ({ children }) => {
         if (!inWindow) return;
 
         const snap = await getDocs(collection(db, 'push_tokens'));
-        const tokens = snap.docs.map(d => ({ t: d.id, club: d.data().club || null }));
+        const tokens = snap.docs.map(d => ({ t: d.id, club: d.data().club || null, role: d.data().role || null }));
         await fetch('/api/scheduled-reminders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tokens }),
         });
+      } catch {}
+    };
+    check();
+    const iv = setInterval(check, 60_000);
+    return () => clearInterval(iv);
+  }, [currentUserEmail]);
+
+  // ─── Напоминание о запланированном созвоне за ~5 минут до начала ─────────
+  // Дедуп между клиентами: маркер calls_notified/{callId} + push tag
+  useEffect(() => {
+    if (!currentUserEmail) return;
+    const check = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'scheduled_calls'));
+        const now = Date.now();
+        for (const d of snap.docs) {
+          const c = d.data();
+          const start = new Date(c.startISO || 0).getTime();
+          const minsLeft = (start - now) / 60000;
+          if (minsLeft > 6 || minsLeft < -1) continue; // окно: за 6..0 минут до начала
+          const markerRef = doc(db, 'calls_notified', d.id);
+          const marker = await getDoc(markerRef);
+          if (marker.exists()) continue;
+          await setDoc(markerRef, { notifiedAtISO: new Date().toISOString() });
+          const isPrivate = c.visibility === 'private' && (c.participants || []).length > 0;
+          pushNotify({
+            title: `${isPrivate ? '🔒' : '📞'} Созвон через 5 минут`,
+            body: `${c.room}${c.note ? ` · ${c.note}` : ''} — заходите в комнату${c.createdBy ? ` (создал(а): ${c.createdBy})` : ''}`,
+            url: '/calls',
+            tag: `call-${d.id}`,
+            // приватный — только участникам и создателю; общий — всем шефам и менеджерам
+            ...(isPrivate
+              ? { emails: [...c.participants, c.createdByEmail].filter(Boolean) }
+              : { roles: ['chef', 'manager'] }),
+          });
+        }
       } catch {}
     };
     check();

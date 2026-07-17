@@ -6,7 +6,7 @@ import { collection, onSnapshot, query, where, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useTickets } from '../store/TicketContext';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 
 // ── WebRTC local subnet check ─────────────────────────────────────
 async function getLocalIPs() {

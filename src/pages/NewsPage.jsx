@@ -239,16 +239,18 @@ const NewsPage = () => {
             <div key={p.id} style={{
               background: 'var(--bg-card)', borderRadius: 16, padding: '16px 18px',
               border: '1px solid var(--border)',
-              borderLeft: `3px solid ${p.source === 'telegram' ? '#2AABEE' : 'var(--accent-purple)'}`,
+              borderLeft: `3px solid ${p.source === 'telegram' ? '#2AABEE' : p.source === 'release' ? '#22c55e' : 'var(--accent-purple)'}`,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                 <span style={{
                   display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7,
-                  background: p.source === 'telegram' ? 'rgba(42,171,238,0.12)' : 'rgba(139,92,246,0.12)',
-                  color: p.source === 'telegram' ? '#2AABEE' : 'var(--accent-purple)',
+                  background: p.source === 'telegram' ? 'rgba(42,171,238,0.12)' : p.source === 'release' ? 'rgba(34,197,94,0.12)' : 'rgba(139,92,246,0.12)',
+                  color: p.source === 'telegram' ? '#2AABEE' : p.source === 'release' ? '#22c55e' : 'var(--accent-purple)',
                   textTransform: 'uppercase', letterSpacing: '0.05em',
                 }}>
-                  {p.source === 'telegram' ? <><Send size={9} /> Telegram</> : `HJ Track${p.author ? ` · ${p.author}` : ''}`}
+                  {p.source === 'telegram' ? <><Send size={9} /> Telegram</>
+                    : p.source === 'release' ? `🚀 Релиз${p.author && p.author !== 'Релиз' ? ` · ${p.author}` : ''}`
+                    : `HJ Track${p.author ? ` · ${p.author}` : ''}`}
                 </span>
                 {p.audience === 'managers' && (
                   <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>

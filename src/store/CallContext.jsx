@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
+import { AIDenoiserExtension } from 'agora-extension-ai-denoiser';
 import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
 import { db } from '../lib/firebase';
@@ -8,6 +9,37 @@ import { doc, setDoc, deleteDoc, updateDoc, deleteField, onSnapshot, collection,
 const CallContext = createContext();
 
 const APP_ID = 'bb4329d6bc93488596e037c5ad1a96c9';
+
+// ── ИИ-шумоподавление Agora: убирает клавиатуру, вентиляторы, фоновый шум зала.
+// WASM-модули лежат в public/denoiser; если браузер не поддерживает —
+// остаёмся на встроенном браузерном шумодаве (ANS), звонок не ломается.
+let denoiserExt = null;
+try {
+  denoiserExt = new AIDenoiserExtension({ assetsPath: '/denoiser' });
+  if (denoiserExt.checkCompatibility && !denoiserExt.checkCompatibility()) {
+    denoiserExt = null;
+  } else {
+    AgoraRTC.registerExtensions([denoiserExt]);
+    denoiserExt.onloaderror = (e) => { console.warn('[denoiser] load error:', e); denoiserExt = null; };
+  }
+} catch (e) {
+  console.warn('[denoiser] init failed:', e);
+  denoiserExt = null;
+}
+
+async function attachDenoiser(audioTrack) {
+  if (!denoiserExt || !audioTrack) return null;
+  try {
+    const processor = denoiserExt.createProcessor();
+    audioTrack.pipe(processor).pipe(audioTrack.processorDestination);
+    await processor.enable();
+    console.log('[denoiser] ИИ-шумоподавление включено');
+    return processor;
+  } catch (e) {
+    console.warn('[denoiser] enable failed, используем браузерный ANS:', e);
+    return null;
+  }
+}
 
 // Map display names to stable Agora channel names
 const ROOM_CHANNELS = {
@@ -22,6 +54,7 @@ function getChannel(displayName) {
 export const CallProvider = ({ children }) => {
   const { user } = useTickets();
   const [isInCall, setIsInCall]             = useState(false);
+  const [isJoining, setIsJoining]           = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [roomName, setRoomName]             = useState('');
   const [remoteUsers, setRemoteUsers]       = useState([]);   // { uid, videoTrack, audioTrack, isScreen }
@@ -37,6 +70,9 @@ export const CallProvider = ({ children }) => {
   const channelRef  = useRef('');
   const uidRef      = useRef(null);
   const heartbeatRef = useRef(null);
+  const joiningRef  = useRef(false); // защита от двойного клика «войти»
+  const leavingRef  = useRef(false); // защита от двойного клика «завершить»
+  const denoiserRef = useRef(null);  // процессор ИИ-шумоподавления
 
   // ─── Listen to room-counts collection ──────────────────────────────────────
   useEffect(() => {
@@ -101,6 +137,12 @@ export const CallProvider = ({ children }) => {
 
   // ─── Join ───────────────────────────────────────────────────────────────────
   const joinCall = async (displayName) => {
+    // Повторный клик по «войти» (или клик во время подключения) молча игнорируем —
+    // раньше это приводило к ошибкам «client already connecting»
+    if (joiningRef.current || isInCall) return;
+    joiningRef.current = true;
+    setIsJoining(true);
+
     let createdAudioTrack = null;
     let createdVideoTrack = null;
     try {
@@ -166,44 +208,53 @@ export const CallProvider = ({ children }) => {
         ? user.email.replace(/[^a-zA-Z0-9]/g, '_')
         : `user_${Math.floor(Math.random() * 1000000)}`;
 
-      const uid = await clientRef.current.join(APP_ID, channel, null, mainUid);
-      uidRef.current = uid;
+      // Комната открывается СРАЗУ — вход в канал и захват камеры доделываются в фоне
+      setIsInCall(true);
 
-      let audioTrack = null;
-      let videoTrack = null;
-
-      try {
-        // Try getting both camera and microphone first
-        const [aTrack, vTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
-          { encoderConfig: 'high_quality_stereo', AEC: true, ANS: true, AGC: true },
-          { encoderConfig: { width: 1280, height: 720, frameRate: 30 } }
-        );
-        audioTrack = aTrack;
-        videoTrack = vTrack;
-      } catch (deviceErr) {
+      // Главное ускорение входа: подключение к каналу и инициализация
+      // камеры/микрофона идут ПАРАЛЛЕЛЬНО, а не по очереди
+      // Речевой профиль вместo музыкального стерео: браузерное шумоподавление
+      // работает в полную силу именно на речи
+      const joinPromise = clientRef.current.join(APP_ID, channel, null, mainUid);
+      const tracksPromise = AgoraRTC.createMicrophoneAndCameraTracks(
+        { encoderConfig: 'speech_standard', AEC: true, ANS: true, AGC: true },
+        { encoderConfig: { width: 1280, height: 720, frameRate: 30 } }
+      ).catch(async (deviceErr) => {
         console.warn('[CallContext] Failed to get both mic and camera, trying mic only:', deviceErr);
         try {
-          // Fallback 1: Microphone only
-          audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
-            encoderConfig: 'high_quality_stereo', AEC: true, ANS: true, AGC: true
-          });
+          return [await AgoraRTC.createMicrophoneAudioTrack({
+            encoderConfig: 'speech_standard', AEC: true, ANS: true, AGC: true
+          }), null];
         } catch (micErr) {
           console.warn('[CallContext] Failed to get mic, trying camera only:', micErr);
           try {
-            // Fallback 2: Camera only
-            videoTrack = await AgoraRTC.createCameraVideoTrack({
+            return [null, await AgoraRTC.createCameraVideoTrack({
               encoderConfig: { width: 1280, height: 720, frameRate: 30 }
-            });
+            })];
           } catch (camErr) {
             console.warn('[CallContext] No audio/video devices accessible, joining as listener:', camErr);
             toast.info('Камера и микрофон не найдены или заблокированы. Вы вошли в режиме слушателя.');
+            return [null, null];
           }
         }
+      });
+
+      const [uid, [audioTrack, videoTrack]] = await Promise.all([joinPromise, tracksPromise]);
+      uidRef.current = uid;
+
+      // Пока подключались, пользователь мог нажать «Завершить» — освобождаем устройства
+      if (channelRef.current !== channel) {
+        try { audioTrack?.stop(); audioTrack?.close(); } catch {}
+        try { videoTrack?.stop(); videoTrack?.close(); } catch {}
+        try { await clientRef.current?.leave(); } catch {}
+        return;
       }
 
       const tracksToPublish = [];
       if (audioTrack) {
         createdAudioTrack = audioTrack;
+        // ИИ-шумоподавление поверх браузерного (не блокирует вход при сбое)
+        denoiserRef.current = await attachDenoiser(audioTrack);
         setLocalAudioTrack(audioTrack);
         tracksToPublish.push(audioTrack);
       }
@@ -217,10 +268,10 @@ export const CallProvider = ({ children }) => {
         await clientRef.current.publish(tracksToPublish);
       }
 
-      await joinRoom(channel);
+      // Присутствие в комнате — не блокирует вход
+      joinRoom(channel).catch(() => {});
       heartbeatRef.current = setInterval(heartbeat, 30000);
 
-      setIsInCall(true);
       toast.success(`Вы вошли в комнату: ${displayName}`);
     } catch (error) {
       console.error('[CallContext] Join call error:', error);
@@ -249,6 +300,9 @@ export const CallProvider = ({ children }) => {
       } else {
         toast.error(`Ошибка входа в созвон: ${error?.message || 'Неизвестная ошибка'}`);
       }
+    } finally {
+      joiningRef.current = false;
+      setIsJoining(false);
     }
   };
 
@@ -257,20 +311,21 @@ export const CallProvider = ({ children }) => {
     if (!isScreenSharing) {
       try {
         const result = await AgoraRTC.createScreenVideoTrack(
-          { 
+          {
             encoderConfig: {
               width: 1920,
               height: 1080,
-              frameRate: 15,
-              bitrateMax: 1500
-            }, 
-            optimizationMode: 'detail' 
+              frameRate: 30,      // 15 → 30: плавное движение курсора и скролла
+              bitrateMax: 3000,   // 1.5 → 3 Мбит: без «мыла» и подлагиваний на 1080p
+            },
+            optimizationMode: 'detail'
           },
           'disable'
         );
         const track = Array.isArray(result) ? result[0] : result;
 
-        const screenClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+        // h264 кодируется железом (GPU), а не процессором — меньше лагов на слабых ноутах
+        const screenClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'h264' });
         screenClientRef.current = screenClient;
 
         const screenUid = `${uidRef.current}_screen`;
@@ -314,7 +369,13 @@ export const CallProvider = ({ children }) => {
 
   // ─── Leave ──────────────────────────────────────────────────────────────────
   const leaveCall = async () => {
+    if (leavingRef.current) return; // двойной клик по «Завершить»
+    leavingRef.current = true;
     try {
+      if (denoiserRef.current) {
+        try { await denoiserRef.current.disable(); } catch (e) {}
+        denoiserRef.current = null;
+      }
       if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
       if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
       if (screenTrack)     { screenTrack.stop(); screenTrack.close(); }
@@ -337,6 +398,7 @@ export const CallProvider = ({ children }) => {
     setLocalAudioTrack(null);
     setScreenTrack(null);
     channelRef.current = '';
+    leavingRef.current = false;
   };
 
   // ─── Clean up on page unload ────────────────────────────────────────────────
@@ -350,8 +412,8 @@ export const CallProvider = ({ children }) => {
 
   return (
     <CallContext.Provider value={{
-      isInCall, isScreenSharing, roomName, remoteUsers,
-      localVideoTrack, screenTrack, roomCounts,
+      isInCall, isJoining, isScreenSharing, roomName, remoteUsers,
+      localVideoTrack, localAudioTrack, screenTrack, roomCounts,
       joinCall, leaveCall, toggleScreenShare,
     }}>
       {children}

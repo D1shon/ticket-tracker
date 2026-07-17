@@ -31,11 +31,15 @@ export const USER_ROLES = {
   'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнур' },
   'azimuus@gmail.com':      { role: 'manager', club: 'NURLY ORDA', displayName: 'Азиз' },
 
+  // ── PROMENADE ─────────────────────────────────────────────────────────────
+  'k.useingazin@gmail.com': { role: 'manager', club: 'PROMENADE', displayName: 'Куат' },
+
   // ── RESTRICTED ADMINS (schedule + sales only, no financials, no warehouse) ──
   'admin-colibri':        { role: 'admin', club: 'COLIBRI',    displayName: 'Админ Colibri'    },
   'admin-villa':          { role: 'admin', club: 'VILLA',       displayName: 'Админ Villa'      },
   'admin-4you':           { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'       },
   'admin-nurlyorda':      { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda' },
+  'admin-promenade':      { role: 'admin', club: 'PROMENADE',   displayName: 'Админ Promenade'  },
   'ikoperper@gmail.com':              { role: 'admin', club: '4YOU', displayName: 'Искандер'  },
   'alibekakniet38@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Акниет'    },
   'bhtg.l.bhtg.l@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Бахыткуль' },
@@ -61,12 +65,12 @@ export const USER_ROLES = {
   // ── Коммерческий директор (новости, склад, соглашения, настройки) ─────────
   'madina@hj.fit': { role: 'komdir', club: null, displayName: 'Мадина' },
 
-  // ── РОПы (руководители отделов продаж) — права как у Ком-Дира ────────────
-  'saltanat@hj.fit':       { role: 'rop', club: null, displayName: 'Салтанат' }, // РОП VILLA
-  'blinsalta19@gmail.com': { role: 'rop', club: null, displayName: 'Салтанат' }, // РОП VILLA
-  'umitony99@gmail.com':   { role: 'rop', club: null, displayName: 'Умида' },    // РОП COLIBRI
-  'aiman.k@hj.fit':        { role: 'rop', club: null, displayName: 'Айман' },    // РОП 4YOU
-  'iamkamilya23@gmail.com': { role: 'rop', club: null, displayName: 'Камиля' },  // РОП NURLY ORDA
+  // ── РОПы (руководители отделов продаж) — права Ком-Дира, но только свой клуб ──
+  'saltanat@hj.fit':        { role: 'rop', club: 'VILLA',      displayName: 'Салтанат' },
+  'blinsalta19@gmail.com':  { role: 'rop', club: 'VILLA',      displayName: 'Салтанат' },
+  'umitony99@gmail.com':    { role: 'rop', club: 'COLIBRI',    displayName: 'Умида' },
+  'aiman.k@hj.fit':         { role: 'rop', club: '4YOU',       displayName: 'Айман' },
+  'iamkamilya23@gmail.com': { role: 'rop', club: 'NURLY ORDA', displayName: 'Камиля' },
 
   // ── Viewer (no tickets, schedule, calls, dashboard, archive) ──────────────
   'nurali.m@hj.fit': { role: 'viewer', club: null, displayName: 'Нурали' },

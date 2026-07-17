@@ -12,7 +12,7 @@ import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFirestore, doc, setDoc, updateDoc, collection, onSnapshot, getDoc, getDocs } from 'firebase/firestore';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 const authDir = (club) => path.join(ROOT, 'auth', club.replace(/\s+/g, '_'));
 
 const fb = initializeApp({
@@ -41,18 +41,32 @@ const leadMatch = (text) => {
 };
 const almatyDay = (iso) => new Date(new Date(iso).getTime() + 5 * 3600 * 1000).toISOString().slice(0, 10);
 
-async function maybeCreateLead(db, club, { jid, chatName, text, timestampISO }) {
+// Настоящий телефон только из JID вида <номер>@s.whatsapp.net.
+// Формат @lid — это внутренний ID WhatsApp, НЕ телефон (по нему не позвонить).
+function realPhone(...jids) {
+  for (const j of jids) {
+    if (typeof j === 'string' && j.endsWith('@s.whatsapp.net')) {
+      const num = j.replace(/@.*$/, '').replace(/[^\d]/g, '');
+      if (num.length >= 10 && num.length <= 15) return num;
+    }
+  }
+  return null;
+}
+
+async function maybeCreateLead(db, club, { jid, phoneJid, chatName, text, timestampISO }) {
   const matched = leadMatch(text);
   if (!matched) return;
   // одна заявка на чат в день — первое ценовое сообщение побеждает
   const leadId = `${club.replace(/\s+/g, '')}_${jid.replace(/[^\w]/g, '')}_${almatyDay(timestampISO)}`;
   const ref = doc(db, 'sales_leads', leadId);
   if ((await getDoc(ref)).exists()) return;
+  const phone = realPhone(jid, phoneJid); // null, если WhatsApp отдал только LID
   await setDoc(ref, {
     club,
     chatJid: jid,
     chatName: chatName || '',
-    phone: jid.replace(/@.*$/, ''),
+    phone,                    // настоящий номер или null
+    hasPhone: !!phone,
     text: text.slice(0, 500),
     matched,
     status: 'new',
@@ -61,12 +75,18 @@ async function maybeCreateLead(db, club, { jid, chatName, text, timestampISO }) 
     timestampISO,
     createdAtISO: new Date().toISOString(),
   });
-  log(club, '💰 лид:', chatName || jid.slice(0, 14), '—', text.slice(0, 60));
+  log(club, '💰 лид:', chatName || jid.slice(0, 14), phone ? `(+${phone})` : '(без номера, LID)', '—', text.slice(0, 60));
 
   // push Ком-Диру
   try {
     const snap = await getDocs(collection(db, 'push_tokens'));
-    const tokens = snap.docs.filter(d => ['komdir', 'rop'].includes(d.data().role)).map(d => d.id);
+    // Ком-Дир (club=null) получает лиды всех клубов, РОП — только своего
+    const tokens = snap.docs.filter(d => {
+      const t = d.data();
+      if (t.role === 'komdir') return true;
+      if (t.role === 'rop') return !t.club || (t.club || '').toUpperCase() === club.toUpperCase();
+      return false;
+    }).map(d => d.id);
     if (tokens.length) {
       await fetch('https://ticket-tracker-inky.vercel.app/api/send-push', {
         method: 'POST',
@@ -81,6 +101,7 @@ async function maybeCreateLead(db, club, { jid, chatName, text, timestampISO }) 
       });
     }
   } catch (e) { log(club, 'push лида не ушёл:', e.message); }
+  // В Slack лиды НЕ шлём — там только открытие/закрытие смены (решение 2026-07-16)
 }
 
 async function main() {
@@ -158,6 +179,8 @@ async function main() {
         try {
           const jid = m.key.remoteJid || '';
           if (jid === 'status@broadcast') continue;
+          // Группы, рассылки и каналы не читаем — только личные переписки с клиентами
+          if (jid.endsWith('@g.us') || jid.endsWith('@newsletter') || jid.endsWith('@broadcast')) continue;
           const text = extractText(m);
           const hasMedia = !!(m.message?.imageMessage || m.message?.videoMessage || m.message?.audioMessage || m.message?.documentMessage || m.message?.stickerMessage);
           if (!text && !hasMedia) continue;
@@ -178,6 +201,8 @@ async function main() {
           if (!m.key.fromMe && !jid.endsWith('@g.us') && text) {
             await maybeCreateLead(db, club, {
               jid,
+              // Baileys кладёт телефонный JID клиента в *Alt-поля при LID-чатах
+              phoneJid: m.key.remoteJidAlt || m.key.senderPnJid || m.key.participantAlt || null,
               chatName: m.pushName || '',
               text,
               timestampISO: new Date((Number(m.messageTimestamp) || 0) * 1000).toISOString(),

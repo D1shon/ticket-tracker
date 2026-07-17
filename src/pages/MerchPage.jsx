@@ -15,7 +15,7 @@ import {
   Image, Camera, UploadCloud, Users
 } from 'lucide-react';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы', 'Блокноты', 'Ручки', 'Другое'];
 
 const MerchPage = () => {
@@ -27,11 +27,14 @@ const MerchPage = () => {
   // Ком-Дир и РОП: мониторинг всего склада (включая себестоимость и выручку), но без продаж и редактирования
   const isKomdir = useMemo(() => user?.role === 'komdir' || user?.role === 'rop', [user]);
   const canSeeCost = isChef || isKomdir;
-  const managerClub = useMemo(() => user?.club || null, [user]);
-  const canSelectAllClubs = useMemo(() => isChef || isMarketing || isKomdir, [isChef, isMarketing, isKomdir]);
+  // managerClub даёт права управления складом — у РОПа его быть не должно (только мониторинг)
+  const managerClub = useMemo(() => (user?.role === 'manager' ? user?.club || null : null), [user]);
+  // РОП заперт на своём клубе; Ком-Дир видит все
+  const lockedClub = useMemo(() => managerClub || (user?.role === 'rop' ? user?.club || null : null), [user, managerClub]);
+  const canSelectAllClubs = useMemo(() => isChef || isMarketing || user?.role === 'komdir', [isChef, isMarketing, user]);
 
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'resort'
-  const [selectedClub, setSelectedClub] = useState(() => (!canSelectAllClubs && managerClub) ? managerClub : 'ALL');
+  const [selectedClub, setSelectedClub] = useState(() => (!canSelectAllClubs && lockedClub) ? lockedClub : 'ALL');
   const [selectedSku, setSelectedSku] = useState('ALL');
   const [resortValues, setResortValues] = useState({}); // productId -> actual count string
   const [savingResort, setSavingResort] = useState(false);
@@ -111,10 +114,10 @@ const MerchPage = () => {
 
   // Sync selectedClub if user updates
   useEffect(() => {
-    if (!canSelectAllClubs && managerClub) {
-      setSelectedClub(managerClub);
+    if (!canSelectAllClubs && lockedClub) {
+      setSelectedClub(lockedClub);
     }
-  }, [canSelectAllClubs, managerClub]);
+  }, [canSelectAllClubs, lockedClub]);
 
   // Data States
   const [products, setProducts] = useState([]);

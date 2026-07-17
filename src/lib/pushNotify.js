@@ -5,14 +5,18 @@
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
-export async function pushNotify({ title, body = '', club = null, excludeEmail = '', url = '/', tag = '', roles = null }) {
+export async function pushNotify({ title, body = '', club = null, excludeEmail = '', url = '/', tag = '', roles = null, emails = null }) {
   try {
     const snap = await getDocs(collection(db, 'push_tokens'));
     const exclude = (excludeEmail || '').toLowerCase();
+    const emailSet = Array.isArray(emails) && emails.length > 0
+      ? new Set(emails.map(e => (e || '').toLowerCase()))
+      : null;
     const tokens = [];
     snap.docs.forEach(d => {
       const t = d.data();
       if (exclude && (t.email || '').toLowerCase() === exclude) return;
+      if (emailSet && !emailSet.has((t.email || '').toLowerCase())) return; // адресная отправка
       if (club && t.club && (t.club || '').toUpperCase() !== (club || '').toUpperCase()) return;
       if (Array.isArray(roles) && roles.length > 0 && !roles.includes(t.role || '')) return;
       tokens.push(d.id);

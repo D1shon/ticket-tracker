@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { MessageCircle, Users, User, Activity, FileText, AlertTriangle, Clock, Smartphone, QrCode, Power, WifiOff } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { MessageCircle, FileText, AlertTriangle, Clock, Smartphone, QrCode, Power, WifiOff, Search, ArrowLeft, Phone } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, setDoc } from 'firebase/firestore';
@@ -7,7 +7,27 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+
+// Завершающие реплики клиента («спасибо», «ок», «рахмет»…) — диалог не ждёт ответа,
+// если мы уже отвечали ранее и клиент закрыл разговор такой фразой.
+const CLOSING_RE = /^(спасибо+|благодар(ю|им|очка)|спс|пасиб[оа]?|ok|ок(ей)?|хорошо|отлично|супер|класс|понятно|ясно|понял[аи]?|договорились|да|ага|угу|рахмет|ра[хқ]мет( сізге| вам)?|жарайды|болды|👍|🙏|❤️?|😊|☺️)[\s!.)»😊🙏👍❤️💪🔥]*$/i;
+
+// Детерминированный цвет аватара по имени/номеру
+const AV_COLORS = ['#4f8ef7', '#9b5de5', '#f59e0b', '#22c55e', '#ef4444', '#06b6d4', '#ec4899', '#8b5cf6'];
+const avColor = (s) => AV_COLORS[[...String(s || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % AV_COLORS.length];
+
+const Avatar = ({ name, size = 38 }) => (
+  <div style={{
+    width: size, height: size, borderRadius: '50%', flexShrink: 0,
+    background: `linear-gradient(135deg, ${avColor(name)}cc, ${avColor(name)})`,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: '#fff', fontWeight: 900, fontSize: size * 0.4,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+  }}>
+    {(String(name || '?').trim()[0] || '?').toUpperCase()}
+  </div>
+);
 
 const Card = ({ children, style }) => (
   <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px', ...style }}>{children}</div>
@@ -30,9 +50,17 @@ const WaDemoPage = ({ embedded = false }) => {
   const [bridge, setBridge] = useState({});     // club -> { status, qrDataUrl, phone }
   const [reports, setReports] = useState([]);   // все отчёты ИИ
   const [activeChat, setActiveChat] = useState(null);
+  const [chatQuery, setChatQuery] = useState('');
   const [now, setNow] = useState(Date.now());
+  const [isMobileW, setIsMobileW] = useState(() => window.innerWidth <= 768);
+  const bottomRef = useRef(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    const h = () => setIsMobileW(window.innerWidth <= 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   useEffect(() => {
     return onSnapshot(collection(db, 'wa_messages'), snap => {
@@ -58,7 +86,30 @@ const WaDemoPage = ({ embedded = false }) => {
     }, () => {});
   }, []);
 
-  const clubMessages = useMemo(() => messages.filter(m => m.club === activeClub), [messages, activeClub]);
+  // Диалоги, отмеченные вручную как завершённые («Завершено» в списке ожидающих)
+  const [waitingDone, setWaitingDone] = useState({});
+  useEffect(() => {
+    return onSnapshot(collection(db, 'wa_waiting_done'), snap => {
+      const m = {};
+      snap.docs.forEach(d => { m[d.id] = d.data(); });
+      setWaitingDone(m);
+    }, () => {});
+  }, []);
+  const doneKey = (jid) => `${activeClub.replace(/\s+/g, '')}_${(jid || '').replace(/[^\w]/g, '')}`;
+  const dismissWaiting = async (w) => {
+    try {
+      await setDoc(doc(db, 'wa_waiting_done', doneKey(w.jid)), {
+        club: activeClub, jid: w.jid, by: user?.displayName || '', atISO: new Date().toISOString(),
+      });
+      toast.success('Диалог отмечен как завершённый');
+    } catch { toast.error('Не удалось отметить'); }
+  };
+
+  // Только личные переписки — группы, рассылки и каналы не читаем
+  const clubMessages = useMemo(
+    () => messages.filter(m => m.club === activeClub && !m.isGroup && !(m.chatJid || '').endsWith('@newsletter')),
+    [messages, activeClub]
+  );
 
   // ── Живая статистика сегодняшнего дня (без ИИ, чистая математика) ──
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -84,18 +135,27 @@ const WaDemoPage = ({ embedded = false }) => {
       }
       const last = msgs[msgs.length - 1];
       if (last.direction === 'in') {
-        waiting.push({
-          name: last.chatName || last.chatJid.split('@')[0],
-          text: last.text || '📎 вложение',
-          waitMin: Math.max(0, Math.round((now - new Date(last.timestampISO)) / 60000)),
-        });
+        const t = (last.text || '').trim();
+        // Завершающая фраза после нашего ответа — диалог закрыт, ответа не ждёт
+        const isClosing = msgs.some(m => m.direction === 'out') && t.length <= 45 && CLOSING_RE.test(t);
+        // Отмечен вручную как завершённый (пока клиент не написал что-то новое)
+        const done = waitingDone[doneKey(last.chatJid)];
+        const dismissed = done?.atISO && done.atISO >= last.timestampISO;
+        if (!isClosing && !dismissed) {
+          waiting.push({
+            jid: last.chatJid,
+            name: last.chatName || last.chatJid.split('@')[0],
+            text: last.text || '📎 вложение',
+            waitMin: Math.max(0, Math.round((now - new Date(last.timestampISO)) / 60000)),
+          });
+        }
       }
     });
     replies.sort((a, b) => a - b);
     const median = replies.length ? replies[Math.floor(replies.length / 2)] : null;
     waiting.sort((a, b) => b.waitMin - a.waitMin);
     return { total: dialogs.length, answered, waiting, medianReply: median, msgsCount: today.length };
-  }, [clubMessages, now]);
+  }, [clubMessages, now, waitingDone, activeClub]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Подключение ──
   const st = bridge[activeClub] || {};
@@ -119,16 +179,46 @@ const WaDemoPage = ({ embedded = false }) => {
   const chats = useMemo(() => {
     const byChat = {};
     clubMessages.forEach(m => {
-      if (!byChat[m.chatJid]) byChat[m.chatJid] = { jid: m.chatJid, isGroup: m.isGroup, names: new Set(), msgs: [] };
+      if (!byChat[m.chatJid]) byChat[m.chatJid] = { jid: m.chatJid, names: new Set(), msgs: [] };
       if (m.chatName && m.direction === 'in') byChat[m.chatJid].names.add(m.chatName);
       byChat[m.chatJid].msgs.push(m);
     });
-    return Object.values(byChat).sort((a, b) =>
-      (b.msgs[b.msgs.length - 1]?.timestampISO || '').localeCompare(a.msgs[a.msgs.length - 1]?.timestampISO || '')
-    );
+    return Object.values(byChat).map(c => {
+      const last = c.msgs[c.msgs.length - 1];
+      return {
+        ...c,
+        title: [...c.names][0] || `+${c.jid.split('@')[0]}`,
+        phone: c.jid.split('@')[0],
+        last,
+        waiting: last?.direction === 'in', // последнее слово за клиентом
+      };
+    }).sort((a, b) => (b.last?.timestampISO || '').localeCompare(a.last?.timestampISO || ''));
   }, [clubMessages]);
-  const currentChat = chats.find(c => c.jid === activeChat) || chats[0];
+
+  const filteredChats = useMemo(() => {
+    const q = chatQuery.trim().toLowerCase();
+    if (!q) return chats;
+    return chats.filter(c => c.title.toLowerCase().includes(q) || c.phone.includes(q));
+  }, [chats, chatQuery]);
+
+  // На телефоне по умолчанию показываем список; диалог открывается по тапу
+  const currentChat = chats.find(c => c.jid === activeChat) || (isMobileW ? null : filteredChats[0]);
+
+  // Автопрокрутка к последнему сообщению
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [currentChat?.jid, currentChat?.msgs?.length, tab]);
+
   const fmtT = (iso) => { try { return format(new Date(iso), 'HH:mm', { locale: ru }); } catch { return ''; } };
+  const dayLabel = (iso) => {
+    try {
+      const d = new Date(iso);
+      const sameDay = (a, b) => a.toDateString() === b.toDateString();
+      if (sameDay(d, new Date())) return 'Сегодня';
+      if (sameDay(d, new Date(Date.now() - 86400000))) return 'Вчера';
+      return format(d, 'd MMMM', { locale: ru });
+    } catch { return ''; }
+  };
 
   const connected = st.status === 'connected';
 
@@ -224,7 +314,7 @@ const WaDemoPage = ({ embedded = false }) => {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {[['day', '🌤 День'], ['report', '📊 Отчёт ИИ'], ['live', `Лента (${clubMessages.length})`]].map(([id, label]) => (
+        {[['day', '🌤 День'], ['report', '📊 Отчёт ИИ'], ['live', `💬 Лента (${chats.length})`]].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: '8px 16px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer',
             border: '1px solid ' + (tab === id ? 'var(--accent-purple)' : 'var(--border)'),
@@ -259,6 +349,13 @@ const WaDemoPage = ({ embedded = false }) => {
                     <span style={{ fontSize: 12, fontWeight: 900, color: w.waitMin > 30 ? '#ef4444' : '#f59e0b', whiteSpace: 'nowrap' }}>
                       <Clock size={10} style={{ display: 'inline', verticalAlign: '-1px' }} /> {w.waitMin} мин
                     </span>
+                    <button
+                      onClick={() => dismissWaiting(w)}
+                      title="Диалог завершён — ответ не нужен"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 9, border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(34,197,94,0.08)', color: '#22c55e', fontSize: 10, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      ✓ Завершено
+                    </button>
                   </div>
                 ))}
               </div>
@@ -357,51 +454,134 @@ const WaDemoPage = ({ embedded = false }) => {
       {tab === 'live' && (
         clubMessages.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed var(--border)', borderRadius: 20, color: 'var(--text-muted)', fontSize: 14, fontWeight: 600 }}>
-            Сообщений пока нет
+            Личных сообщений пока нет
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 260px) 1fr', gap: 12, alignItems: 'start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 520, overflowY: 'auto' }}>
-              {chats.map(c => {
-                const last = c.msgs[c.msgs.length - 1];
-                const title = c.isGroup ? '👥 Группа' : ([...c.names][0] || c.jid.split('@')[0]);
-                const active = currentChat?.jid === c.jid;
-                return (
-                  <button key={c.jid} onClick={() => setActiveChat(c.jid)} style={{
-                    textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
-                    border: '1px solid ' + (active ? '#25D366' : 'var(--border)'),
-                    background: active ? 'rgba(37,211,102,0.08)' : 'var(--bg-card)',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>
-                      {c.isGroup ? <Users size={11} /> : <User size={11} />} {title}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {last?.text || '📎 вложение'}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 300, maxHeight: 520, overflowY: 'auto' }}>
-              {(currentChat?.msgs || []).map(m => (
-                <div key={m.id} style={{
-                  alignSelf: m.direction === 'out' ? 'flex-end' : 'flex-start',
-                  maxWidth: '75%',
-                  background: m.direction === 'out' ? 'rgba(37,211,102,0.15)' : 'var(--bg-hover)',
-                  border: `1px solid ${m.direction === 'out' ? 'rgba(37,211,102,0.3)' : 'var(--border)'}`,
-                  borderRadius: m.direction === 'out' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                  padding: '8px 12px',
-                }}>
-                  {m.direction === 'in' && m.chatName && (
-                    <div style={{ fontSize: 9, fontWeight: 800, color: '#25D366', marginBottom: 2 }}>{m.chatName}</div>
-                  )}
-                  <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-                    {m.text || '📎 вложение'}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobileW ? '1fr' : 'minmax(230px, 300px) 1fr',
+            gap: 0,
+            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden',
+            height: isMobileW ? 560 : 580,
+          }}>
+            {/* ── Список чатов ── */}
+            {(!isMobileW || !currentChat) && (
+              <div style={{ display: 'flex', flexDirection: 'column', borderRight: isMobileW ? 'none' : '1px solid var(--border)', minHeight: 0 }}>
+                <div style={{ padding: 10, borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <input
+                      value={chatQuery}
+                      onChange={e => setChatQuery(e.target.value)}
+                      placeholder="Поиск по имени или номеру…"
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px 9px 32px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, outline: 'none' }}
+                    />
                   </div>
-                  <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right', marginTop: 3 }}>{fmtT(m.timestampISO)}</div>
                 </div>
-              ))}
-            </div>
+                <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                  {filteredChats.length === 0 && (
+                    <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Ничего не найдено</div>
+                  )}
+                  {filteredChats.map(c => {
+                    const active = !isMobileW && currentChat?.jid === c.jid;
+                    return (
+                      <button key={c.jid} onClick={() => setActiveChat(c.jid)} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                        padding: '11px 14px', border: 'none', cursor: 'pointer',
+                        background: active ? 'rgba(37,211,102,0.09)' : 'transparent',
+                        borderLeft: `3px solid ${active ? '#25D366' : 'transparent'}`,
+                        borderBottom: '1px solid var(--border)',
+                      }}>
+                        <Avatar name={c.title} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ flex: 1, fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: c.waiting ? '#f59e0b' : 'var(--text-muted)', flexShrink: 0 }}>{fmtT(c.last?.timestampISO)}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                            <span style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c.last?.direction === 'out' ? 'Вы: ' : ''}{c.last?.text || '📎 вложение'}
+                            </span>
+                            {c.waiting && (
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 6px rgba(245,158,11,0.7)', flexShrink: 0 }} title="Ждёт ответа" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Диалог ── */}
+            {currentChat && (
+              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                {/* Шапка диалога */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+                  {isMobileW && (
+                    <button onClick={() => setActiveChat(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}>
+                      <ArrowLeft size={18} />
+                    </button>
+                  )}
+                  <Avatar name={currentChat.title} size={34} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentChat.title}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>{currentChat.msgs.length} сообщений</div>
+                  </div>
+                  <a
+                    href={`https://wa.me/${currentChat.phone}`}
+                    target="_blank" rel="noopener noreferrer"
+                    title="Открыть в WhatsApp"
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 10, background: 'rgba(37,211,102,0.1)', border: '1px solid rgba(37,211,102,0.3)', color: '#25D366', fontSize: 11, fontWeight: 800, textDecoration: 'none', flexShrink: 0 }}
+                  >
+                    <Phone size={11} /> +{currentChat.phone}
+                  </a>
+                </div>
+
+                {/* Сообщения */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
+                  {currentChat.msgs.map((m, i, arr) => {
+                    const prev = arr[i - 1];
+                    const newDay = !prev || dayLabel(prev.timestampISO) !== dayLabel(m.timestampISO);
+                    const out = m.direction === 'out';
+                    return (
+                      <React.Fragment key={m.id}>
+                        {newDay && (
+                          <div style={{ alignSelf: 'center', margin: '8px 0 4px', padding: '4px 14px', borderRadius: 12, background: 'var(--bg-hover)', border: '1px solid var(--border)', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            {dayLabel(m.timestampISO)}
+                          </div>
+                        )}
+                        <div style={{
+                          alignSelf: out ? 'flex-end' : 'flex-start',
+                          maxWidth: '72%',
+                          background: out ? 'linear-gradient(135deg, #1fa855, #25D366)' : 'var(--bg-hover)',
+                          border: out ? 'none' : '1px solid var(--border)',
+                          borderRadius: out ? '16px 16px 5px 16px' : '16px 16px 16px 5px',
+                          padding: '8px 13px',
+                          boxShadow: out ? '0 2px 8px rgba(37,211,102,0.25)' : '0 1px 4px rgba(0,0,0,0.06)',
+                        }}>
+                          <div style={{ fontSize: 13, color: out ? '#fff' : 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                            {m.text || '📎 вложение'}
+                          </div>
+                          <div style={{ fontSize: 9, color: out ? 'rgba(255,255,255,0.75)' : 'var(--text-muted)', fontWeight: 700, textAlign: 'right', marginTop: 3 }}>
+                            {fmtT(m.timestampISO)}
+                          </div>
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                  <div ref={bottomRef} />
+                </div>
+              </div>
+            )}
+
+            {/* Пусто справа на десктопе, если чатов нет после фильтра */}
+            {!currentChat && !isMobileW && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 600 }}>
+                Выберите переписку слева
+              </div>
+            )}
           </div>
         )
       )}

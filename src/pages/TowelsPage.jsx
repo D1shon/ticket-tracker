@@ -10,7 +10,7 @@ import { format, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 
 // ── Shift helper (same logic as HRMonitorsPage) ───────────────────────────
 const isWorkingShiftVal = (val) => {
@@ -73,57 +73,152 @@ const inputSt = (highlight) => ({
   fontVariantNumeric: 'tabular-nums',
 });
 
+// ── Shared bits ────────────────────────────────────────────────────────────
+const StatCell = ({ label, value, color }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
+    <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: 'center' }}>{label}</span>
+    <span style={{ fontSize: 24, fontWeight: 900, color: color || 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+      {value ?? <span style={{ opacity: 0.25, fontWeight: 500, fontSize: 18 }}>—</span>}
+    </span>
+  </div>
+);
+
+const Op = ({ symbol }) => (
+  <span style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 300, alignSelf: 'flex-end', paddingBottom: 4, opacity: 0.5 }}>{symbol}</span>
+);
+
+// Один «поток» учёта (большие или маленькие полотенца): две формулы —
+// утро (остаток вчера + получено = всего) и вечер (всего − осталось = грязных)
+const TowelFlow = ({ title, prevCarry, canEdit, received, setReceived, totalManual, setTotalManual, actual, setActual, onBlurField }) => {
+  const isFirstDay = prevCarry === null;
+  const rc  = received    === '' ? null : Number(received);
+  const tm  = totalManual === '' ? null : Number(totalManual);
+  const ac  = actual      === '' ? null : Number(actual);
+  const total = isFirstDay ? (tm ?? rc) : (prevCarry !== null && rc !== null) ? prevCarry + rc : rc;
+  const dirty = (total !== null && ac !== null) ? total - ac : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+      {title && (
+        <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em', paddingBottom: 2, borderBottom: '2px solid var(--border)' }}>
+          {title}
+        </span>
+      )}
+
+      {/* Утро */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Утром — запас на день
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {isFirstDay ? (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Получено</span>
+                {canEdit ? (
+                  <input type="number" min="0" value={received}
+                    onChange={e => setReceived(e.target.value)}
+                    onBlur={e => onBlurField('received', e.target.value)}
+                    style={inputSt(false)} />
+                ) : <StatCell label="" value={rc} />}
+              </div>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', alignSelf: 'flex-end', paddingBottom: 6 }}>всего утром:</span>
+              {canEdit ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: '#4f8ef7', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Всего утром</span>
+                  <input type="number" min="0" value={totalManual}
+                    onChange={e => setTotalManual(e.target.value)}
+                    onBlur={e => onBlurField('totalManual', e.target.value)}
+                    style={{ ...inputSt(false), border: '1px solid #4f8ef7' }} />
+                </div>
+              ) : (
+                <StatCell label="Всего утром" value={total} color="#10b981" />
+              )}
+            </>
+          ) : (
+            <>
+              <StatCell label="Остаток вчера" value={prevCarry} color="#818cf8" />
+              <Op symbol="+" />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Получено</span>
+                {canEdit ? (
+                  <input type="number" min="0" value={received}
+                    onChange={e => setReceived(e.target.value)}
+                    onBlur={e => onBlurField('received', e.target.value)}
+                    style={inputSt(false)} />
+                ) : <StatCell label="" value={rc} />}
+              </div>
+              <Op symbol="=" />
+              <StatCell label="Всего утром" value={total} color="#10b981" />
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Вечер */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Вечером — итог
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <StatCell label="Всего утром" value={total} color="#10b981" />
+          <Op symbol="−" />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Осталось вечером</span>
+            {canEdit ? (
+              <input type="number" min="0" value={actual}
+                onChange={e => setActual(e.target.value)}
+                onBlur={e => onBlurField('actual', e.target.value)}
+                style={{ ...inputSt(false), border: '1px solid rgba(129,140,248,0.5)' }} />
+            ) : <StatCell label="" value={ac} color="#818cf8" />}
+          </div>
+          <Op symbol="=" />
+          <StatCell label="Грязных" value={dirty} color="#f59e0b" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Single day card ────────────────────────────────────────────────────────
-const DayCard = ({ date, record, prevCarry, prevShortage, isToday, canEdit, onSave }) => {
+const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, isToday, canEdit, onSave }) => {
+  const hasSmall = club === 'NURLY ORDA'; // маленькие полотенца + кг — только Nurly Orda
   const isFirstDay = prevCarry === null;
 
   const [cleanReceived,    setCleanReceived]    = useState('');
   const [cleanTotalManual, setCleanTotalManual] = useState(''); // first day only
   const [actualCount,      setActualCount]      = useState('');
+  const [smallReceived,    setSmallReceived]    = useState('');
+  const [smallTotalManual, setSmallTotalManual] = useState('');
+  const [smallActual,      setSmallActual]      = useState('');
+  const [laundryKg,        setLaundryKg]        = useState('');
 
   useEffect(() => {
     if (record?.cleanReceived    != null) setCleanReceived(String(record.cleanReceived));
     if (record?.cleanTotalManual != null) setCleanTotalManual(String(record.cleanTotalManual));
     if (record?.actualCount      != null) setActualCount(String(record.actualCount));
-  }, [record?.cleanReceived, record?.cleanTotalManual, record?.actualCount]);
+    if (record?.smallReceived    != null) setSmallReceived(String(record.smallReceived));
+    if (record?.smallTotalManual != null) setSmallTotalManual(String(record.smallTotalManual));
+    if (record?.smallActual      != null) setSmallActual(String(record.smallActual));
+    if (record?.laundryKg        != null) setLaundryKg(String(record.laundryKg));
+  }, [record?.cleanReceived, record?.cleanTotalManual, record?.actualCount, record?.smallReceived, record?.smallTotalManual, record?.smallActual, record?.laundryKg]);
 
-  const cr  = cleanReceived    === '' ? null : Number(cleanReceived);
-  const ctm = cleanTotalManual === '' ? null : Number(cleanTotalManual);
-  const ac  = actualCount      === '' ? null : Number(actualCount);
+  const num = (v) => (v === '' ? null : Number(v));
 
-  // cleanTotal: first day = manual override, else auto = prevCarry + received
-  const cleanTotal = isFirstDay
-    ? (ctm ?? cr)
-    : (prevCarry !== null && cr !== null) ? prevCarry + cr : cr;
-
-  // dirtyTotal auto = cleanTotal − clean remaining
-  const dt = (cleanTotal !== null && ac !== null) ? cleanTotal - ac : null;
-
-  const save = (field, val, extra = {}) => {
-    const num = val === '' ? null : Number(val);
-    if (val !== '' && isNaN(num)) return;
+  // Любое поле теряет фокус → сохраняем весь снимок дня
+  const saveAll = () => {
     onSave(date, {
-      cleanReceived:    field === 'cleanReceived'    ? num : cr,
-      cleanTotalManual: field === 'cleanTotalManual' ? num : ctm,
-      actualCount:      field === 'actualCount'      ? num : ac,
-      ...extra,
+      cleanReceived:    num(cleanReceived),
+      cleanTotalManual: num(cleanTotalManual),
+      actualCount:      num(actualCount),
+      smallReceived:    num(smallReceived),
+      smallTotalManual: num(smallTotalManual),
+      smallActual:      num(smallActual),
+      laundryKg:        num(laundryKg),
     });
   };
 
   const dateLabel = format(new Date(date + 'T12:00:00'), 'd MMMM yyyy', { locale: ru });
-
-  const StatCell = ({ label, value, color }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-      <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: 'center' }}>{label}</span>
-      <span style={{ fontSize: 24, fontWeight: 900, color: color || 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-        {value ?? <span style={{ opacity: 0.25, fontWeight: 500, fontSize: 18 }}>—</span>}
-      </span>
-    </div>
-  );
-
-  const Op = ({ symbol }) => (
-    <span style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 300, alignSelf: 'flex-end', paddingBottom: 4, opacity: 0.5 }}>{symbol}</span>
-  );
 
   return (
     <div style={{
@@ -151,89 +246,46 @@ const DayCard = ({ date, record, prevCarry, prevShortage, isToday, canEdit, onSa
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-        {/* Формула 1: остаток вчера + получено сегодня = всего утром */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Утром — запас на день
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {isFirstDay ? (
-              /* Первый день — вводим итоговое количество вручную */
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Получено</span>
-                  {canEdit ? (
-                    <input type="number" min="0" value={cleanReceived}
-                      onChange={e => setCleanReceived(e.target.value)}
-                      onBlur={e => save('cleanReceived', e.target.value)}
-                      style={inputSt(false)} />
-                  ) : (
-                    <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)' }}>{record?.cleanReceived ?? <span style={{ opacity: 0.25, fontWeight: 500, fontSize: 18 }}>—</span>}</span>
-                  )}
-                </div>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', alignSelf: 'flex-end', paddingBottom: 6 }}>всего утром:</span>
-                {canEdit ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: '#4f8ef7', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Всего утром</span>
-                    <input type="number" min="0" value={cleanTotalManual}
-                      onChange={e => setCleanTotalManual(e.target.value)}
-                      onBlur={e => save('cleanTotalManual', e.target.value)}
-                      style={{ ...inputSt(false), border: '1px solid #4f8ef7' }} />
-                  </div>
-                ) : (
-                  <StatCell label="Всего утром" value={cleanTotal} color="#10b981" />
-                )}
-              </>
-            ) : (
-              /* Обычный день: остаток вчера + получено = всего утром */
-              <>
-                <StatCell label="Остаток вчера" value={prevCarry} color="#818cf8" />
-                <Op symbol="+" />
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Получено</span>
-                  {canEdit ? (
-                    <input type="number" min="0" value={cleanReceived}
-                      onChange={e => setCleanReceived(e.target.value)}
-                      onBlur={e => save('cleanReceived', e.target.value)}
-                      style={inputSt(false)} />
-                  ) : (
-                    <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)' }}>{record?.cleanReceived ?? <span style={{ opacity: 0.25, fontWeight: 500, fontSize: 18 }}>—</span>}</span>
-                  )}
-                </div>
-                <Op symbol="=" />
-                <StatCell label="Всего утром" value={cleanTotal} color="#10b981" />
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Формула 2: всего утром − остаток вечером = грязных */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Вечером — итог
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <StatCell label="Всего утром" value={cleanTotal} color="#10b981" />
-            <Op symbol="−" />
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Осталось вечером</span>
-              {canEdit ? (
-                <input type="number" min="0" value={actualCount}
-                  onChange={e => setActualCount(e.target.value)}
-                  onBlur={e => save('actualCount', e.target.value)}
-                  style={{ ...inputSt(false), border: '1px solid rgba(129,140,248,0.5)' }} />
-              ) : (
-                <span style={{ fontSize: 24, fontWeight: 900, color: '#818cf8' }}>{record?.actualCount ?? <span style={{ opacity: 0.25, fontWeight: 500, fontSize: 18 }}>—</span>}</span>
-              )}
-            </div>
-            <Op symbol="=" />
-            <StatCell label="Грязных" value={dt} color="#f59e0b" />
-          </div>
-        </div>
-
+      <div style={{ display: 'grid', gridTemplateColumns: hasSmall ? 'repeat(auto-fit, minmax(300px, 1fr))' : '1fr', gap: 24 }}>
+        <TowelFlow
+          title={hasSmall ? '🛁 Большие полотенца' : null}
+          prevCarry={prevCarry}
+          canEdit={canEdit}
+          received={cleanReceived}       setReceived={setCleanReceived}
+          totalManual={cleanTotalManual} setTotalManual={setCleanTotalManual}
+          actual={actualCount}           setActual={setActualCount}
+          onBlurField={saveAll}
+        />
+        {hasSmall && (
+          <TowelFlow
+            title="🤍 Маленькие полотенца"
+            prevCarry={prevCarrySmall}
+            canEdit={canEdit}
+            received={smallReceived}       setReceived={setSmallReceived}
+            totalManual={smallTotalManual} setTotalManual={setSmallTotalManual}
+            actual={smallActual}           setActual={setSmallActual}
+            onBlurField={saveAll}
+          />
+        )}
       </div>
+
+      {/* Сдано в стирку, кг — только Nurly Orda */}
+      {hasSmall && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18, paddingTop: 14, borderTop: '1px dashed var(--border)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            ⚖️ Сдано в стирку
+          </span>
+          {canEdit ? (
+            <input type="number" min="0" step="0.1" value={laundryKg}
+              onChange={e => setLaundryKg(e.target.value)}
+              onBlur={saveAll}
+              style={{ ...inputSt(false), border: '1px solid rgba(245,158,11,0.5)', width: 90 }} />
+          ) : (
+            <span style={{ fontSize: 24, fontWeight: 900, color: '#f59e0b' }}>{record?.laundryKg ?? <span style={{ opacity: 0.25, fontWeight: 500, fontSize: 18 }}>—</span>}</span>
+          )}
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#f59e0b' }}>кг</span>
+        </div>
+      )}
     </div>
   );
 };
@@ -335,6 +387,15 @@ const TowelsPage = () => {
     return prev.actualCount ?? null;
   }, [records]);
 
+  // То же для маленьких полотенец (Nurly Orda)
+  const getPrevCarrySmall = useCallback((date) => {
+    const [y, m, d] = date.split('-').map(Number);
+    const prevDate = format(subDays(new Date(y, m - 1, d), 1), 'yyyy-MM-dd');
+    const prev = records[prevDate];
+    if (!prev) return null;
+    return prev.smallActual ?? null;
+  }, [records]);
+
   // Yesterday's дефицит: if no actualCount recorded at all
   const getPrevShortage = useCallback((date) => {
     const [y, m, d] = date.split('-').map(Number);
@@ -362,6 +423,16 @@ const TowelsPage = () => {
 
     const dirtyTotal = (cleanTotal !== null && ac !== null) ? cleanTotal - ac : null;
 
+    // Маленькие полотенца (Nurly Orda) — та же арифметика
+    const prevCarrySmall = getPrevCarrySmall(date);
+    const sr  = fields.smallReceived    ?? null;
+    const stm = fields.smallTotalManual ?? null;
+    const sac = fields.smallActual      ?? null;
+    const smallTotal = prevCarrySmall === null
+      ? (stm ?? sr)
+      : (prevCarrySmall !== null && sr !== null) ? prevCarrySmall + sr : sr;
+    const smallDirty = (smallTotal !== null && sac !== null) ? smallTotal - sac : null;
+
     const docId = `${date}_${club.replace(/\s+/g, '_')}`;
     try {
       await setDoc(doc(db, 'towel_records', docId), {
@@ -371,13 +442,20 @@ const TowelsPage = () => {
         actualCount:      ac,
         dirtyTotal,
         remainder: ac,
+        smallReceived:    sr,
+        smallTotalManual: stm,
+        smallActual:      sac,
+        smallDirty,
+        laundryKg:        fields.laundryKg ?? null,
       }, { merge: true });
       // Notify when the actual count is filled in — the day is done.
       // Same tag → repeated edits replace the notification instead of spamming.
       if (ac !== null) {
         pushNotify({
           title: '🧺 Полотенца учтены',
-          body: `${club} за ${date}: чистых ${cleanTotal ?? '—'}, факт ${ac}${dirtyTotal !== null ? `, грязных ${dirtyTotal}` : ''}`,
+          body: `${club} за ${date}: чистых ${cleanTotal ?? '—'}, факт ${ac}${dirtyTotal !== null ? `, грязных ${dirtyTotal}` : ''}`
+            + (sac !== null ? ` · маленьких: ${sac} остат.${smallDirty !== null ? `, грязных ${smallDirty}` : ''}` : '')
+            + (fields.laundryKg != null ? ` · стирка ${fields.laundryKg} кг` : ''),
           club,
           excludeEmail: user?.email || '',
           url: '/towels',
@@ -388,7 +466,7 @@ const TowelsPage = () => {
       console.error('[towel_records]', e);
       toast.error('Не удалось сохранить');
     }
-  }, [club, getPrevCarry, user]);
+  }, [club, getPrevCarry, getPrevCarrySmall, user]);
 
   // Summary strip for today
   const todayRec    = records[today];
@@ -437,6 +515,11 @@ const TowelsPage = () => {
             { label: 'Всего чистых',    value: todayCleanTotal,  color: '#10b981', bg: 'rgba(16,185,129,0.08)' },
             { label: 'Осталось чистых', value: todayAc,          color: '#818cf8', bg: 'rgba(129,140,248,0.08)' },
             { label: 'Грязных',         value: todayDirtyTotal,  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
+            ...(club === 'NURLY ORDA' ? [
+              { label: 'Маленьких осталось', value: todayRec?.smallActual ?? null, color: '#06b6d4', bg: 'rgba(6,182,212,0.08)' },
+              { label: 'Маленьких грязных',  value: todayRec?.smallDirty ?? null,  color: '#ec4899', bg: 'rgba(236,72,153,0.08)' },
+              { label: 'Стирка, кг',         value: todayRec?.laundryKg ?? null,   color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
+            ] : []),
           ].filter(s => s.value !== null).map(s => (
             <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.color}30`, borderRadius: 12, padding: '10px 18px', minWidth: 100 }}>
               <div style={{ fontSize: 22, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
@@ -455,8 +538,10 @@ const TowelsPage = () => {
           <DayCard
             key={date}
             date={date}
+            club={club}
             record={records[date]}
             prevCarry={getPrevCarry(date)}
+            prevCarrySmall={getPrevCarrySmall(date)}
             prevShortage={getPrevShortage(date)}
             isToday={date === today}
             canEdit={canEdit}

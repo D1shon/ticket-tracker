@@ -22,9 +22,11 @@ function dueReminders(alm) {
   // Fires within [t, t+6) — covers ping intervals and small delays
   const inWin = (t) => nowMin >= t && nowMin < t + 6
 
-  // 1. Daily check-in at 6:30
+  // Каждое напоминание адресовано ролям (roles) — РОПы, Ком-Дир, наблюдатели
+  // и маркетинг служебные пуши не получают.
+  // 1. Daily check-in at 6:30 — чекинятся клубные сотрудники
   if (inWin(390)) {
-    due.push({ id: `${dateStr}_checkin`, title: '✅ Чекин', body: 'Произведите чекин — отметьтесь в приложении', club: null, url: '/scan' })
+    due.push({ id: `${dateStr}_checkin`, title: '✅ Чекин', body: 'Произведите чекин — отметьтесь в приложении', club: null, url: '/scan', roles: ['manager', 'admin'] })
   }
 
   // 2. Shift checklists — 5 minutes before each shift
@@ -40,29 +42,31 @@ function dueReminders(alm) {
         { id: 'evening', name: 'Вечерняя смена', time: '16:30', min: 990 },
         { id: 'night',   name: 'Ночная смена',   time: '21:30', min: 1290 },
       ]
+  // Чек-листы — функция менеджеров, админам эти пуши не нужны
   shifts.forEach(s => {
     if (s.min - nowMin > 0 && s.min - nowMin <= 6) {
-      due.push({ id: `${dateStr}_${s.id}`, title: '📋 Чек-лист смены', body: `${s.name} в ${s.time} — через 5 минут начало, откройте чек-лист`, club: null, url: '/checklists' })
+      due.push({ id: `${dateStr}_${s.id}`, title: '📋 Чек-лист смены', body: `${s.name} в ${s.time} — через 5 минут начало, откройте чек-лист`, club: null, url: '/checklists', roles: ['manager', 'chef'] })
     }
   })
 
   // 3. HR monitors & towels check
   if (!weekend) {
-    // Weekdays: 22:00, all clubs at once
+    // Weekdays: 22:00, all clubs at once — проверку делают админы и менеджеры
     if (inWin(1320)) {
-      due.push({ id: `${dateStr}_mt_all`, title: '💓 Проверка пульсометров и полотенец', body: 'Проведите проверку пульсометров и учёт полотенец', club: null, url: '/hr-monitors' })
+      due.push({ id: `${dateStr}_mt_all`, title: '💓 Проверка пульсометров и полотенец', body: 'Проведите проверку пульсометров и учёт полотенец', club: null, url: '/hr-monitors', roles: ['manager', 'admin'] })
     }
   } else {
-    // Weekends: per-club times — 4YOU 19:00, VILLA 19:00, COLIBRI 21:00, NURLY ORDA 21:30
+    // Weekends: per-club times — 4YOU 19:00, VILLA 19:00, COLIBRI 21:00, NURLY ORDA 21:30, PROMENADE 19:00
     const perClub = [
       ['4YOU',       1140],
       ['VILLA',      1140],
       ['COLIBRI',    1260],
       ['NURLY ORDA', 1290],
+      ['PROMENADE',  1140],
     ]
     perClub.forEach(([club, t]) => {
       if (inWin(t)) {
-        due.push({ id: `${dateStr}_mt_${club.replace(/\s+/g, '')}`, title: '💓 Проверка пульсометров и полотенец', body: `${club}: проведите проверку пульсометров и учёт полотенец`, club, url: '/hr-monitors' })
+        due.push({ id: `${dateStr}_mt_${club.replace(/\s+/g, '')}`, title: '💓 Проверка пульсометров и полотенец', body: `${club}: проведите проверку пульсометров и учёт полотенец`, club, url: '/hr-monitors', roles: ['manager', 'admin'] })
       }
     })
   }
@@ -74,18 +78,18 @@ let tokensCache = null
 let tokensCachedAt = 0
 
 async function getTokens(clientTokens) {
-  // Client passes [{ t, club }] — resolved with the client SDK (admin reads hit quota)
+  // Client passes [{ t, club, role }] — resolved with the client SDK (admin reads hit quota)
   if (Array.isArray(clientTokens) && clientTokens.length > 0) {
     return clientTokens
       .filter(x => x && typeof x.t === 'string' && x.t.length > 20)
       .slice(0, 500)
-      .map(x => ({ token: x.t, club: x.club || null }))
+      .map(x => ({ token: x.t, club: x.club || null, role: x.role || null }))
   }
   const now = Date.now()
   if (tokensCache && now - tokensCachedAt < 10 * 60 * 1000) return tokensCache
   try {
     const snap = await admin.firestore().collection('push_tokens').get()
-    tokensCache = snap.docs.map(d => ({ token: d.id, club: d.data().club || null }))
+    tokensCache = snap.docs.map(d => ({ token: d.id, club: d.data().club || null, role: d.data().role || null }))
     tokensCachedAt = now
     return tokensCache
   } catch (err) {
@@ -125,6 +129,9 @@ export default async function handler(req, res) {
 
       const tokens = allTokens
         .filter(t => !r.club || !t.club || (t.club || '').toUpperCase() === r.club.toUpperCase())
+        // Только адресованные роли; токены без роли (старые подписки) не получают
+        // служебные пуши — роль допишется при следующем открытии приложения
+        .filter(t => !r.roles || r.roles.includes(t.role))
         .map(t => t.token)
       if (tokens.length === 0) { results.push({ id: r.id, sent: 0 }); continue }
 

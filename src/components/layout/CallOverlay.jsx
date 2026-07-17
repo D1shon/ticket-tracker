@@ -61,6 +61,21 @@ const CallOverlay = () => {
   const [isFullPage, setIsFullPage] = React.useState(true);
   const [isMicMuted, setIsMicMuted] = React.useState(false);
   const [isCameraMuted, setIsCameraMuted] = React.useState(false);
+  const [isLeaving, setIsLeaving] = React.useState(false);
+  const [isMobile, setIsMobile] = React.useState(() => window.innerWidth <= 768);
+
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+
+  // Одно нажатие завершает звонок; повторные — игнорируются
+  const handleLeave = async () => {
+    if (isLeaving) return;
+    setIsLeaving(true);
+    try { await leaveCall(); } finally { setIsLeaving(false); }
+  };
 
   const dragStartPos = useRef({ x: 0, y: 0 });
 
@@ -96,14 +111,19 @@ const CallOverlay = () => {
     };
   }, [isDragging]);
 
-  // Auto-maximize to fullscreen when screen sharing is active (local or remote)
+  // Поведение как в WhatsApp:
+  // — Я транслирую экран → созвон сворачивается в плавающее окно (работаю со своим экраном)
+  // — Кто-то другой транслирует → разворачиваем на весь экран, чтобы смотреть
   useEffect(() => {
-    const activeScreenShareUser = remoteUsers.find(u => u.isScreen && u.videoTrack);
-    const activeScreenTrack = isScreenSharing ? screenTrack : (activeScreenShareUser ? activeScreenShareUser.videoTrack : null);
-    if (activeScreenTrack) {
+    const remoteShare = remoteUsers.find(u => u.isScreen && u.videoTrack);
+    if (isScreenSharing) {
+      setIsFullPage(false);
+      // окно — в правый нижний угол, не мешает работать
+      setPosition({ x: Math.max(12, window.innerWidth - 356), y: Math.max(12, window.innerHeight - 320) });
+    } else if (remoteShare) {
       setIsFullPage(true);
     }
-  }, [isScreenSharing, screenTrack, remoteUsers]);
+  }, [isScreenSharing, remoteUsers]);
 
   const toggleMic = async () => {
     if (localAudioTrack) {
@@ -319,6 +339,46 @@ const CallOverlay = () => {
   };
 
   return (
+    <>
+    {/* ── Индикатор трансляции: пульсирующая рамка по краям монитора ── */}
+    {isScreenSharing && (
+      <>
+        <style>{`
+          @keyframes hjSharePulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+          }
+        `}</style>
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 2500, pointerEvents: 'none',
+          border: '4px solid #3b82f6',
+          boxShadow: 'inset 0 0 32px rgba(59,130,246,0.35)',
+          animation: 'hjSharePulse 2.2s ease-in-out infinite',
+        }} />
+        <div style={{
+          position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 2600,
+          display: 'flex', alignItems: 'center', gap: 10,
+          background: 'rgba(15,18,25,0.92)', border: '1px solid rgba(59,130,246,0.5)',
+          borderRadius: 24, padding: '7px 8px 7px 16px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 10px #3b82f6', animation: 'hjSharePulse 1.4s infinite', flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', whiteSpace: 'nowrap' }}>
+            Вы транслируете экран
+          </span>
+          <button
+            onClick={toggleScreenShare}
+            style={{
+              background: '#ef4444', border: 'none', borderRadius: 18, padding: '6px 14px',
+              color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            Остановить
+          </button>
+        </div>
+      </>
+    )}
+
     <div style={{
       position: 'fixed',
       left: isFullPage ? 0 : position.x,
@@ -343,7 +403,9 @@ const CallOverlay = () => {
       <div
         onMouseDown={isFullPage ? null : handleMouseDown}
         style={{
-          padding: isFullPage ? '16px 24px' : '12px 16px',
+          padding: isMobile
+            ? 'calc(12px + env(safe-area-inset-top)) 16px 12px'
+            : (isFullPage ? '16px 24px' : '12px 16px'),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -372,27 +434,30 @@ const CallOverlay = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* На телефоне окно всегда на весь экран, «Свернуть» не показываем */}
           {isFullPage ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); setIsFullPage(false); }}
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: 'none',
-                padding: '8px 16px',
-                borderRadius: 10,
-                color: 'white',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontSize: 10,
-                fontWeight: 800,
-                transition: 'all 0.2s'
-              }}
-            >
-              <Minimize2 size={14} />
-              <span>Свернуть</span>
-            </button>
+            !isMobile && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setIsFullPage(false); }}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: 10,
+                  color: 'white',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  transition: 'all 0.2s'
+                }}
+              >
+                <Minimize2 size={14} />
+                <span>Свернуть</span>
+              </button>
+            )
           ) : (
             <>
               <button
@@ -430,26 +495,31 @@ const CallOverlay = () => {
             </>
           )}
 
-          <button
-            onClick={(e) => { e.stopPropagation(); leaveCall(); }}
-            style={{
-              background: '#ef4444',
-              border: 'none',
-              padding: isFullPage ? '8px 16px' : '6px',
-              borderRadius: isFullPage ? 10 : 8,
-              color: 'white',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              fontSize: 10,
-              fontWeight: 800
-            }}
-          >
-            <PhoneOff size={14} />
-            {isFullPage && <span>Завершить</span>}
-          </button>
+          {/* На телефоне «Завершить» живёт внизу, под большим пальцем */}
+          {!isMobile && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleLeave(); }}
+              disabled={isLeaving}
+              style={{
+                background: '#ef4444',
+                border: 'none',
+                padding: isFullPage ? '8px 16px' : '6px',
+                borderRadius: isFullPage ? 10 : 8,
+                color: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                fontSize: 10,
+                fontWeight: 800,
+                opacity: isLeaving ? 0.6 : 1
+              }}
+            >
+              <PhoneOff size={14} />
+              {isFullPage && <span>{isLeaving ? 'Выходим…' : 'Завершить'}</span>}
+            </button>
+          )}
         </div>
       </div>
 
@@ -458,9 +528,12 @@ const CallOverlay = () => {
 
       {/* ── Bottom Controls ── */}
       <div style={{
-        padding: isFullPage ? '16px 24px' : 12,
+        padding: isMobile
+          ? '14px 16px calc(14px + env(safe-area-inset-bottom))'
+          : (isFullPage ? '16px 24px' : 12),
         display: 'flex',
         justifyContent: 'center',
+        alignItems: 'stretch',
         background: 'rgba(0,0,0,0.2)',
         borderTop: isFullPage ? '1px solid rgba(255,255,255,0.05)' : 'none',
         gap: 12
@@ -469,12 +542,12 @@ const CallOverlay = () => {
         <button
           onClick={toggleMic}
           style={{
-            flex: isFullPage ? 'none' : 1,
-            width: isFullPage ? 56 : undefined,
-            height: 44,
-            background: isMicMuted ? '#ef4444' : 'rgba(255,255,255,0.05)',
+            flex: (isFullPage && !isMobile) ? 'none' : 1,
+            width: (isFullPage && !isMobile) ? 56 : undefined,
+            height: isMobile ? 56 : 44,
+            background: isMicMuted ? '#ef4444' : 'rgba(255,255,255,0.08)',
             border: 'none',
-            borderRadius: 12,
+            borderRadius: 14,
             color: 'white',
             display: 'flex',
             alignItems: 'center',
@@ -484,19 +557,19 @@ const CallOverlay = () => {
           }}
           title={isMicMuted ? "Включить микрофон" : "Выключить микрофон"}
         >
-          {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
+          {isMicMuted ? <MicOff size={isMobile ? 22 : 18} /> : <Mic size={isMobile ? 22 : 18} />}
         </button>
 
         {/* Toggle Camera */}
         <button
           onClick={toggleCamera}
           style={{
-            flex: isFullPage ? 'none' : 1,
-            width: isFullPage ? 56 : undefined,
-            height: 44,
-            background: isCameraMuted ? '#ef4444' : 'rgba(255,255,255,0.05)',
+            flex: (isFullPage && !isMobile) ? 'none' : 1,
+            width: (isFullPage && !isMobile) ? 56 : undefined,
+            height: isMobile ? 56 : 44,
+            background: isCameraMuted ? '#ef4444' : 'rgba(255,255,255,0.08)',
             border: 'none',
-            borderRadius: 12,
+            borderRadius: 14,
             color: 'white',
             display: 'flex',
             alignItems: 'center',
@@ -506,37 +579,70 @@ const CallOverlay = () => {
           }}
           title={isCameraMuted ? "Включить камеру" : "Выключить камеру"}
         >
-          {isCameraMuted ? <VideoOff size={18} /> : <Video size={18} />}
+          {isCameraMuted ? <VideoOff size={isMobile ? 22 : 18} /> : <Video size={isMobile ? 22 : 18} />}
         </button>
 
-        {/* Screen Share */}
-        <button
-          onClick={toggleScreenShare}
-          style={{
-            width: isFullPage ? 'auto' : '100%',
-            minWidth: isFullPage ? 220 : undefined,
-            flex: isFullPage ? 'none' : 2,
-            background: isScreenSharing ? '#3b82f6' : 'rgba(255,255,255,0.05)',
-            border: 'none',
-            padding: '12px',
-            borderRadius: 12,
-            color: 'white',
-            fontSize: 11,
-            fontWeight: 900,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            cursor: 'pointer',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}
-        >
-          <Monitor size={15} />
-          {isScreenSharing ? 'Откл. экран' : 'Трансляция экрана'}
-        </button>
+        {/* Screen Share — на телефонах браузеры не поддерживают, прячем */}
+        {!isMobile && (
+          <button
+            onClick={toggleScreenShare}
+            style={{
+              width: isFullPage ? 'auto' : '100%',
+              minWidth: isFullPage ? 220 : undefined,
+              flex: isFullPage ? 'none' : 2,
+              background: isScreenSharing ? '#3b82f6' : 'rgba(255,255,255,0.05)',
+              border: 'none',
+              padding: '12px',
+              borderRadius: 12,
+              color: 'white',
+              fontSize: 11,
+              fontWeight: 900,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em'
+            }}
+          >
+            <Monitor size={15} />
+            {isScreenSharing ? 'Откл. экран' : 'Трансляция экрана'}
+          </button>
+        )}
+
+        {/* Завершить — на телефоне большая красная кнопка внизу */}
+        {isMobile && (
+          <button
+            onClick={handleLeave}
+            disabled={isLeaving}
+            style={{
+              flex: 2,
+              height: 56,
+              background: '#ef4444',
+              border: 'none',
+              borderRadius: 14,
+              color: 'white',
+              fontSize: 13,
+              fontWeight: 900,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              opacity: isLeaving ? 0.6 : 1,
+              boxShadow: '0 4px 16px rgba(239,68,68,0.4)'
+            }}
+          >
+            <PhoneOff size={20} />
+            {isLeaving ? 'Выходим…' : 'Завершить'}
+          </button>
+        )}
       </div>
     </div>
+    </>
   );
 };
 

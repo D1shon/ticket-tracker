@@ -7,7 +7,7 @@ import { TrendingUp, ShoppingCart, Package, Search, Check, X, AlertTriangle, Rot
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 const PAYMENT_METHODS = ['Kaspi', 'Наличные', 'Карта'];
 const FREE_REASONS = ['Бартер', 'Победитель', 'Маркетинг', 'Подарок', 'Другое'];
 
@@ -16,6 +16,7 @@ const CLUB_COLORS = {
   'COLIBRI':    '#10b981',
   'VILLA':      '#f59e0b',
   'NURLY ORDA': '#8b5cf6',
+  'PROMENADE':  '#14b8a6',
 };
 
 const SalesPage = () => {

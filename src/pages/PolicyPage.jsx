@@ -9,6 +9,7 @@ const CLUBS = [
   { name: 'COLIBRI',    color: '#9b5de5' },
   { name: 'VILLA',      color: '#f59e0b' },
   { name: 'NURLY ORDA', color: '#22c55e' },
+  { name: 'PROMENADE',  color: '#14b8a6' },
 ];
 
 function escapeRegex(str) {
@@ -28,8 +29,8 @@ function highlightText(text, query) {
 const PolicyPage = () => {
   const { user } = useTickets();
   const isChef = user?.role === 'chef';
-  // Ком-Дир и РОП видят соглашения всех клубов, но не редактируют
-  const canSeeAllClubs = isChef || user?.role === 'komdir' || user?.role === 'rop';
+  // Ком-Дир видит соглашения всех клубов (без редактирования), РОП — только свой клуб
+  const canSeeAllClubs = isChef || user?.role === 'komdir';
   const userClubUpper = user?.club?.toUpperCase();
 
   const [activeTab, setActiveTab]         = useState('');

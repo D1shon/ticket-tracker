@@ -4,10 +4,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight, CalendarClock } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 
-const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 const FILTERS    = ['ВСЕ', 'НОВЫЕ', 'В РАБОТЕ', 'ПАУЗА', 'ОЖИДАНИЕ', 'ЗАКРЫТО'];
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
 const PRIORITIES = [
   { id: 'critical', label: 'Критический', color: '#ff4444' },
   { id: 'high',     label: 'Высокий',     color: '#ff8800' },
@@ -33,7 +33,7 @@ const FILTER_TO_COL = {
 
 const clubColors = {
   '4YOU': 'badge-4you', 'COLIBRI': 'badge-colibri',
-  'VILLA': 'badge-villa', 'NURLY ORDA': 'badge-nurly'
+  'VILLA': 'badge-villa', 'NURLY ORDA': 'badge-nurly', 'PROMENADE': 'badge-promenade'
 };
 const priorityLabels = {
   critical: { label: 'Критический', cls: 'priority-critical' },

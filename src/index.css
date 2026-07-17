@@ -263,6 +263,7 @@ select.input-app {
 .badge-colibri { background: rgba(16,185,129,0.1); color: var(--accent-green);  border: 1px solid rgba(16,185,129,0.2); }
 .badge-villa   { background: rgba(245,158,11,0.1); color: var(--accent-orange); border: 1px solid rgba(245,158,11,0.2); }
 .badge-nurly   { background: rgba(139,92,246,0.1); color: var(--accent-purple); border: 1px solid rgba(139,92,246,0.2); }
+.badge-promenade { background: rgba(20,184,166,0.1); color: #14b8a6;            border: 1px solid rgba(20,184,166,0.2); }
 .badge-prime   { background: rgba(239,68,68,0.1);  color: var(--accent-red);    border: 1px solid rgba(239,68,68,0.2); }
 
 /* Priority Badges */

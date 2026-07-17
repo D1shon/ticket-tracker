@@ -20,6 +20,7 @@ const CLUB_MAP = {
   'COLIBRI':    'HJ Colibri',
   'VILLA':      'HJ Villa',
   'NURLY ORDA': 'HJ Nurly Orda',
+  'PROMENADE':  'HJ Promenade',
 };
 
 const DOW_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
