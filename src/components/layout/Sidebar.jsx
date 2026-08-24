@@ -352,6 +352,39 @@ const MobileNav = () => {
     window.location.reload();
   };
   const sheetRef = useRef(null);
+  // Свайп вниз по ручке шторки — закрыть (ручка сама по себе не тянется,
+  // поэтому жест вешаем на её зону касания)
+  const dragStartY = useRef(null);
+  const dragDelta = useRef(0);
+  const onHandleTouchStart = (e) => {
+    dragStartY.current = e.touches[0].clientY;
+    dragDelta.current = 0;
+    if (sheetRef.current) sheetRef.current.style.transition = 'none';
+  };
+  const onHandleTouchMove = (e) => {
+    if (dragStartY.current == null) return;
+    const dy = Math.max(0, e.touches[0].clientY - dragStartY.current);
+    dragDelta.current = dy;
+    if (sheetRef.current) sheetRef.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onHandleTouchEnd = () => {
+    const el = sheetRef.current;
+    const dy = dragDelta.current;
+    dragStartY.current = null;
+    if (!el) return;
+    el.style.transition = 'transform 0.2s cubic-bezier(0.4,0,0.2,1)';
+    if (dy > 70) {
+      el.style.transform = 'translateY(120%)';
+      setTimeout(() => { setShowMore(false); setShowNotifications(false); }, 180);
+    } else {
+      el.style.transform = 'translateY(0)';
+    }
+  };
+  const handleDragProps = {
+    onTouchStart: onHandleTouchStart,
+    onTouchMove: onHandleTouchMove,
+    onTouchEnd: onHandleTouchEnd,
+  };
   const [isDemoDayActive, setIsDemoDayActive] = useState(false);
 
   useEffect(() => {
@@ -694,8 +727,10 @@ const MobileNav = () => {
               maxHeight: 'calc(100dvh - 140px)', overflowY: 'auto',
             }}
           >
-            {/* Handle */}
-            <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
+            {/* Handle — потянуть вниз, чтобы закрыть */}
+            <div {...handleDragProps} style={{ touchAction: 'none', padding: '12px 0 12px', margin: '-12px 0 0' }}>
+              <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto' }} />
+            </div>
 
             {(() => {
               // ── Новый визуал «Ещё»: плитки с подписями по секциям ──
@@ -827,7 +862,9 @@ const MobileNav = () => {
             }}
           >
             <div style={{ padding: '16px 20px 0', flexShrink: 0 }}>
-              <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
+              <div {...handleDragProps} style={{ touchAction: 'none', padding: '16px 0 12px', margin: '-16px 0 0' }}>
+                <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto' }} />
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)' }}>Уведомления</span>
                 {unreadCount > 0 && <span style={{ fontSize: 11, background: '#B06A6A', color: '#fff', borderRadius: 20, padding: '2px 8px', fontWeight: 700 }}>{unreadCount} новых</span>}
