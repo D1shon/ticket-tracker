@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { isMobileDevice } from '../../lib/isMobile';
+import useSheetDrag from '../../lib/useSheetDrag';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Ticket, CheckSquare, Calendar, CalendarDays,
@@ -352,55 +353,8 @@ const MobileNav = () => {
     window.location.reload();
   };
   const sheetRef = useRef(null);
-  // Свайп вниз — закрыть шторку (как системные шторки iOS): жест начинается
-  // с любого места, если список прокручен в самый верх. Нативные слушатели
-  // с passive:false — React вешает touchmove пассивно и preventDefault не работает,
-  // без него браузер продолжает скроллить список вместо перетаскивания.
-  useEffect(() => {
-    const el = sheetRef.current;
-    if (!el || (!showMore && !showNotifications)) return;
-    const scroller = () => el.querySelector('.sheet-scroll') || el;
-    let startY = 0, delta = 0, tracking = false, dragging = false;
-    const onStart = (e) => {
-      tracking = true; dragging = false; delta = 0;
-      startY = e.touches[0].clientY;
-    };
-    const onMove = (e) => {
-      if (!tracking) return;
-      const dy = e.touches[0].clientY - startY;
-      if (!dragging) {
-        if (scroller().scrollTop > 0 || dy < -6) { tracking = false; return; }
-        if (dy <= 6) return;
-        dragging = true;
-        el.style.transition = 'none';
-      }
-      delta = Math.max(0, dy);
-      e.preventDefault();
-      el.style.transform = `translateY(${delta}px)`;
-    };
-    const onEnd = () => {
-      tracking = false;
-      if (!dragging) return;
-      dragging = false;
-      el.style.transition = 'transform 0.2s cubic-bezier(0.4,0,0.2,1)';
-      if (delta > 70) {
-        el.style.transform = 'translateY(120%)';
-        setTimeout(() => { setShowMore(false); setShowNotifications(false); }, 180);
-      } else {
-        el.style.transform = 'translateY(0)';
-      }
-    };
-    el.addEventListener('touchstart', onStart, { passive: true });
-    el.addEventListener('touchmove', onMove, { passive: false });
-    el.addEventListener('touchend', onEnd);
-    el.addEventListener('touchcancel', onEnd);
-    return () => {
-      el.removeEventListener('touchstart', onStart);
-      el.removeEventListener('touchmove', onMove);
-      el.removeEventListener('touchend', onEnd);
-      el.removeEventListener('touchcancel', onEnd);
-    };
-  }, [showMore, showNotifications]);
+  // Свайп вниз — закрыть шторку (общий жест приложения)
+  useSheetDrag(sheetRef, showMore || showNotifications, () => { setShowMore(false); setShowNotifications(false); });
   const [isDemoDayActive, setIsDemoDayActive] = useState(false);
 
   useEffect(() => {
@@ -882,7 +836,7 @@ const MobileNav = () => {
                 {unreadCount > 0 && <span style={{ fontSize: 11, background: '#B06A6A', color: '#fff', borderRadius: 20, padding: '2px 8px', fontWeight: 700 }}>{unreadCount} новых</span>}
               </div>
             </div>
-            <div className="sheet-scroll" style={{ overflowY: 'auto', flex: 1, paddingBottom: 16 }}>
+            <div data-sheet-scroll style={{ overflowY: 'auto', flex: 1, paddingBottom: 16 }}>
               {notifications.slice(0, 15).map(n => {
                 const isUnread = !readIds?.has?.(n.id);
                 return (

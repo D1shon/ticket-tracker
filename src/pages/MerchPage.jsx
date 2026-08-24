@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import useSheetDrag from '../lib/useSheetDrag';
 import { 
   collection, query, onSnapshot, setDoc, doc, deleteDoc,
   serverTimestamp, addDoc, updateDoc, increment, where, getDoc, runTransaction
@@ -167,12 +168,22 @@ const MerchPage = () => {
   // Modals
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  
+
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [selectedProductForSale, setSelectedProductForSale] = useState(null);
-  
+
   const [showSupplyModal, setShowSupplyModal] = useState(false);
   const [selectedProductForSupply, setSelectedProductForSupply] = useState(null);
+
+  // Свайп вниз — закрыть мобильную шторку (общий жест приложения)
+  const productSheetRef = useRef(null);
+  const saleSheetRef = useRef(null);
+  const transferSheetRef = useRef(null);
+  const supplySheetRef = useRef(null);
+  useSheetDrag(productSheetRef, showProductModal, () => setShowProductModal(false));
+  useSheetDrag(saleSheetRef, showSaleModal, () => setShowSaleModal(false));
+  useSheetDrag(supplySheetRef, showSupplyModal, () => setShowSupplyModal(false));
+  useSheetDrag(transferSheetRef, showTransferModal, () => { if (!transferBusy) setShowTransferModal(false); });
 
   // Photo upload state
   const [photoFile, setPhotoFile] = useState(null);
@@ -2955,7 +2966,7 @@ const MerchPage = () => {
       {showProductModal && (isChef || !!managerClub || isLostviewerFull) && ReactDOM.createPortal(
         /* Мобильный: модалка прижата к низу шторкой */
         <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
+          <div ref={productSheetRef} className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <Store size={18} className="text-[var(--accent-purple)]" />
@@ -2969,7 +2980,7 @@ const MerchPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="p-5 space-y-4 overflow-y-auto">
+            <form onSubmit={handleSaveProduct} data-sheet-scroll className="p-5 space-y-4 overflow-y-auto">
               
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
@@ -3234,7 +3245,7 @@ const MerchPage = () => {
       {showSaleModal && selectedProductForSale && ReactDOM.createPortal(
         /* Мобильный: модалка прижата к низу шторкой */
         <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
+          <div ref={saleSheetRef} className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <ShoppingCart size={18} className="text-emerald-400" />
@@ -3248,7 +3259,7 @@ const MerchPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateSale} className="p-5 space-y-4 overflow-y-auto">
+            <form onSubmit={handleCreateSale} data-sheet-scroll className="p-5 space-y-4 overflow-y-auto">
               
               <div className="bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] overflow-hidden">
                 {/* Product image banner */}
@@ -3536,7 +3547,7 @@ const MerchPage = () => {
       {showTransferModal && selectedProductForTransfer && ReactDOM.createPortal(
         /* Мобильный: модалка прижата к низу шторкой */
         <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`} onClick={() => !transferBusy && setShowTransferModal(false)}>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+          <div ref={transferSheetRef} className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <ArrowUpRight size={18} className="text-purple-400" /> Перемещение
@@ -3544,7 +3555,7 @@ const MerchPage = () => {
               <button onClick={() => setShowTransferModal(false)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"><X size={18} /></button>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto">
+            <div data-sheet-scroll className="p-5 space-y-4 overflow-y-auto">
               <div className="p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)]">
                 <span className="text-[10px] font-black uppercase text-purple-400 tracking-widest">{selectedProductForTransfer.category} • {selectedProductForTransfer.club}</span>
                 <h4 className="font-extrabold text-sm text-[var(--text-primary)] mt-1">{selectedProductForTransfer.name}</h4>
@@ -3602,7 +3613,7 @@ const MerchPage = () => {
       {showSupplyModal && selectedProductForSupply && (isChef || (managerClub && selectedProductForSupply.club === managerClub) || isLostviewerFull) && ReactDOM.createPortal(
         /* Мобильный: модалка прижата к низу шторкой */
         <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
+          <div ref={supplySheetRef} className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <Plus size={18} className="text-blue-400" />
@@ -3616,7 +3627,7 @@ const MerchPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleAddSupply} className="p-5 space-y-4 overflow-y-auto">
+            <form onSubmit={handleAddSupply} data-sheet-scroll className="p-5 space-y-4 overflow-y-auto">
               
               <div className="p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)]">
                 <span className="text-[10px] font-black uppercase text-blue-400 tracking-widest">{selectedProductForSupply.category} • {selectedProductForSupply.club}</span>
