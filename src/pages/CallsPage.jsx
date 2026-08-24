@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { isMobileDevice } from '../lib/isMobile';
 import { useNavigate } from 'react-router-dom';
 import { useCall } from '../store/CallContext';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { pushNotify } from '../lib/pushNotify';
-import { Play, Plus, SignalHigh, BarChart3, ShieldCheck, CalendarClock, Trash2, X, Video, Loader2, Lock, Globe, Check } from 'lucide-react';
+import { Play, Plus, SignalHigh, BarChart3, ShieldCheck, CalendarClock, Trash2, X, Video, Loader2, Lock, Globe, Check, Search, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -17,49 +18,77 @@ const CallsPage = () => {
   const { user } = useTickets();
   const navigate = useNavigate();
   const isChef = user?.role === 'chef';
+  const myEmail = (user?.email || '').toLowerCase();
 
   const [joiningRoom, setJoiningRoom] = useState(null);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
   useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth <= 768);
+    const h = () => setIsMobile(isMobileDevice());
     window.addEventListener('resize', h);
     return () => window.removeEventListener('resize', h);
   }, []);
   useEffect(() => { if (!isJoining) setJoiningRoom(null); }, [isJoining]);
 
-  const handleJoin = (name) => {
+  const handleJoin = (name, channel = null) => {
     if (isJoining || isInCall) return;
     setJoiningRoom(name);
-    joinCall(name);
+    joinCall(name, channel ? { channel } : {});
   };
 
   // ─── Запланированные созвоны ────────────────────────────────────────────────
   const [scheduled, setScheduled] = useState([]);
   const [showPlan, setShowPlan] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null); // созвон в режиме редактирования
   const [planForm, setPlanForm] = useState({ room: ROOMS[0], date: '', time: '', note: '', visibility: 'public', participants: [] });
   const [savingPlan, setSavingPlan] = useState(false);
 
-  // Менеджерский состав для приватных созвонов: шефы + менеджеры с клубами
+  const [participantSearch, setParticipantSearch] = useState('');
+
+  // Весь состав сотрудников для приватных созвонов: шефы, менеджеры, админы,
+  // РОПы, Ком-Дир, маркетинг, наблюдатели (все роли с реальным доступом).
+  const STAFF_ROLES = ['chef', 'manager', 'admin', 'rop', 'komdir', 'marketing', 'viewer'];
+  const roleLabel = (p) => {
+    if (p.role === 'chef') return 'Шеф';
+    if (p.role === 'komdir') return 'Ком-Дир';
+    if (p.role === 'rop') return `РОП${p.club ? ' ' + p.club : ''}`;
+    if (p.role === 'marketing') return 'Маркетинг';
+    if (p.role === 'viewer') return 'Наблюд.';
+    return p.club || (p.role === 'admin' ? 'Админ' : '');
+  };
   const team = useMemo(() => {
     const seen = new Set();
     const out = [];
     for (const [email, p] of Object.entries(USER_ROLES)) {
       if (!email.includes('@')) continue;
-      if (p.role !== 'chef' && p.role !== 'manager') continue;
-      const key = `${p.displayName}|${p.club || ''}`;
+      if (!STAFF_ROLES.includes(p.role)) continue;
+      const key = `${p.displayName}|${p.club || ''}|${p.role}`;
       if (seen.has(key)) continue; // у некоторых по две почты — показываем одного
       seen.add(key);
       out.push({ email, name: p.displayName, club: p.club, role: p.role, allEmails: [email] });
     }
     // вторые почты того же человека — добавляем в allEmails, чтобы пуш дошёл на обе
     for (const [email, p] of Object.entries(USER_ROLES)) {
-      if (!email.includes('@') || (p.role !== 'chef' && p.role !== 'manager')) continue;
-      const person = out.find(o => o.name === p.displayName && (o.club || '') === (p.club || ''));
+      if (!email.includes('@') || !STAFF_ROLES.includes(p.role)) continue;
+      const person = out.find(o => o.name === p.displayName && (o.club || '') === (p.club || '') && o.role === p.role);
       if (person && !person.allEmails.includes(email)) person.allEmails.push(email);
     }
-    out.sort((a, b) => (a.club || '').localeCompare(b.club || '') || a.name.localeCompare(b.name, 'ru'));
+    // порядок ролей: шеф, ком-дир, роп, менеджер, админ, остальные
+    const rank = { chef: 0, komdir: 1, rop: 2, manager: 3, admin: 4, marketing: 5, viewer: 6 };
+    out.sort((a, b) => (rank[a.role] - rank[b.role]) || (a.club || '').localeCompare(b.club || '') || a.name.localeCompare(b.name, 'ru'));
     return out;
   }, []);
+
+  // Кандидаты в участники: без меня + фильтр поиска по имени/клубу/роли
+  const participantOptions = useMemo(() => {
+    const base = team.filter(p => !p.allEmails.some(e => e.toLowerCase() === myEmail));
+    const q = participantSearch.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter(p =>
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.club || '').toLowerCase().includes(q) ||
+      roleLabel(p).toLowerCase().includes(q)
+    );
+  }, [team, participantSearch, myEmail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleParticipant = (person) => {
     setPlanForm(f => {
@@ -78,7 +107,6 @@ const CallsPage = () => {
 
   // Показываем будущие и идущие прямо сейчас (до часа после начала).
   // Приватные видят только участники, создатель и шефы.
-  const myEmail = (user?.email || '').toLowerCase();
   const upcoming = useMemo(() => {
     const cutoff = Date.now() - 60 * 60 * 1000;
     return scheduled
@@ -90,6 +118,32 @@ const CallsPage = () => {
         return (c.participants || []).some(e => (e || '').toLowerCase() === myEmail);
       });
   }, [scheduled, isChef, myEmail]);
+
+  // Открыть созвон в режиме редактирования: форма заполняется его данными
+  const openEditPlan = (c) => {
+    const d = new Date(c.startISO);
+    const existing = (c.participants || []).map(e => (e || '').toLowerCase());
+    const selectedPrimaries = team
+      .filter(p => p.allEmails.some(e => existing.includes(e.toLowerCase())))
+      .map(p => p.email);
+    setEditingPlan(c);
+    setPlanForm({
+      room: c.room || ROOMS[0],
+      date: format(d, 'yyyy-MM-dd'),
+      time: format(d, 'HH:mm'),
+      note: c.note || '',
+      visibility: c.visibility || 'public',
+      participants: selectedPrimaries,
+    });
+    setParticipantSearch('');
+    setShowPlan(true);
+  };
+
+  const closePlanModal = () => {
+    setShowPlan(false);
+    setEditingPlan(null);
+    setPlanForm({ room: ROOMS[0], date: '', time: '', note: '', visibility: 'public', participants: [] });
+  };
 
   const submitPlan = async () => {
     if (!planForm.date || !planForm.time) return;
@@ -104,29 +158,63 @@ const CallsPage = () => {
       const participantsAll = isPrivate ? chosen.flatMap(p => p.allEmails) : [];
       const participantNames = isPrivate ? chosen.map(p => p.name) : [];
 
-      await addDoc(collection(db, 'scheduled_calls'), {
-        room: planForm.room,
-        note: planForm.note.trim() || null,
-        startISO,
-        visibility: planForm.visibility,
-        participants: participantsAll,
-        participantNames,
-        createdBy: user?.displayName || '',
-        createdByEmail: user?.email || '',
-        createdAtISO: new Date().toISOString(),
-        updatedAt: serverTimestamp(),
-      });
-      pushNotify({
-        title: isPrivate ? '🔒 Приватный созвон' : '📅 Запланирован созвон',
-        body: `${planForm.room} · ${format(new Date(startISO), 'd MMMM, HH:mm', { locale: ru })}${planForm.note ? ` — ${planForm.note.trim()}` : ''} (${user?.displayName || ''})`,
-        excludeEmail: user?.email || '',
-        url: '/calls',
-        tag: 'call-planned',
-        ...(isPrivate ? { emails: participantsAll } : { roles: ['chef', 'manager'] }),
-      });
-      setShowPlan(false);
-      setPlanForm({ room: ROOMS[0], date: '', time: '', note: '', visibility: 'public', participants: [] });
-      toast.success(isPrivate ? 'Приватный созвон запланирован — участники получат уведомление' : 'Созвон запланирован — команда получит уведомление');
+      // Приватный созвон — свой уникальный канал (посторонние не зайдут через общий зал).
+      // При редактировании существующий канал сохраняется, чтобы ссылки не поменялись.
+      const channel = isPrivate
+        ? (editingPlan?.channel || `priv_${planForm.room === 'HR Отдел' ? 'hr' : 'room'}_${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`)
+        : null;
+
+      if (editingPlan) {
+        await updateDoc(doc(db, 'scheduled_calls', editingPlan.id), {
+          room: planForm.room,
+          note: planForm.note.trim() || null,
+          startISO,
+          visibility: planForm.visibility,
+          channel,
+          participants: participantsAll,
+          participantNames,
+          editedBy: user?.displayName || '',
+          editedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        });
+        // Время перенесли → сбрасываем маркер напоминания, чтобы «за 5 минут» сработало заново
+        if (editingPlan.startISO !== startISO) {
+          await deleteDoc(doc(db, 'calls_notified', editingPlan.id)).catch(() => {});
+        }
+        pushNotify({
+          title: '✏️ Созвон изменён',
+          body: `${planForm.room} · ${format(new Date(startISO), 'd MMMM, HH:mm', { locale: ru })}${planForm.note ? ` — ${planForm.note.trim()}` : ''} (${user?.displayName || ''})`,
+          excludeEmail: user?.email || '',
+          url: '/calls',
+          tag: 'call-planned',
+          ...(isPrivate ? { emails: participantsAll } : { roles: ['chef', 'manager'] }),
+        });
+        toast.success('Созвон обновлён — участники получат уведомление');
+      } else {
+        await addDoc(collection(db, 'scheduled_calls'), {
+          room: planForm.room,
+          note: planForm.note.trim() || null,
+          startISO,
+          visibility: planForm.visibility,
+          channel,
+          participants: participantsAll,
+          participantNames,
+          createdBy: user?.displayName || '',
+          createdByEmail: user?.email || '',
+          createdAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        });
+        pushNotify({
+          title: isPrivate ? '🔒 Приватный созвон' : '📅 Запланирован созвон',
+          body: `${planForm.room} · ${format(new Date(startISO), 'd MMMM, HH:mm', { locale: ru })}${planForm.note ? ` — ${planForm.note.trim()}` : ''} (${user?.displayName || ''})`,
+          excludeEmail: user?.email || '',
+          url: '/calls',
+          tag: 'call-planned',
+          ...(isPrivate ? { emails: participantsAll } : { roles: ['chef', 'manager'] }),
+        });
+        toast.success(isPrivate ? 'Приватный созвон запланирован — участники получат уведомление' : 'Созвон запланирован — команда получит уведомление');
+      }
+      closePlanModal();
     } catch {
       toast.error('Не удалось сохранить');
     } finally {
@@ -182,7 +270,8 @@ const CallsPage = () => {
             Запланированные созвоны
           </h3>
           <button onClick={() => setShowPlan(true)} style={{
-            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 12,
+            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '11px 16px' : '9px 16px', borderRadius: 12,
+            minHeight: isMobile ? 40 : undefined, // мобайл: кнопка под палец
             border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer',
           }}>
             <CalendarClock size={14} /> Запланировать
@@ -198,41 +287,52 @@ const CallsPage = () => {
               const started = new Date(c.startISO).getTime() <= Date.now();
               const canDelete = isChef || (c.createdByEmail || '').toLowerCase() === (user?.email || '').toLowerCase();
               return (
+                // мобайл: карточка компактнее, действия — отдельной строкой снизу (кнопки ≥40px)
                 <div key={c.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 12, padding: isMobile ? '10px 12px' : '12px 16px',
                   background: 'var(--bg-card)', borderRadius: 14,
-                  border: `1px solid ${started ? 'rgba(34,197,94,0.4)' : 'var(--border)'}`, flexWrap: 'wrap',
+                  border: `1px solid ${started ? 'rgba(95,156,129,0.4)' : 'var(--border)'}`, flexWrap: 'wrap',
                 }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 11, background: started ? 'rgba(34,197,94,0.12)' : 'var(--accent-blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Video size={17} color={started ? '#22c55e' : 'var(--accent-blue)'} />
+                  <div style={{ width: isMobile ? 34 : 38, height: isMobile ? 34 : 38, borderRadius: 11, background: started ? 'rgba(95,156,129,0.12)' : 'var(--accent-blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Video size={isMobile ? 15 : 17} color={started ? '#5F9C81' : 'var(--accent-blue)'} />
                   </div>
                   <div style={{ flex: 1, minWidth: 150 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', flexWrap: 'wrap' }}>
                       {c.room}{c.note ? ` · ${c.note}` : ''}
                       {c.visibility === 'private' && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 900, padding: '2px 8px', borderRadius: 6, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', textTransform: 'uppercase' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 900, padding: '2px 8px', borderRadius: 6, background: 'rgba(192,143,79,0.12)', color: '#C08F4F', textTransform: 'uppercase' }}>
                           <Lock size={9} /> Приватный
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: started ? '#22c55e' : 'var(--text-muted)' }}>
+                    <div style={{ fontSize: isMobile ? 10.5 : 11, fontWeight: 700, color: started ? '#5F9C81' : 'var(--text-muted)' }}>
                       {started ? '● идёт сейчас' : fmtWhen(c.startISO)}{c.createdBy ? ` · ${c.createdBy}` : ''}
                       {c.visibility === 'private' && (c.participantNames || []).length > 0 && ` · ${c.participantNames.join(', ')}`}
                     </div>
                   </div>
-                  <button onClick={() => handleJoin(c.room)} disabled={isJoining} style={{
-                    display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 11,
-                    border: 'none', background: started ? '#22c55e' : 'var(--accent-blue)', color: '#fff',
-                    fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: isJoining ? 0.6 : 1,
-                  }}>
-                    {isJoining && joiningRoom === c.room ? <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Play size={13} />}
-                    Войти
-                  </button>
-                  {canDelete && (
-                    <button onClick={() => deletePlan(c)} title="Отменить" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, lineHeight: 0, opacity: 0.5 }}>
-                      <Trash2 size={15} />
+                  <div style={isMobile
+                    ? { display: 'flex', alignItems: 'center', gap: 6, width: '100%' }
+                    : { display: 'contents' }}>
+                    <button onClick={() => handleJoin(c.room, c.channel)} disabled={isJoining} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: isMobile ? '11px 16px' : '9px 16px', borderRadius: 11,
+                      minHeight: isMobile ? 40 : undefined, flex: isMobile ? 1 : undefined,
+                      border: 'none', background: started ? '#5F9C81' : 'var(--accent-blue)', color: '#fff',
+                      fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: isJoining ? 0.6 : 1,
+                    }}>
+                      {isJoining && joiningRoom === c.room ? <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Play size={13} />}
+                      Войти
                     </button>
-                  )}
+                    {canDelete && (
+                      <>
+                        <button onClick={() => openEditPlan(c)} title="Редактировать: время, тему, участников" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: isMobile ? 12 : 6, lineHeight: 0, opacity: 0.6 }}>
+                          <Pencil size={15} />
+                        </button>
+                        <button onClick={() => deletePlan(c)} title="Отменить" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: isMobile ? 12 : 6, lineHeight: 0, opacity: 0.5 }}>
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -256,8 +356,8 @@ const CallsPage = () => {
                        </div>
                        <div style={{ marginLeft: 'auto' }}>
                          {count > 0 ? (
-                           <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
+                           <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: 'rgba(95,156,129,0.15)', color: '#5F9C81', border: '1px solid rgba(95,156,129,0.25)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#5F9C81', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
                              В группе: {count}
                            </span>
                          ) : (
@@ -302,13 +402,16 @@ const CallsPage = () => {
 
       {/* ── Модалка планирования ── */}
       {showPlan && (
-        <div onClick={() => !savingPlan && setShowPlan(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: 'var(--bg-card)', borderRadius: 20, border: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        // мобайл: модалка-шторка прижата к низу
+        <div onClick={() => !savingPlan && closePlanModal()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 420, background: 'var(--bg-card)', borderRadius: isMobile ? '20px 20px 0 0' : 20, border: '1px solid var(--border)', padding: isMobile ? 16 : 20, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: isMobile ? '88vh' : undefined, overflowY: isMobile ? 'auto' : undefined }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <CalendarClock size={16} style={{ color: 'var(--accent-purple)' }} /> Запланировать созвон
+                {editingPlan
+                  ? <><Pencil size={16} style={{ color: 'var(--accent-purple)' }} /> Редактировать созвон</>
+                  : <><CalendarClock size={16} style={{ color: 'var(--accent-purple)' }} /> Запланировать созвон</>}
               </h3>
-              <button onClick={() => setShowPlan(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}><X size={18} /></button>
+              <button onClick={closePlanModal} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}><X size={18} /></button>
             </div>
 
             <div style={{ display: 'flex', gap: 6 }}>
@@ -344,42 +447,63 @@ const CallsPage = () => {
                 <button key={id} onClick={() => setPlanForm(f => ({ ...f, visibility: id }))} style={{
                   flex: 1, padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  border: '1px solid ' + (planForm.visibility === id ? (id === 'private' ? '#f59e0b' : 'var(--accent-purple)') : 'var(--border)'),
-                  background: planForm.visibility === id ? (id === 'private' ? 'rgba(245,158,11,0.15)' : 'var(--accent-purple)') : 'transparent',
-                  color: planForm.visibility === id ? (id === 'private' ? '#f59e0b' : '#fff') : 'var(--text-muted)',
+                  border: '1px solid ' + (planForm.visibility === id ? (id === 'private' ? '#C08F4F' : 'var(--accent-purple)') : 'var(--border)'),
+                  background: planForm.visibility === id ? (id === 'private' ? 'rgba(192,143,79,0.15)' : 'var(--accent-purple)') : 'transparent',
+                  color: planForm.visibility === id ? (id === 'private' ? '#C08F4F' : '#fff') : 'var(--text-muted)',
                 }}>{label}</button>
               ))}
             </div>
 
-            {/* Приватный: выбор участников из менеджерского состава */}
+            {/* Приватный: выбор участников из состава сотрудников + поиск */}
             {planForm.visibility === 'private' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 12, padding: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '2px 6px' }}>
-                  Кто должен участвовать · выбрано: {planForm.participants.length}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Кто должен участвовать
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: planForm.participants.length ? '#5F9C81' : 'var(--text-muted)' }}>
+                    выбрано: {planForm.participants.length}
+                  </span>
                 </div>
-                {team.filter(p => !p.allEmails.some(e => e.toLowerCase() === myEmail)).map(p => {
-                  const selected = planForm.participants.includes(p.email);
-                  return (
-                    <button key={p.email} onClick={() => toggleParticipant(p)} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
-                      border: '1px solid ' + (selected ? 'rgba(34,197,94,0.45)' : 'var(--border)'),
-                      background: selected ? 'rgba(34,197,94,0.08)' : 'transparent',
-                    }}>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</span>
-                      <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(139,92,246,0.12)', color: 'var(--accent-purple)', textTransform: 'uppercase', flexShrink: 0 }}>
-                        {p.role === 'chef' ? 'Шеф' : p.club}
-                      </span>
-                      <span style={{
-                        display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, flexShrink: 0,
-                        background: selected ? '#22c55e' : 'var(--bg-hover)',
-                        color: selected ? '#fff' : 'var(--text-muted)',
-                        border: selected ? 'none' : '1px solid var(--border)',
+
+                {/* Поиск по сотрудникам */}
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    value={participantSearch}
+                    onChange={e => setParticipantSearch(e.target.value)}
+                    placeholder="Поиск: имя, клуб или роль…"
+                    style={{ width: '100%', boxSizing: 'border-box', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 12px 10px 34px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', fontWeight: 600 }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 12, padding: 8 }}>
+                  {participantOptions.length === 0 ? (
+                    <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Никого не найдено</div>
+                  ) : participantOptions.map(p => {
+                    const selected = planForm.participants.includes(p.email);
+                    return (
+                      <button key={p.email} onClick={() => toggleParticipant(p)} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                        border: '1px solid ' + (selected ? 'rgba(95,156,129,0.45)' : 'var(--border)'),
+                        background: selected ? 'rgba(95,156,129,0.08)' : 'transparent',
                       }}>
-                        {selected ? <><Check size={11} /> Участвует</> : 'Должен участвовать'}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</span>
+                        <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 8px', borderRadius: 6, background: 'rgba(125,111,179,0.12)', color: 'var(--accent-purple)', textTransform: 'uppercase', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                          {roleLabel(p)}
+                        </span>
+                        <span style={{
+                          display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, flexShrink: 0,
+                          background: selected ? '#5F9C81' : 'var(--bg-hover)',
+                          color: selected ? '#fff' : 'var(--text-muted)',
+                          border: selected ? 'none' : '1px solid var(--border)',
+                        }}>
+                          {selected ? <><Check size={11} /> Участвует</> : 'Добавить'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -388,7 +512,9 @@ const CallsPage = () => {
               disabled={savingPlan || !planForm.date || !planForm.time || (planForm.visibility === 'private' && planForm.participants.length === 0)}
               style={{ padding: '12px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', opacity: savingPlan || !planForm.date || !planForm.time || (planForm.visibility === 'private' && planForm.participants.length === 0) ? 0.5 : 1 }}
             >
-              {planForm.visibility === 'private' ? 'Запланировать — уведомим только участников' : 'Запланировать — команда получит уведомление'}
+              {editingPlan
+                ? 'Сохранить изменения — участники получат уведомление'
+                : planForm.visibility === 'private' ? 'Запланировать — уведомим только участников' : 'Запланировать — команда получит уведомление'}
             </button>
             <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
               {planForm.visibility === 'private'

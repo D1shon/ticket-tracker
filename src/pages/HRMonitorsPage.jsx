@@ -10,13 +10,14 @@ import {
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { isMobileDevice } from '../lib/isMobile';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 
 const STATUS_OPTIONS = [
-  { value: 'working', label: 'Работает', color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: CheckCircle2 },
-  { value: 'broken',  label: 'Сломан',   color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: Wrench },
-  { value: 'lost',    label: 'Потерян',  color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  icon: AlertTriangle },
+  { value: 'working', label: 'Работает', color: '#5F9C81', bg: 'rgba(95,156,129,0.12)', icon: CheckCircle2 },
+  { value: 'broken',  label: 'Сломан',   color: '#C08F4F', bg: 'rgba(192,143,79,0.12)', icon: Wrench },
+  { value: 'lost',    label: 'Потерян',  color: '#B06A6A', bg: 'rgba(176,106,106,0.12)',  icon: AlertTriangle },
 ];
 
 const getStatus = (v) => STATUS_OPTIONS.find(s => s.value === v) || STATUS_OPTIONS[0];
@@ -131,6 +132,23 @@ const HRMonitorsPage = () => {
   const pageVisitLogged  = React.useRef(false);
   const activityDateRef  = React.useRef(null);
   const [shiftEmployees, setShiftEmployees] = useState([]);
+
+  // Мобильный режим — только визуальные изменения
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+
+  // Покрытие пульсометрами (снапшот из DWH, обновляется ночным скриптом)
+  const [coverage, setCoverage] = useState(undefined); // undefined=загрузка, null=нет данных
+  useEffect(() => {
+    if (!activeClub) return;
+    return onSnapshot(doc(db, 'hrm_coverage', activeClub), snap => {
+      setCoverage(snap.exists() ? snap.data() : null);
+    }, err => { console.error('[hrm_coverage]', err); setCoverage(null); });
+  }, [activeClub]);
 
   // Delivery tab state
   const [deliveryItems,  setDeliveryItems]  = useState([]);
@@ -459,10 +477,14 @@ const HRMonitorsPage = () => {
 
   // ── shared club/tab bar ──────────────────────────────────────────
   const ClubTabs = () => visibleClubs.length > 1 ? (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+    /* мобайл: клубные табы — горизонтальная лента без переноса */
+    <div style={isMobile
+      ? { display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'nowrap', width: '100%', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
+      : { display: 'flex', gap: 6, flexWrap: 'wrap' }}>
       {visibleClubs.map(club => (
         <button key={club} onClick={() => setActiveClub(club)} style={{
-          padding: '6px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          padding: isMobile ? '8px 14px' : '6px 14px', borderRadius: isMobile ? 999 : 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          whiteSpace: 'nowrap', flexShrink: 0,
           border: '1px solid ' + (activeClub === club ? 'var(--accent-purple)' : 'var(--border)'),
           background: activeClub === club ? 'var(--accent-purple)' : 'transparent',
           color: activeClub === club ? '#fff' : 'var(--text-muted)',
@@ -477,21 +499,24 @@ const HRMonitorsPage = () => {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Heart size={20} style={{ color: '#ef4444' }} />
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(176,106,106,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Heart size={20} style={{ color: '#B06A6A' }} />
           </div>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Пульсометры</h1>
+            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Пульсометры</h1>
             <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, margin: 0 }}>Учёт и статусы пульсометров клуба</p>
           </div>
         </div>
         <ClubTabs />
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8, flexWrap: 'wrap' }}>
+      {/* Tabs — на мобильном лента с горизонтальным скроллом */}
+      <div style={isMobile
+        ? { display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8, overflowX: 'auto', flexWrap: 'nowrap', WebkitOverflowScrolling: 'touch' }
+        : { display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 8, flexWrap: 'wrap' }}>
         {[
           { id: 'monitors',  label: 'Пульсометры', icon: Heart },
+          { id: 'coverage',  label: 'Свой пульсометр', icon: AlertTriangle },
           ...( !isAdmin ? [{ id: 'history',  label: 'История',    icon: History }] : [] ),
           ...( canSeeActivity ? [{ id: 'activity', label: 'Активность', icon: Activity }] : [] ),
           { id: 'delivery',  label: 'Поставка',    icon: Package },
@@ -500,7 +525,8 @@ const HRMonitorsPage = () => {
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 16px', borderRadius: 10, fontSize: 13, fontWeight: active ? 800 : 600,
+              padding: isMobile ? '9px 14px' : '7px 16px', borderRadius: isMobile ? 999 : 10, fontSize: isMobile ? 12 : 13, fontWeight: active ? 800 : 600,
+              whiteSpace: 'nowrap', flexShrink: 0,
               cursor: 'pointer', border: '1px solid ' + (active ? 'var(--accent-purple)' : 'var(--border)'),
               background: active ? 'var(--accent-purple)' : 'transparent',
               color: active ? '#fff' : 'var(--text-muted)',
@@ -517,15 +543,64 @@ const HRMonitorsPage = () => {
         })}
       </div>
 
+      {/* ── БЕЗ ПУЛЬСОМЕТРА (покрытие) ── */}
+      {activeTab === 'coverage' && (() => {
+        if (coverage === undefined) return <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, fontWeight: 600 }}>Загрузка…</div>;
+        if (coverage === null) return (
+          <div style={{ padding: '40px 24px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: 20, color: 'var(--text-muted)', fontSize: 13, fontWeight: 600, lineHeight: 1.6 }}>
+            Данные появятся после первого ночного расчёта из аналитики.<br />Обновляется автоматически раз в сутки.
+          </div>
+        );
+        const activeHp = coverage.activeHp || 0;
+        const without = coverage.without || 0;
+        const withM = coverage.withMonitor ?? (activeHp - without);
+        const pct = coverage.pctWithout ?? (activeHp ? Math.round((without / activeHp) * 1000) / 10 : 0);
+        const upd = coverage.updatedAtISO ? (() => { try { return format(new Date(coverage.updatedAtISO), 'd MMM yyyy, HH:mm', { locale: ru }); } catch { return ''; } })() : '';
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* мобайл: компактные плитки метрик 2 в ряд */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit,minmax(150px,1fr))', gap: isMobile ? 8 : 12 }}>
+              {[
+                { label: 'Активный ХП', value: activeHp, color: 'var(--text-primary)', bg: 'var(--bg-hover)' },
+                { label: 'Со своим п/м', value: withM, color: '#5F9C81', bg: 'rgba(95,156,129,0.08)' },
+                { label: 'Без своего п/м', value: without, color: '#B06A6A', bg: 'rgba(176,106,106,0.08)' },
+                { label: '% без', value: pct + '%', color: '#C08F4F', bg: 'rgba(192,143,79,0.08)' },
+              ].map(s => (
+                <div key={s.label} style={{ background: s.bg, border: '1px solid var(--border)', borderRadius: isMobile ? 14 : 16, padding: isMobile ? '12px 14px' : '16px 18px' }}>
+                  <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</div>
+                  <div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 900, color: s.color, lineHeight: 1, whiteSpace: 'nowrap' }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Прогресс-бар покрытия */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>
+                <span>Со своим пульсометром</span>
+                <span style={{ color: '#5F9C81' }}>{activeHp ? Math.round((withM / activeHp) * 100) : 0}%</span>
+              </div>
+              <div style={{ height: 10, borderRadius: 6, background: 'rgba(176,106,106,0.25)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${activeHp ? (withM / activeHp) * 100 : 0}%`, background: 'linear-gradient(90deg,#16a34a,#5F9C81)' }} />
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px 16px' }}>
+              <b style={{ color: 'var(--text-secondary)' }}>Клуб {coverage.club || activeClub}.</b> «Без своего п/м» — активные держатели абонемента (Hero Pass), за кем <b style={{ color: 'var(--text-secondary)' }}>не закреплён свой пульсометр</b> (берут прокатный/разный каждый раз или не берут). Это адресный список: кому продать/закрепить свой монитор.
+              {upd && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>Обновлено: {upd} · данные из аналитики HJ</div>}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── MONITORS TAB ── */}
       {activeTab === 'monitors' && (<>
         {/* Stats */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {[
-            { label: 'Всего',    value: stats.total,   color: 'var(--accent-purple)', bg: 'rgba(123,61,255,0.08)' },
-            { label: 'Работает', value: stats.working, color: '#10b981', bg: 'rgba(16,185,129,0.08)' },
-            { label: 'Сломан',   value: stats.broken,  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
-            { label: 'Потерян',  value: stats.lost,    color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
+            { label: 'Всего',    value: stats.total,   color: 'var(--accent-purple)', bg: 'rgba(125,111,179,0.08)' },
+            { label: 'Работает', value: stats.working, color: '#5F9C81', bg: 'rgba(95,156,129,0.08)' },
+            { label: 'Сломан',   value: stats.broken,  color: '#C08F4F', bg: 'rgba(192,143,79,0.08)' },
+            { label: 'Потерян',  value: stats.lost,    color: '#B06A6A', bg: 'rgba(176,106,106,0.08)' },
           ].map(s => (
             <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.color}30`, borderRadius: 12, padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 76 }}>
               <span style={{ fontSize: 22, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</span>
@@ -534,8 +609,8 @@ const HRMonitorsPage = () => {
           ))}
         </div>
 
-        {/* Search */}
-        <div style={{ position: 'relative', maxWidth: 260 }}>
+        {/* Search — на мобильном во всю ширину */}
+        <div style={{ position: 'relative', maxWidth: isMobile ? '100%' : 260 }}>
           <input
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '9px 14px 9px 36px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', width: '100%', fontWeight: 600 }}
             placeholder="Поиск по ID..."
@@ -554,7 +629,7 @@ const HRMonitorsPage = () => {
         {canEdit && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <input
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px', fontSize: 14, color: 'var(--text-primary)', outline: 'none', width: 220, fontWeight: 600 }}
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: isMobile ? '12px 14px' : '10px 14px', fontSize: 14, color: 'var(--text-primary)', outline: 'none', width: isMobile ? undefined : 220, flex: isMobile ? 1 : undefined, minWidth: 0, fontWeight: 600 }}
               placeholder="ID пульсометра..."
               value={newId}
               onChange={e => setNewId(e.target.value)}
@@ -592,18 +667,19 @@ const HRMonitorsPage = () => {
           {totalCount > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Проверено сегодня:</span>
-              <span style={{ fontSize: 14, fontWeight: 900, color: checkedCount === totalCount ? '#10b981' : '#f59e0b', minWidth: 36 }}>
+              <span style={{ fontSize: 14, fontWeight: 900, color: checkedCount === totalCount ? '#5F9C81' : '#C08F4F', minWidth: 36 }}>
                 {checkedCount}/{totalCount}
               </span>
               <div style={{ flex: 1, height: 5, background: 'var(--bg-hover)', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${(checkedCount / totalCount) * 100}%`, height: '100%', background: checkedCount === totalCount ? '#10b981' : '#f59e0b', borderRadius: 4, transition: 'width 0.4s' }} />
+                <div style={{ width: `${(checkedCount / totalCount) * 100}%`, height: '100%', background: checkedCount === totalCount ? '#5F9C81' : '#C08F4F', borderRadius: 4, transition: 'width 0.4s' }} />
               </div>
               {checkedCount === totalCount && (
-                <span style={{ fontSize: 11, fontWeight: 800, color: '#10b981', whiteSpace: 'nowrap' }}>✓ Все!</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#5F9C81', whiteSpace: 'nowrap' }}>✓ Все!</span>
               )}
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+          {/* мобайл: карточки мониторов строго 2 в ряд */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(160px, 1fr))', gap: isMobile ? 8 : 10 }}>
             {filtered.map(monitor => {
               const st     = getStatus(monitor.status);
               const Icon   = st.icon;
@@ -616,13 +692,14 @@ const HRMonitorsPage = () => {
                   display: 'flex', flexDirection: 'column', gap: 8, position: 'relative',
                 }}>
                   {canEdit && editingDocId !== monitor.docId && (
-                    <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }}>
+                    /* мобайл: зона нажатия иконок крупнее */
+                    <div style={{ position: 'absolute', top: isMobile ? 4 : 8, right: isMobile ? 4 : 8, display: 'flex', gap: 4 }}>
                       <button onClick={() => handleEditStart(monitor)} style={{
-                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, borderRadius: 6, opacity: 0.4, lineHeight: 0,
-                      }}><Pencil size={11} /></button>
+                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: isMobile ? 8 : 2, borderRadius: 6, opacity: isMobile ? 0.55 : 0.4, lineHeight: 0,
+                      }}><Pencil size={isMobile ? 13 : 11} /></button>
                       <button onClick={() => handleDelete(monitor.docId)} style={{
-                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, borderRadius: 6, opacity: 0.4, lineHeight: 0,
-                      }}><Trash2 size={11} /></button>
+                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: isMobile ? 8 : 2, borderRadius: 6, opacity: isMobile ? 0.55 : 0.4, lineHeight: 0,
+                      }}><Trash2 size={isMobile ? 13 : 11} /></button>
                     </div>
                   )}
                   <div>
@@ -635,19 +712,19 @@ const HRMonitorsPage = () => {
                           onKeyDown={e => { if (e.key === 'Enter') handleEditSave(); if (e.key === 'Escape') setEditingDocId(null); }}
                           style={{ background: 'var(--bg-hover)', border: '1px solid var(--accent-purple)', borderRadius: 7, padding: '3px 7px', fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', outline: 'none', width: '100%' }}
                         />
-                        <button onClick={handleEditSave} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', padding: 2, lineHeight: 0 }}><Check size={14} /></button>
-                        <button onClick={() => setEditingDocId(null)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 2, lineHeight: 0 }}><X size={14} /></button>
+                        <button onClick={handleEditSave} style={{ background: 'none', border: 'none', color: '#5F9C81', cursor: 'pointer', padding: 2, lineHeight: 0 }}><Check size={14} /></button>
+                        <button onClick={() => setEditingDocId(null)} style={{ background: 'none', border: 'none', color: '#B06A6A', cursor: 'pointer', padding: 2, lineHeight: 0 }}><X size={14} /></button>
                       </div>
                     ) : (
                       <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', paddingRight: canEdit ? 36 : 0 }}>{monitor.monitorId}</div>
                     )}
                     {monitor.status === 'lost' && monitor.lostAt && (
-                      <div style={{ fontSize: 9, color: '#ef4444', fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
+                      <div style={{ fontSize: 9, color: '#B06A6A', fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
                         с {format(new Date(monitor.lostAt), 'd MMM yyyy, HH:mm', { locale: ru })}
                       </div>
                     )}
                     {monitor.status === 'broken' && monitor.brokenAt && (
-                      <div style={{ fontSize: 9, color: '#f59e0b', fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
+                      <div style={{ fontSize: 9, color: '#C08F4F', fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
                         с {format(new Date(monitor.brokenAt), 'd MMM yyyy, HH:mm', { locale: ru })}
                       </div>
                     )}
@@ -698,19 +775,21 @@ const HRMonitorsPage = () => {
                   {(() => {
                     const checked = monitor.lastCheckedDate === todayStr;
                     return (
+                      // мобайл: крупная кнопка «Проверен» — минимум 40px высоты
                       <button
                         onClick={() => !checked && canEdit && handleCheck(monitor.docId)}
                         style={{
                           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                          padding: '5px 8px', borderRadius: 8, marginTop: 2,
-                          background: checked ? 'rgba(16,185,129,0.12)' : 'var(--bg-hover)',
-                          border: `1px solid ${checked ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
-                          color: checked ? '#10b981' : 'var(--text-muted)',
+                          padding: isMobile ? '11px 8px' : '5px 8px', borderRadius: isMobile ? 10 : 8, marginTop: 2,
+                          minHeight: isMobile ? 40 : undefined,
+                          background: checked ? 'rgba(95,156,129,0.12)' : 'var(--bg-hover)',
+                          border: `1px solid ${checked ? 'rgba(95,156,129,0.35)' : 'var(--border)'}`,
+                          color: checked ? '#5F9C81' : 'var(--text-muted)',
                           cursor: checked || !canEdit ? 'default' : 'pointer',
-                          fontSize: 10, fontWeight: 700,
+                          fontSize: isMobile ? 12 : 10, fontWeight: isMobile ? 800 : 700,
                         }}
                       >
-                        <Check size={10} strokeWidth={checked ? 3 : 2} style={{ opacity: checked ? 1 : 0.35 }} />
+                        <Check size={isMobile ? 14 : 10} strokeWidth={checked ? 3 : 2} style={{ opacity: checked ? 1 : 0.35 }} />
                         {checked ? 'Проверен' : 'Проверить'}
                       </button>
                     );
@@ -860,16 +939,16 @@ const HRMonitorsPage = () => {
               const done = totalCount > 0 && checkedCount >= totalCount;
               return (
                 <div style={{
-                  background: done ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
-                  border: `1px solid ${done ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+                  background: done ? 'rgba(95,156,129,0.06)' : 'var(--bg-card)',
+                  border: `1px solid ${done ? 'rgba(95,156,129,0.3)' : 'var(--border)'}`,
                   borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <Heart size={15} style={{ color: done ? '#10b981' : '#ef4444' }} />
-                    <span style={{ fontSize: 10, fontWeight: 900, color: done ? '#10b981' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    <Heart size={15} style={{ color: done ? '#5F9C81' : '#B06A6A' }} />
+                    <span style={{ fontSize: 10, fontWeight: 900, color: done ? '#5F9C81' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                       Проверка пульсометров · {formattedDate}
                     </span>
-                    <span style={{ marginLeft: 'auto', fontSize: 16, fontWeight: 900, color: done ? '#10b981' : checkedCount > 0 ? '#f59e0b' : 'var(--text-muted)' }}>
+                    <span style={{ marginLeft: 'auto', fontSize: 16, fontWeight: 900, color: done ? '#5F9C81' : checkedCount > 0 ? '#C08F4F' : 'var(--text-muted)' }}>
                       {checkedCount} / {totalCount}
                     </span>
                   </div>
@@ -897,7 +976,7 @@ const HRMonitorsPage = () => {
               });
               const times = Object.keys(byTime); // already sorted from getEmployeesWithShifts
               return (
-                <div style={{ background: 'rgba(123,61,255,0.06)', border: '1px solid rgba(123,61,255,0.2)', borderRadius: 14, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ background: 'rgba(125,111,179,0.06)', border: '1px solid rgba(125,111,179,0.2)', borderRadius: 14, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                     Сотрудники в смене · {formattedDate}
                   </div>
@@ -932,8 +1011,8 @@ const HRMonitorsPage = () => {
                   const isLogin = item.type === 'login';
                   const isCheck = item.type === 'check_complete';
                   const Icon    = isLogin ? LogIn : isCheck ? Timer : Eye;
-                  const color   = isLogin ? '#10b981' : isCheck ? '#4f8ef7' : '#818cf8';
-                  const bg      = isLogin ? 'rgba(16,185,129,0.08)' : isCheck ? 'rgba(79,142,247,0.08)' : 'rgba(129,140,248,0.08)';
+                  const color   = isLogin ? '#5F9C81' : isCheck ? '#5580A8' : '#818cf8';
+                  const bg      = isLogin ? 'rgba(95,156,129,0.08)' : isCheck ? 'rgba(85,128,168,0.08)' : 'rgba(129,140,248,0.08)';
                   const label   = isLogin ? 'Вход в систему' : isCheck ? 'Проверка пульсометров' : 'Открыл пульсометры';
                   const timeStr = item.timestampISO
                     ? format(new Date(item.timestampISO), 'HH:mm', { locale: ru })
@@ -980,11 +1059,11 @@ const HRMonitorsPage = () => {
 
             {/* Summary card */}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ background: 'rgba(79,142,247,0.08)', border: '1px solid rgba(79,142,247,0.25)', borderRadius: 12, padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 24, fontWeight: 900, color: '#4f8ef7', lineHeight: 1 }}>{totalQty}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#4f8ef7', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Всего принято</span>
+              <div style={{ background: 'rgba(85,128,168,0.08)', border: '1px solid rgba(85,128,168,0.25)', borderRadius: 12, padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 24, fontWeight: 900, color: '#5580A8', lineHeight: 1 }}>{totalQty}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#5580A8', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Всего принято</span>
               </div>
-              <div style={{ background: 'rgba(123,61,255,0.08)', border: '1px solid rgba(123,61,255,0.25)', borderRadius: 12, padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ background: 'rgba(125,111,179,0.08)', border: '1px solid rgba(125,111,179,0.25)', borderRadius: 12, padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--accent-purple)', lineHeight: 1 }}>{deliveryItems.length}</span>
                 <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-purple)', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Поставок</span>
               </div>
@@ -1055,14 +1134,14 @@ const HRMonitorsPage = () => {
                   return (
                     <div key={entry.id} style={{
                       background: 'var(--bg-card)', border: '1px solid var(--border)',
-                      borderLeft: '3px solid #4f8ef7',
+                      borderLeft: '3px solid #5580A8',
                       borderRadius: 14, padding: '12px 16px',
                       display: 'flex', alignItems: 'center', gap: 14, position: 'relative',
                     }}>
                       {/* Quantity badge */}
-                      <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: 12, background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 20, fontWeight: 900, color: '#4f8ef7', lineHeight: 1 }}>{entry.quantity}</span>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: '#4f8ef7', opacity: 0.7, textTransform: 'uppercase' }}>шт.</span>
+                      <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: 12, background: 'rgba(85,128,168,0.12)', border: '1px solid rgba(85,128,168,0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 20, fontWeight: 900, color: '#5580A8', lineHeight: 1 }}>{entry.quantity}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#5580A8', opacity: 0.7, textTransform: 'uppercase' }}>шт.</span>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 3 }}>{dateLabel}</div>

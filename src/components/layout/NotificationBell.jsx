@@ -14,7 +14,7 @@ const TYPE_ICONS = {
 const TYPE_COLORS = {
   status_change: '#FB8F41',
   new_message:   '#4C94FF',
-  file_attached: '#7B3DFF',
+  file_attached: '#7D6FB3',
   new_ticket:    '#70B11D',
 };
 
@@ -22,7 +22,7 @@ const STATUS_BADGE_COLORS = {
   in_progress: '#70B11D',
   paused:      '#FB8F41',
   waiting:     '#FFCA43',
-  closed:      '#7B3DFF',
+  closed:      '#7D6FB3',
   new:         '#4C94FF',
 };
 
@@ -83,18 +83,18 @@ const NotificationBell = () => {
           height: 38,
           borderRadius: '12px',
           border: panelOpen
-            ? '1px solid rgba(123,61,255,0.4)'
+            ? '1px solid rgba(125,111,179,0.4)'
             : '1px solid var(--border)',
           background: panelOpen
-            ? 'rgba(123,61,255,0.1)'
+            ? 'rgba(125,111,179,0.1)'
             : 'var(--bg-card)',
-          color: panelOpen ? '#7B3DFF' : 'var(--text-secondary)',
+          color: panelOpen ? '#7D6FB3' : 'var(--text-secondary)',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           transition: 'all 0.2s',
-          boxShadow: panelOpen ? '0 0 0 3px rgba(123,61,255,0.12)' : 'var(--shadow-card)',
+          boxShadow: panelOpen ? '0 0 0 3px rgba(125,111,179,0.12)' : 'var(--shadow-card)',
         }}
         aria-label="Уведомления"
       >
@@ -248,7 +248,7 @@ const NotificationBell = () => {
             ) : (
               notifications.map((notif, idx) => {
                 const isUnread = !readIds?.has?.(notif.id);
-                const color = TYPE_COLORS[notif.type] || '#7B3DFF';
+                const color = TYPE_COLORS[notif.type] || '#7D6FB3';
                 const icon = TYPE_ICONS[notif.type];
 
                 return (

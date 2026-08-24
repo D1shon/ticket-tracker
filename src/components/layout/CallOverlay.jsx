@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { isMobileDevice } from '../../lib/isMobile';
 import { useCall } from '../../store/CallContext';
 import { PhoneOff, Monitor, Maximize2, Minimize2, User, Mic, MicOff, Video, VideoOff, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -49,8 +50,10 @@ const CallOverlay = () => {
     screenTrack,
     leaveCall,
     toggleScreenShare,
+    retryMic,
     roomName
   } = useCall();
+  const [isRetryingMic, setIsRetryingMic] = React.useState(false);
 
   const [size, setSize] = React.useState(1); // 1: S, 2: M, 3: L
   const [position, setPosition] = React.useState({
@@ -62,10 +65,10 @@ const CallOverlay = () => {
   const [isMicMuted, setIsMicMuted] = React.useState(false);
   const [isCameraMuted, setIsCameraMuted] = React.useState(false);
   const [isLeaving, setIsLeaving] = React.useState(false);
-  const [isMobile, setIsMobile] = React.useState(() => window.innerWidth <= 768);
+  const [isMobile, setIsMobile] = React.useState(() => isMobileDevice());
 
   useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth <= 768);
+    const h = () => setIsMobile(isMobileDevice());
     window.addEventListener('resize', h);
     return () => window.removeEventListener('resize', h);
   }, []);
@@ -165,16 +168,16 @@ const CallOverlay = () => {
   const activeScreenTrack = isScreenSharing ? screenTrack : (activeScreenShareUser ? activeScreenShareUser.videoTrack : null);
   const hasActiveScreenShare = !!activeScreenTrack;
 
-  // Active camera tracks for normal grid
-  const activeCameras = [];
-  if (!isCameraMuted && localVideoTrack) {
-    activeCameras.push({ id: 'local', track: localVideoTrack, name: 'Я', isLocal: true });
-  }
-  remoteUsers.filter(u => !u.isScreen).forEach(u => {
-    if (u.videoTrack) {
-      activeCameras.push({ id: u.uid, track: u.videoTrack, name: 'Собеседник', isLocal: false });
-    }
-  });
+  // Все участники (плитка каждому — с камерой видео, без камеры аватар),
+  // чтобы всегда было видно, кто в созвоне
+  const participants = [
+    { id: 'local', track: isCameraMuted ? null : localVideoTrack, name: 'Я', isLocal: true, muted: isMicMuted },
+    ...remoteUsers.filter(u => !u.isScreen).map(u => ({
+      id: u.uid, track: u.videoTrack, name: 'Собеседник', isLocal: false, muted: !u.audioTrack,
+    })),
+  ];
+  const participantCount = participants.length;
+  const activeCameras = participants; // рендерим всех, даже без видео
 
   const gridColumns = activeCameras.length > 1 ? '1fr 1fr' : '1fr';
 
@@ -193,7 +196,7 @@ const CallOverlay = () => {
         }}>
           <div style={{
             position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-            background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)',
+            background: 'rgba(85,128,168,0.15)', border: '1px solid rgba(85,128,168,0.4)',
             borderRadius: 20, padding: '6px 16px',
             fontSize: 11, fontWeight: 800, color: '#60a5fa', letterSpacing: '0.05em'
           }}>
@@ -279,7 +282,7 @@ const CallOverlay = () => {
   };
 
   const renderNormalGrid = () => {
-    if (activeCameras.length === 0) {
+    if (activeCameras.length === 0) {  // теоретически недостижимо — «Я» всегда есть
       return (
         <div style={{
           display: 'flex',
@@ -315,22 +318,27 @@ const CallOverlay = () => {
             position: 'relative',
             background: '#1a1a20',
             height: '100%',
-            width: '100%'
+            width: '100%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            minHeight: isFullPage ? 'auto' : 160,
           }}>
-            <VideoPlayer track={cam.track} />
+            {cam.track
+              ? <VideoPlayer track={cam.track} />
+              : (
+                // Камера выключена — показываем аватар, чтобы участник был виден
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,0.3)' }}>
+                  <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={32} />
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>Камера выключена</span>
+                </div>
+              )}
             <div style={{
-              position: 'absolute',
-              bottom: 12,
-              left: 12,
-              background: 'rgba(0,0,0,0.5)',
-              padding: '4px 8px',
-              borderRadius: 6,
-              fontSize: 10,
-              color: 'white',
-              fontWeight: 800,
-              zIndex: 10
+              position: 'absolute', bottom: 12, left: 12,
+              background: 'rgba(0,0,0,0.55)', padding: '4px 8px', borderRadius: 6,
+              fontSize: 10, color: 'white', fontWeight: 800, zIndex: 10,
             }}>
-              {cam.name} {cam.isLocal ? (isMicMuted ? '🔇' : '🎙️') : (remoteUsers[0]?.audioTrack ? '🔊' : '🔇')}
+              {cam.name} {cam.muted ? '🔇' : '🎙️'}
             </div>
           </div>
         ))}
@@ -351,25 +359,25 @@ const CallOverlay = () => {
         `}</style>
         <div style={{
           position: 'fixed', inset: 0, zIndex: 2500, pointerEvents: 'none',
-          border: '4px solid #3b82f6',
-          boxShadow: 'inset 0 0 32px rgba(59,130,246,0.35)',
+          border: '4px solid #5580A8',
+          boxShadow: 'inset 0 0 32px rgba(85,128,168,0.35)',
           animation: 'hjSharePulse 2.2s ease-in-out infinite',
         }} />
         <div style={{
           position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 2600,
           display: 'flex', alignItems: 'center', gap: 10,
-          background: 'rgba(15,18,25,0.92)', border: '1px solid rgba(59,130,246,0.5)',
+          background: 'rgba(15,18,25,0.92)', border: '1px solid rgba(85,128,168,0.5)',
           borderRadius: 24, padding: '7px 8px 7px 16px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
         }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 10px #3b82f6', animation: 'hjSharePulse 1.4s infinite', flexShrink: 0 }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5580A8', boxShadow: '0 0 10px #5580A8', animation: 'hjSharePulse 1.4s infinite', flexShrink: 0 }} />
           <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', whiteSpace: 'nowrap' }}>
             Вы транслируете экран
           </span>
           <button
             onClick={toggleScreenShare}
             style={{
-              background: '#ef4444', border: 'none', borderRadius: 18, padding: '6px 14px',
+              background: '#B06A6A', border: 'none', borderRadius: 18, padding: '6px 14px',
               color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
             }}
           >
@@ -418,9 +426,9 @@ const CallOverlay = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 8, height: 8,
-            background: '#22c55e',
+            background: '#5F9C81',
             borderRadius: '50%',
-            boxShadow: '0 0 12px #22c55e'
+            boxShadow: '0 0 12px #5F9C81'
           }} />
           <span style={{
             fontSize: isFullPage ? 13 : 11,
@@ -430,6 +438,13 @@ const CallOverlay = () => {
             letterSpacing: '0.08em'
           }}>
             {roomName}
+          </span>
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.75)',
+            background: 'rgba(255,255,255,0.08)', padding: '3px 9px', borderRadius: 20,
+          }} title="Участников в созвоне">
+            <User size={11} /> {participantCount}
           </span>
         </div>
 
@@ -501,7 +516,7 @@ const CallOverlay = () => {
               onClick={(e) => { e.stopPropagation(); handleLeave(); }}
               disabled={isLeaving}
               style={{
-                background: '#ef4444',
+                background: '#B06A6A',
                 border: 'none',
                 padding: isFullPage ? '8px 16px' : '6px',
                 borderRadius: isFullPage ? 10 : 8,
@@ -526,6 +541,28 @@ const CallOverlay = () => {
       {/* ── Content View ── */}
       {hasActiveScreenShare ? renderScreenShareLayout() : renderNormalGrid()}
 
+      {/* ── «Вас не слышно»: вошли без микрофона (нет доступа / устройство занято) ── */}
+      {!localAudioTrack && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '10px 14px', background: 'rgba(176,106,106,0.14)', borderTop: '1px solid rgba(176,106,106,0.35)',
+        }}>
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: '#fca5a5' }}>
+            🎤 Вас не слышно — микрофон не подключён
+          </span>
+          <button
+            onClick={async () => { setIsRetryingMic(true); try { await retryMic(); } finally { setIsRetryingMic(false); } }}
+            disabled={isRetryingMic}
+            style={{
+              padding: '8px 16px', borderRadius: 10, border: 'none', background: '#B06A6A', color: '#fff',
+              fontSize: 12, fontWeight: 900, cursor: 'pointer', opacity: isRetryingMic ? 0.6 : 1,
+            }}
+          >
+            {isRetryingMic ? 'Подключаем…' : 'Подключить микрофон'}
+          </button>
+        </div>
+      )}
+
       {/* ── Bottom Controls ── */}
       <div style={{
         padding: isMobile
@@ -545,7 +582,7 @@ const CallOverlay = () => {
             flex: (isFullPage && !isMobile) ? 'none' : 1,
             width: (isFullPage && !isMobile) ? 56 : undefined,
             height: isMobile ? 56 : 44,
-            background: isMicMuted ? '#ef4444' : 'rgba(255,255,255,0.08)',
+            background: isMicMuted ? '#B06A6A' : 'rgba(255,255,255,0.08)',
             border: 'none',
             borderRadius: 14,
             color: 'white',
@@ -567,7 +604,7 @@ const CallOverlay = () => {
             flex: (isFullPage && !isMobile) ? 'none' : 1,
             width: (isFullPage && !isMobile) ? 56 : undefined,
             height: isMobile ? 56 : 44,
-            background: isCameraMuted ? '#ef4444' : 'rgba(255,255,255,0.08)',
+            background: isCameraMuted ? '#B06A6A' : 'rgba(255,255,255,0.08)',
             border: 'none',
             borderRadius: 14,
             color: 'white',
@@ -590,7 +627,7 @@ const CallOverlay = () => {
               width: isFullPage ? 'auto' : '100%',
               minWidth: isFullPage ? 220 : undefined,
               flex: isFullPage ? 'none' : 2,
-              background: isScreenSharing ? '#3b82f6' : 'rgba(255,255,255,0.05)',
+              background: isScreenSharing ? '#5580A8' : 'rgba(255,255,255,0.05)',
               border: 'none',
               padding: '12px',
               borderRadius: 12,
@@ -619,7 +656,7 @@ const CallOverlay = () => {
             style={{
               flex: 2,
               height: 56,
-              background: '#ef4444',
+              background: '#B06A6A',
               border: 'none',
               borderRadius: 14,
               color: 'white',
@@ -633,7 +670,7 @@ const CallOverlay = () => {
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
               opacity: isLeaving ? 0.6 : 1,
-              boxShadow: '0 4px 16px rgba(239,68,68,0.4)'
+              boxShadow: '0 4px 16px rgba(176,106,106,0.4)'
             }}
           >
             <PhoneOff size={20} />

@@ -5,11 +5,12 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const CLUBS = [
-  { name: '4YOU',       color: '#4f8ef7' },
+  { name: '4YOU',       color: '#5580A8' },
   { name: 'COLIBRI',    color: '#9b5de5' },
-  { name: 'VILLA',      color: '#f59e0b' },
-  { name: 'NURLY ORDA', color: '#22c55e' },
-  { name: 'PROMENADE',  color: '#14b8a6' },
+  { name: 'VILLA',      color: '#C08F4F' },
+  { name: 'NURLY ORDA', color: '#5F9C81' },
+  { name: 'PROMENADE',  color: '#5F9C96' },
+  { name: 'EUROPE CITY', color: '#B0688D' },
 ];
 
 function escapeRegex(str) {

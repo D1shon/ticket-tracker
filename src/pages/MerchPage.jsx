@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { 
-  collection, query, onSnapshot, setDoc, doc, deleteDoc, 
-  serverTimestamp, addDoc, updateDoc, increment, where, getDoc
+  collection, query, onSnapshot, setDoc, doc, deleteDoc,
+  serverTimestamp, addDoc, updateDoc, increment, where, getDoc, runTransaction
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { toast } from 'sonner';
@@ -12,18 +13,29 @@ import {
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
   Trash2, Edit3, CheckCircle, AlertTriangle, ArrowUpRight, 
   ArrowDownLeft, Filter, DollarSign, Store, X, CreditCard, Wallet, Download, ClipboardList,
-  Image, Camera, UploadCloud, Users
+  Image, Camera, UploadCloud, Users, RotateCcw
 } from 'lucide-react';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы', 'Блокноты', 'Ручки', 'Другое'];
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
 
 const MerchPage = () => {
   const { user } = useTickets();
-  
+
+  // Мобильный режим — только визуальные ветки (таблицы → карточки), логика не меняется
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+
   // Role & Permissions check
   const isChef = useMemo(() => user?.role === 'chef' || user?.role === 'viewer', [user]);
   const isMarketing = useMemo(() => user?.role === 'marketing', [user]);
+  // Гульдане (маркетинг) дополнительно открыты «История продаж» и «Перемещения»
+  const marketingExtra = isMarketing && (user?.email || '').toLowerCase() === 'guldana.k@hj.fit';
   // Ком-Дир и РОП: мониторинг всего склада (включая себестоимость и выручку), но без продаж и редактирования
   const isKomdir = useMemo(() => user?.role === 'komdir' || user?.role === 'rop', [user]);
   const canSeeCost = isChef || isKomdir;
@@ -43,6 +55,21 @@ const MerchPage = () => {
   const [expandedPersons, setExpandedPersons] = useState({}); // salespersonName -> boolean
   const [clubEmployees, setClubEmployees] = useState([]);
   const [clubSchedules, setClubSchedules] = useState({});
+
+  const myName = user?.displayName || user?.name || user?.email || 'Сотрудник';
+  const myEmail = (user?.email || '').toLowerCase();
+
+  // ─── Перемещения мерча между студиями ───────────────────────────────
+  const [merchTransfers, setMerchTransfers] = useState([]);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [selectedProductForTransfer, setSelectedProductForTransfer] = useState(null);
+  const [transferForm, setTransferForm] = useState({ qty: '', toClub: '', size: '' });
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [mismatchOpen, setMismatchOpen] = useState(null); // id перемещения с открытым вводом «другое кол-во»
+  const [mismatchQty, setMismatchQty] = useState('');
+  // Клуб, чью приёмку я обрабатываю (у менеджера — свой; шеф/Ком-Дир видят все)
+  const myTransferClub = managerClub || (user?.role === 'rop' ? user?.club : null) || null;
+  const canManageTransfers = isChef || !!managerClub; // создавать/принимать может шеф и менеджер
 
   // Load employees and schedules for the selected club
   useEffect(() => {
@@ -160,7 +187,10 @@ const MerchPage = () => {
     salePrice: '',
     employeePrice: '',
     stock: '',
-    minStock: '5'
+    minStock: '5',
+    // Размерная сетка: одна карточка = модель, остатки по размерам
+    useSizes: false,
+    sizes: {}
   });
 
   // Form States (New Sale)
@@ -173,7 +203,8 @@ const MerchPage = () => {
     notes: '',
     isFree: false,
     freeReason: 'Бартер',
-    salespersonName: ''
+    salespersonName: '',
+    size: '' // размер для товаров с размерной сеткой
   });
 
   const [todayClubEmployees, setTodayClubEmployees] = useState([]);
@@ -277,10 +308,18 @@ const MerchPage = () => {
       setLoadingHistory(false);
     });
 
+    const qTransfers = query(collection(db, 'merch_transfers'));
+    const unsubTransfers = onSnapshot(qTransfers, (snapshot) => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => (b.createdAtISO || '').localeCompare(a.createdAtISO || ''));
+      setMerchTransfers(list);
+    }, (error) => console.error('Error fetching merch transfers:', error));
+
     return () => {
       unsubProducts();
       unsubSales();
       unsubHistory();
+      unsubTransfers();
     };
   }, []);
 
@@ -362,6 +401,17 @@ const MerchPage = () => {
     const initialStock = parseInt(productForm.stock) || 0;
     const min = parseInt(productForm.minStock) || 0;
 
+    // Размерная сетка: остаток считается суммой по размерам
+    let sizesMap = null;
+    if (productForm.useSizes) {
+      sizesMap = {};
+      SIZES.forEach(sz => {
+        const n = parseInt(productForm.sizes?.[sz]) || 0;
+        if (n > 0) sizesMap[sz] = n;
+      });
+    }
+    const sizesTotal = sizesMap ? Object.values(sizesMap).reduce((a, b) => a + b, 0) : null;
+
     const data = {
       name: productForm.name.trim(),
       sku: productForm.sku.trim(),
@@ -370,7 +420,9 @@ const MerchPage = () => {
       costPrice: cost,
       salePrice: sale,
       employeePrice: employee,
-      stock: editingProduct ? editingProduct.stock : initialStock,
+      // С сеткой размеров stock всегда = сумма размеров (и при создании, и при правке)
+      stock: sizesMap ? sizesTotal : (editingProduct ? editingProduct.stock : initialStock),
+      sizes: sizesMap,
       minStock: min,
       updatedAt: serverTimestamp()
     };
@@ -411,7 +463,7 @@ const MerchPage = () => {
       setPhotoFile(null);
       setPhotoPreview(null);
       setPhotoBase64(null);
-      setProductForm({ name: '', sku: '', club: managerClub || '4YOU', category: 'Худи', costPrice: '', salePrice: '', employeePrice: '', stock: '', minStock: '5' });
+      setProductForm({ name: '', sku: '', club: managerClub || '4YOU', category: 'Худи', costPrice: '', salePrice: '', employeePrice: '', stock: '', minStock: '5', useSizes: false, sizes: {} });
     } catch (err) {
       console.error(err);
       toast.error('Ошибка сохранения товара');
@@ -443,6 +495,169 @@ const MerchPage = () => {
     }
   };
 
+  // ─── Перемещения: поиск товара-близнеца на складе-получателе ──────────
+  // Сопоставление товара на складе-получателе: по артикулу, если он есть у ОБОИХ,
+  // иначе по названию+категории. Раньше товар с артикулом не находил карточку без
+  // артикула (и наоборот) — при приёмке плодились дубли, и продажи «не минусовали» остаток.
+  const findDestProduct = (toClub, src) => products.find(p => {
+    if (p.club !== toClub) return false;
+    const srcSku = String(src.sku || '').trim().toLowerCase();
+    const pSku = String(p.sku || '').trim().toLowerCase();
+    if (srcSku && pSku) return srcSku === pSku;
+    return String(p.name || '').trim().toLowerCase() === String(src.name || '').trim().toLowerCase()
+      && (p.category || 'Другое') === (src.category || 'Другое');
+  });
+
+  const openTransferModal = (p) => {
+    setSelectedProductForTransfer(p);
+    setTransferForm({ qty: '', toClub: '', size: '' });
+    setShowTransferModal(true);
+  };
+
+  const handleCreateTransfer = async () => {
+    const src = selectedProductForTransfer;
+    if (!src) return;
+    const qty = parseInt(transferForm.qty) || 0;
+    const toClub = transferForm.toClub;
+    if (qty <= 0) return toast.error('Укажите количество');
+    if (qty > (src.stock || 0)) return toast.error(`Недостаточно на складе (в наличии: ${src.stock || 0})`);
+    if (!toClub || toClub === src.club) return toast.error('Выберите студию-получателя');
+    if (src.sizes && Object.keys(src.sizes).length > 0) {
+      if (!transferForm.size) return toast.error('Выберите размер — у товара размерная сетка');
+      if (qty > (src.sizes[transferForm.size] || 0)) return toast.error(`Недостаточно размера ${transferForm.size} (остаток: ${src.sizes[transferForm.size] || 0})`);
+    }
+    setTransferBusy(true);
+    try {
+      // Товар физически уезжает → сразу списываем со склада-источника (+ размер)
+      const srcHasSizes = src.sizes && Object.keys(src.sizes).length > 0;
+      await updateDoc(doc(db, 'merch_products', src.id), {
+        stock: increment(-qty),
+        ...(srcHasSizes ? { [`sizes.${transferForm.size}`]: increment(-qty) } : {}),
+        updatedAt: serverTimestamp()
+      });
+      await addDoc(collection(db, 'merch_transfers'), {
+        fromClub: src.club, toClub,
+        size: srcHasSizes ? transferForm.size : null,
+        productId: src.id, productName: src.name, sku: src.sku || null, category: src.category || 'Другое',
+        costPrice: src.costPrice || 0, salePrice: src.salePrice || 0, employeePrice: src.employeePrice || 0,
+        imageUrl: src.imageUrl || null,
+        qty, status: 'pending',
+        createdByName: myName, createdByEmail: myEmail,
+        createdAtISO: new Date().toISOString(),
+      });
+      await addDoc(collection(db, 'merch_history'), {
+        type: 'transfer_out', productId: src.id, productName: src.name, club: src.club,
+        details: `Перемещение ${qty} шт «${src.name}» → ${toClub} (ожидает приёмки)`,
+        cashierName: myName, createdAt: serverTimestamp(),
+      });
+      pushNotify({
+        title: `📦 Поставка на ${toClub}`,
+        body: `${qty} шт «${src.name}» из ${src.club} — примите на складе`,
+        club: toClub, excludeEmail: myEmail, url: '/merch', tag: 'merch-transfer',
+        roles: ['manager', 'chef'],
+      });
+      toast.success('Перемещение создано — ждём приёмки');
+      setShowTransferModal(false);
+      setSelectedProductForTransfer(null);
+      setTransferForm({ qty: '', toClub: '', size: '' });
+    } catch (e) {
+      toast.error('Не удалось создать перемещение: ' + (e?.message || e));
+    } finally { setTransferBusy(false); }
+  };
+
+  const handleAcceptTransfer = async (t, receivedQtyRaw) => {
+    const recv = parseInt(receivedQtyRaw);
+    if (isNaN(recv) || recv < 0) return toast.error('Некорректное количество');
+    setTransferBusy(true);
+    try {
+      const dest = findDestProduct(t.toClub, { sku: t.sku, name: t.productName, category: t.category });
+      if (dest) {
+        await updateDoc(doc(db, 'merch_products', dest.id), {
+          stock: increment(recv),
+          // Перемещение с размером кладём в размер получателя (создаст ключ, если его не было)
+          ...(t.size ? { [`sizes.${t.size}`]: increment(recv) } : {}),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // На складе-получателе такого товара нет — заводим карточку копией источника
+        await addDoc(collection(db, 'merch_products'), {
+          name: t.productName, sku: t.sku || '', club: t.toClub, category: t.category || 'Другое',
+          costPrice: t.costPrice || 0, salePrice: t.salePrice || 0, employeePrice: t.employeePrice || 0,
+          stock: recv, minStock: 5, imageUrl: t.imageUrl || null,
+          ...(t.size ? { sizes: { [t.size]: recv } } : {}),
+          createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        });
+      }
+      const mismatch = recv !== t.qty;
+      await updateDoc(doc(db, 'merch_transfers', t.id), {
+        status: 'accepted', receivedQty: recv,
+        note: mismatch ? `Принято ${recv} из ${t.qty}` : '',
+        resolvedByName: myName, resolvedByEmail: myEmail, resolvedAtISO: new Date().toISOString(),
+      });
+      await addDoc(collection(db, 'merch_history'), {
+        type: 'transfer_in', productName: t.productName, club: t.toClub,
+        details: `Приёмка ${recv} шт «${t.productName}» из ${t.fromClub}${mismatch ? ` (отправлено ${t.qty})` : ''}`,
+        cashierName: myName, createdAt: serverTimestamp(),
+      });
+      if (t.createdByEmail) pushNotify({
+        title: mismatch ? '⚠️ Поставка принята частично' : '✅ Поставка принята',
+        body: `${t.toClub}: принято ${recv}${mismatch ? ` из ${t.qty}` : ''} шт «${t.productName}»`,
+        emails: [t.createdByEmail], url: '/merch', tag: 'merch-transfer',
+      });
+      toast.success('Поставка принята');
+      setMismatchOpen(null); setMismatchQty('');
+    } catch (e) {
+      toast.error('Не удалось принять: ' + (e?.message || e));
+    } finally { setTransferBusy(false); }
+  };
+
+  const handleRejectTransfer = async (t) => {
+    if (!window.confirm(`Отклонить поставку ${t.qty} шт «${t.productName}»? Товар вернётся на склад ${t.fromClub}.`)) return;
+    setTransferBusy(true);
+    try {
+      // Возвращаем товар источнику (если карточку удалили — создаём заново)
+      try {
+        await updateDoc(doc(db, 'merch_products', t.productId), {
+          stock: increment(t.qty),
+          ...(t.size ? { [`sizes.${t.size}`]: increment(t.qty) } : {}),
+          updatedAt: serverTimestamp()
+        });
+      } catch {
+        await addDoc(collection(db, 'merch_products'), {
+          name: t.productName, sku: t.sku || '', club: t.fromClub, category: t.category || 'Другое',
+          costPrice: t.costPrice || 0, salePrice: t.salePrice || 0, employeePrice: t.employeePrice || 0,
+          stock: t.qty, minStock: 5, imageUrl: t.imageUrl || null,
+          ...(t.size ? { sizes: { [t.size]: t.qty } } : {}),
+          createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        });
+      }
+      await updateDoc(doc(db, 'merch_transfers', t.id), {
+        status: 'rejected', resolvedByName: myName, resolvedByEmail: myEmail, resolvedAtISO: new Date().toISOString(),
+      });
+      await addDoc(collection(db, 'merch_history'), {
+        type: 'transfer_rejected', productName: t.productName, club: t.fromClub,
+        details: `Отклонена поставка ${t.qty} шт «${t.productName}» → ${t.toClub}; товар возвращён`,
+        cashierName: myName, createdAt: serverTimestamp(),
+      });
+      if (t.createdByEmail) pushNotify({
+        title: '❌ Поставка отклонена',
+        body: `${t.toClub} отклонил ${t.qty} шт «${t.productName}» — товар вернулся`,
+        emails: [t.createdByEmail], url: '/merch', tag: 'merch-transfer',
+      });
+      toast.success('Отклонено, товар возвращён источнику');
+    } catch (e) {
+      toast.error('Не удалось отклонить: ' + (e?.message || e));
+    } finally { setTransferBusy(false); }
+  };
+
+  // Входящие ожидающие приёмки (для меня): менеджер — свой клуб; шеф/Ком-Дир — все
+  const incomingPending = merchTransfers.filter(t => t.status === 'pending'
+    && (isChef || isKomdir ? true : t.toClub === myTransferClub));
+  const canAcceptTransfer = (t) => isChef || (managerClub && t.toClub === managerClub);
+  // Перемещения для вкладки истории: шеф/Ком-Дир — все; менеджер — где участвует его клуб
+  const myTransfersList = (isChef || isKomdir || marketingExtra) ? merchTransfers
+    : merchTransfers.filter(t => t.fromClub === myTransferClub || t.toClub === myTransferClub);
+
   const handleCreateSale = async (e) => {
     e.preventDefault();
     const qty = parseInt(saleForm.qty) || 0;
@@ -460,32 +675,49 @@ const MerchPage = () => {
       : totalSum - (qty * (selectedProductForSale.costPrice || 0));
 
     try {
-      // 1. Create sale record
-      await addDoc(collection(db, 'merch_sales'), {
-        productId: selectedProductForSale.id,
-        productName: selectedProductForSale.name,
-        sku: selectedProductForSale.sku || null,
-        category: selectedProductForSale.category,
-        club: selectedProductForSale.club,
-        qty,
-        costPrice: selectedProductForSale.costPrice || 0,
-        salePrice,
-        totalSum,
-        netProfit,
-        paymentMethod: isFree ? saleForm.freeReason : saleForm.paymentMethod,
-        isFree,
-        buyerType: isFree ? 'client' : (saleForm.buyerType || 'client'),
-        clientName: saleForm.clientName.trim() || (saleForm.buyerType === 'employee' && !isFree ? 'Сотрудник' : 'Гость'),
-        notes: saleForm.notes.trim() || null,
-        cashierName: user?.name || user?.email || 'Менеджер',
-        salespersonName: saleForm.salespersonName || null,
-        createdAt: serverTimestamp()
-      });
-
-      // 2. Decrement stock
-      await updateDoc(doc(db, 'merch_products', selectedProductForSale.id), {
-        stock: increment(-qty),
-        updatedAt: serverTimestamp()
+      // Продажа и списание со склада — АТОМАРНО: либо обе записи, либо ни одной.
+      // Раньше шли двумя операциями: продажа записывалась, а списание могло молча упасть
+      // (карточка удалена/пересоздана) — остаток «не минусовался».
+      await runTransaction(db, async (tx) => {
+        const prodRef = doc(db, 'merch_products', selectedProductForSale.id);
+        const prodSnap = await tx.get(prodRef);
+        if (!prodSnap.exists()) throw new Error('PRODUCT_MISSING');
+        const live = prodSnap.data();
+        const liveStock = live.stock || 0;
+        if (qty > liveStock) throw new Error(`NOT_ENOUGH:${liveStock}`);
+        // Товар с размерной сеткой: размер обязателен, списание по размеру
+        const hasSizes = live.sizes && Object.keys(live.sizes).length > 0;
+        if (hasSizes) {
+          if (!saleForm.size) throw new Error('SIZE_REQUIRED');
+          const szStock = live.sizes[saleForm.size] || 0;
+          if (qty > szStock) throw new Error(`NOT_ENOUGH_SIZE:${saleForm.size}:${szStock}`);
+        }
+        tx.set(doc(collection(db, 'merch_sales')), {
+          productId: selectedProductForSale.id,
+          productName: selectedProductForSale.name,
+          size: hasSizes ? saleForm.size : null,
+          sku: selectedProductForSale.sku || null,
+          category: selectedProductForSale.category,
+          club: selectedProductForSale.club,
+          qty,
+          costPrice: selectedProductForSale.costPrice || 0,
+          salePrice,
+          totalSum,
+          netProfit,
+          paymentMethod: isFree ? saleForm.freeReason : saleForm.paymentMethod,
+          isFree,
+          buyerType: isFree ? 'client' : (saleForm.buyerType || 'client'),
+          clientName: saleForm.clientName.trim() || (saleForm.buyerType === 'employee' && !isFree ? 'Сотрудник' : 'Гость'),
+          notes: saleForm.notes.trim() || null,
+          cashierName: user?.name || user?.email || 'Менеджер',
+          salespersonName: saleForm.salespersonName || null,
+          createdAt: serverTimestamp()
+        });
+        tx.update(prodRef, {
+          stock: increment(-qty),
+          ...(hasSizes ? { [`sizes.${saleForm.size}`]: increment(-qty) } : {}),
+          updatedAt: serverTimestamp(),
+        });
       });
 
       toast.success(isFree ? 'Товар выдан бесплатно!' : 'Продажа успешно проведена!');
@@ -498,44 +730,76 @@ const MerchPage = () => {
       });
       setShowSaleModal(false);
       setSelectedProductForSale(null);
-      setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '', buyerType: 'client', customPrice: '', notes: '', isFree: false, freeReason: 'Бартер', salespersonName: '' });
+      setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '', buyerType: 'client', customPrice: '', notes: '', isFree: false, freeReason: 'Бартер', salespersonName: '', size: '' });
     } catch (err) {
       console.error(err);
-      toast.error('Ошибка проведения продажи');
+      const msg = String(err?.message || '');
+      if (msg === 'PRODUCT_MISSING') toast.error('Карточка товара удалена со склада — продажа НЕ проведена. Обновите страницу.');
+      else if (msg === 'SIZE_REQUIRED') toast.error('Выберите размер — у этого товара размерная сетка');
+      else if (msg.startsWith('NOT_ENOUGH_SIZE')) toast.error(`Недостаточно размера ${msg.split(':')[1]} (остаток: ${msg.split(':')[2]} шт) — продажа НЕ проведена`);
+      else if (msg.startsWith('NOT_ENOUGH')) toast.error(`Недостаточно товара на складе (фактический остаток: ${msg.split(':')[1]} шт) — продажа НЕ проведена`);
+      else toast.error('Ошибка проведения продажи — ничего не записано, попробуйте ещё раз');
     }
   };
 
   const handleDeleteSale = async (sale) => {
     const canManage = isChef || (managerClub && sale.club === managerClub);
     if (!canManage) return toast.error('Доступ запрещен');
-    if (!window.confirm(`Вы уверены, что хотите удалить эту операцию (${sale.productName}, ${sale.qty} шт)?`)) return;
-    
+    if (sale.returned) return toast.error('Эта продажа уже возвращена');
+    // Запись пересорта — НЕ продажа: остаток уже скорректирован при инвентаризации.
+    // «Возврат»/«удаление с изменением склада» для неё повторно применил бы diff и испортил остатки.
+    const isResort = sale.paymentMethod === 'Пересорт';
+    // Продажа (qty>0) → это ВОЗВРАТ (товар обратно на склад). Поставка (qty<0) → удаление.
+    const isSale = !isResort && (sale.qty || 0) > 0;
+    const confirmMsg = isResort
+      ? `Удалить запись пересорта («${sale.productName}», ${sale.qty} шт)?\n\nОстаток на складе НЕ изменится — только запись из истории.`
+      : isSale
+      ? `Оформить возврат: «${sale.productName}» — ${sale.qty} шт, ${(sale.totalSum || 0).toLocaleString()} ₸?\n\nТовар вернётся на склад, продажа отменится. Возврат можно сделать в любое время.`
+      : `Удалить эту операцию (${sale.productName}, ${sale.qty} шт)?`;
+    if (!window.confirm(confirmMsg)) return;
+
     try {
-      await deleteDoc(doc(db, 'merch_sales', sale.id));
+      if (isSale) {
+        // Возврат: чек НЕ удаляем — помечаем возвращённым, чтобы он остался
+        // виден в истории продаж (как обычная продажа, но с бейджем «Возвращена»)
+        await updateDoc(doc(db, 'merch_sales', sale.id), {
+          returned: true,
+          returnedAtISO: new Date().toISOString(),
+          returnedBy: user?.name || user?.email || 'Менеджер',
+        });
+      } else {
+        // Пересорт/поставка — удаляем запись как раньше
+        await deleteDoc(doc(db, 'merch_sales', sale.id));
+      }
 
       // Возврат остатка — только если позиция ещё существует на складе
-      // (товар могли удалить при чистке нулевых остатков, история продаж при этом живёт отдельно)
-      if (sale.productId && products.some(p => p.id === sale.productId)) {
+      // (товар могли удалить при чистке нулевых остатков, история продаж при этом живёт отдельно).
+      // Пересорт склад не трогает.
+      if (!isResort && sale.productId && products.some(p => p.id === sale.productId)) {
         await updateDoc(doc(db, 'merch_products', sale.productId), {
           stock: increment(sale.qty), // Reverts sale (adds qty back to stock) or supply (subtracts negative qty from stock)
+          // Размерная сетка: возвращаем и в размер (для поставок qty<0 — корректно уменьшает)
+          ...(sale.size ? { [`sizes.${sale.size}`]: increment(sale.qty) } : {}),
           updatedAt: serverTimestamp()
         }).catch(() => {}); // позиция могла исчезнуть между проверкой и записью
       }
 
       await addDoc(collection(db, 'merch_history'), {
-        type: 'delete_sale',
+        type: isSale ? 'return_sale' : 'delete_sale',
         productId: sale.productId || null,
         productName: sale.productName,
         club: sale.club,
-        details: `Удалена операция: "${sale.productName}" (${sale.qty} шт, Сумма: ${sale.totalSum} ₸, Продавец: ${sale.salespersonName || 'нет'})`,
+        details: isSale
+          ? `Возврат продажи: «${sale.productName}» (${sale.qty} шт, Сумма: ${sale.totalSum} ₸, Продавец: ${sale.salespersonName || 'нет'}) — товар возвращён на склад`
+          : `Удалена операция: "${sale.productName}" (${sale.qty} шт, Сумма: ${sale.totalSum} ₸, Продавец: ${sale.salespersonName || 'нет'})`,
         cashierName: user?.name || user?.email || 'Менеджер',
         createdAt: serverTimestamp()
       });
 
-      toast.success('Операция успешно удалена');
+      toast.success(isSale ? 'Возврат оформлен — товар вернулся на склад' : 'Операция успешно удалена');
     } catch (err) {
       console.error(err);
-      toast.error('Ошибка при удалении операции');
+      toast.error(isSale ? 'Ошибка при возврате' : 'Ошибка при удалении операции');
     }
   };
 
@@ -547,11 +811,14 @@ const MerchPage = () => {
     if (!canSupply) return toast.error('Доступ запрещен');
     const qty = parseInt(supplyForm.qty) || 0;
     if (qty <= 0) return toast.error('Укажите корректное количество');
+    const hasSizes = product.sizes && Object.keys(product.sizes).length > 0;
+    if (hasSizes && !supplyForm.size) return toast.error('Выберите размер поставки — у товара размерная сетка');
 
     try {
-      // 1. Update stock
+      // 1. Update stock (+ размер для сеточных товаров)
       await updateDoc(doc(db, 'merch_products', product.id), {
         stock: increment(qty),
+        ...(hasSizes ? { [`sizes.${supplyForm.size}`]: increment(qty) } : {}),
         updatedAt: serverTimestamp()
       });
 
@@ -559,6 +826,7 @@ const MerchPage = () => {
       await addDoc(collection(db, 'merch_sales'), {
         productId: product.id,
         productName: product.name,
+        size: hasSizes ? supplyForm.size : null,
         category: product.category,
         club: product.club,
         qty: -qty, // Negative quantity represents supply/restock
@@ -593,7 +861,7 @@ const MerchPage = () => {
       });
       setShowSupplyModal(false);
       setSelectedProductForSupply(null);
-      setSupplyForm({ qty: '10', notes: '' });
+      setSupplyForm({ qty: '10', notes: '', size: '' });
     } catch (err) {
       console.error(err);
       toast.error('Ошибка при пополнении запасов');
@@ -663,66 +931,104 @@ const MerchPage = () => {
       setSavingResort(false);
     }
   };
+  // ─── Excel Export: полный отчёт склада одним файлом (все листы) ─────────────
+  // Учитывает фильтры клуба и периода дат; поиск и активная вкладка не влияют.
+  const handleExportCSV = async () => {
+    try {
+      const XLSX = await import('xlsx');
 
-  // ─── CSV Export Function ────────────────────────────────────────────────────
-  const handleExportCSV = () => {
-    let headers = [];
-    let rows = [];
-    
-    if (activeTab === 'inventory') {
-      if (canSeeCost) {
-        headers = ['Артикул', 'Название', 'Категория', 'Клуб', 'Себестоимость', 'Цена продажи', 'Остаток', 'Мин. остаток'];
-        rows = filteredProducts.map(p => [
-          p.sku || '', p.name, p.category, p.club, p.costPrice, p.salePrice, p.stock, p.minStock
-        ]);
-      } else {
-        headers = ['Артикул', 'Название', 'Категория', 'Клуб', 'Цена продажи', 'Остаток'];
-        rows = filteredProducts.map(p => [
-          p.sku || '', p.name, p.category, p.club, p.salePrice, p.stock
-        ]);
-      }
-    } else if (activeTab === 'logs') {
-      headers = ['Дата', 'Клуб', 'Операция', 'Детали', 'Исполнитель'];
-      rows = filteredLogs.map(log => {
-        const dateObj = log.createdAt?.seconds ? new Date(log.createdAt.seconds * 1000) : new Date();
-        return [
-          dateObj.toLocaleString('ru-RU'), log.club, log.type === 'delete' ? 'Удаление' : log.type === 'resort' ? 'Пересорт' : log.type === 'supply' ? 'Поставка' : 'Добавление', log.details, log.cashierName
-        ];
-      });
-    } else {
-      if (canSeeCost) {
-        headers = ['Дата', 'Клуб', 'Товар', 'Артикул', 'Категория', 'Количество', 'Себестоимость', 'Цена продажи', 'Сумма чека', 'Прибыль', 'Оплата', 'Клиент', 'Провел'];
-        rows = filteredSales.map(s => {
-          const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
-          return [
-            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.sku || '', s.category, s.qty, s.costPrice, s.salePrice, s.totalSum, s.netProfit, s.paymentMethod, s.clientName, s.cashierName
-          ];
-        });
-      } else {
-        headers = ['Дата', 'Клуб', 'Товар', 'Артикул', 'Категория', 'Количество', 'Цена продажи', 'Сумма чека', 'Оплата', 'Клиент', 'Провел'];
-        rows = filteredSales.map(s => {
-          const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
-          return [
-            dateObj.toLocaleString('ru-RU'), s.club, s.productName, s.sku || '', s.category, s.qty, s.salePrice, s.totalSum, s.paymentMethod, s.clientName, s.cashierName
-          ];
-        });
-      }
+      const clubOk = (c) => selectedClub === 'ALL' || c === selectedClub;
+      const dateOf = (x) => x?.createdAt?.seconds ? new Date(x.createdAt.seconds * 1000)
+        : x?.createdAtISO ? new Date(x.createdAtISO)
+        : x?.createdAt ? new Date(x.createdAt) : null;
+      const inDates = (d) => {
+        if (!d) return true;
+        if (startDate && d < new Date(startDate + 'T00:00:00')) return false;
+        if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+        return true;
+      };
+      const fmt = (d) => d ? d.toLocaleString('ru-RU') : '';
+
+      // 1. Склад
+      const invRows = products.filter(p => clubOk(p.club)).map(p => ({
+        'Артикул': p.sku || '', 'Название': p.name, 'Категория': p.category, 'Клуб': p.club,
+        ...(canSeeCost ? { 'Себестоимость': p.costPrice } : {}),
+        'Цена продажи': p.salePrice, 'Остаток': p.stock, 'Мин. остаток': p.minStock,
+      }));
+
+      // 2. Продажи (оплаченные, без возвратов и бесплатных выдач)
+      const saleRows = sales
+        .filter(s => !s.returned && !s.isFree && clubOk(s.club) && inDates(dateOf(s)))
+        .map(s => ({
+          'Дата': fmt(dateOf(s)), 'Клуб': s.club, 'Товар': s.productName, 'Размер': s.size || '', 'Артикул': s.sku || '',
+          'Категория': s.category, 'Количество': s.qty,
+          ...(canSeeCost ? { 'Себестоимость': s.costPrice } : {}),
+          'Цена продажи': s.salePrice, 'Сумма чека': s.totalSum,
+          ...(canSeeCost ? { 'Прибыль': s.netProfit } : {}),
+          'Оплата': s.paymentMethod, 'Покупатель': s.buyerType || '', 'Клиент': s.clientName || '',
+          'Продавец': s.salespersonName || '', 'Провел': s.cashierName, 'Примечание': s.notes || '',
+        }));
+
+      // 3. Возвраты
+      const returnRows = sales
+        .filter(s => s.returned && clubOk(s.club))
+        .filter(s => inDates(s.returnedAtISO ? new Date(s.returnedAtISO) : dateOf(s)))
+        .map(s => ({
+          'Дата продажи': fmt(dateOf(s)), 'Дата возврата': s.returnedAtISO ? fmt(new Date(s.returnedAtISO)) : '',
+          'Клуб': s.club, 'Товар': s.productName, 'Артикул': s.sku || '', 'Категория': s.category,
+          'Количество': s.qty, 'Сумма чека': s.totalSum, 'Оплата': s.paymentMethod,
+          'Клиент': s.clientName || '', 'Провел продажу': s.cashierName, 'Оформил возврат': s.returnedBy || '',
+        }));
+
+      // 4. Маркетинг (бесплатные выдачи: бартер, победители, подарки и т.д.)
+      const freeRows = sales
+        .filter(s => s.isFree && !s.returned && clubOk(s.club) && inDates(dateOf(s)))
+        .map(s => ({
+          'Дата': fmt(dateOf(s)), 'Клуб': s.club, 'Товар': s.productName, 'Артикул': s.sku || '',
+          'Категория': s.category, 'Количество': s.qty,
+          ...(canSeeCost ? { 'Себестоимость': s.costPrice } : {}),
+          'Причина выдачи': s.paymentMethod || s.freeReason || '', 'Получатель': s.clientName || '',
+          'Провел': s.cashierName, 'Примечание': s.notes || '',
+        }));
+
+      // 5. Перемещения между студиями
+      const transferStatus = { pending: 'Ожидает приёмки', accepted: 'Принято', rejected: 'Отклонено' };
+      const transferRows = merchTransfers
+        .filter(t => selectedClub === 'ALL' || t.fromClub === selectedClub || t.toClub === selectedClub)
+        .filter(t => inDates(t.createdAtISO ? new Date(t.createdAtISO) : null))
+        .map(t => ({
+          'Дата': t.createdAtISO ? fmt(new Date(t.createdAtISO)) : '', 'Откуда': t.fromClub, 'Куда': t.toClub,
+          'Товар': t.productName, 'Артикул': t.sku || '', 'Категория': t.category, 'Количество': t.qty,
+          'Статус': transferStatus[t.status] || t.status, 'Создал': t.createdByName || '',
+        }));
+
+      // 6. Журнал операций
+      const logType = { delete: 'Удаление', resort: 'Пересорт', supply: 'Поставка', transfer_out: 'Перемещение (отправка)', transfer_in: 'Перемещение (приёмка)' };
+      const logRows = historyLogs
+        .filter(l => clubOk(l.club) && inDates(dateOf(l)))
+        .map(l => ({
+          'Дата': fmt(dateOf(l)), 'Клуб': l.club, 'Операция': logType[l.type] || 'Добавление',
+          'Детали': l.details, 'Исполнитель': l.cashierName,
+        }));
+
+      const wb = XLSX.utils.book_new();
+      const addSheet = (name, rows) => {
+        const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Нет данных': '' }]);
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      };
+      addSheet('Склад', invRows);
+      addSheet('Продажи', saleRows);
+      addSheet('Возвраты', returnRows);
+      addSheet('Маркетинг', freeRows);
+      addSheet('Перемещения', transferRows);
+      addSheet('Журнал', logRows);
+
+      XLSX.writeFile(wb, `merch_report_${selectedClub}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast.success('Полный отчёт выгружен: склад, продажи, возвраты, маркетинг, перемещения, журнал');
+    } catch (e) {
+      console.error(e);
+      toast.error('Не удалось сформировать отчёт');
     }
-
-    const csvContent = "\uFEFF" + [
-      headers.join(';'),
-      ...rows.map(r => r.map(val => `"${String(val ?? '').replace(/"/g, '""')}"`).join(';'))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `merch_${activeTab}_${selectedClub}_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Экспорт успешно завершен!');
   };
 
   const uniqueSkus = useMemo(() => {
@@ -766,9 +1072,10 @@ const MerchPage = () => {
     const list = products.filter(p => {
       const matchClub = selectedClub === 'ALL' || p.club === selectedClub;
       const matchSku = selectedSku === 'ALL' || p.sku === selectedSku;
-      const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()));
+      // Поиск по ключевому слову: название, категория, артикул, клуб
+      const q = searchTerm.toLowerCase();
+      const matchSearch = !q || [p.name, p.category, p.sku, p.club]
+        .some(v => (v || '').toLowerCase().includes(q));
       return matchClub && matchSku && matchSearch;
     });
 
@@ -787,11 +1094,16 @@ const MerchPage = () => {
 
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
+      if (s.returned) return false; // возвраты — в отдельной вкладке «Возвраты»
       const matchClub = selectedClub === 'ALL' || s.club === selectedClub;
       const matchSku = selectedSku === 'ALL' || s.sku === selectedSku;
-      const matchSearch = s.productName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          s.cashierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (s.sku && s.sku.toLowerCase().includes(searchTerm.toLowerCase()));
+      // Поиск по ключевому слову: товар, кассир, артикул, клиент, продавец,
+      // примечание, способ оплаты/причина выдачи (напр. «маркетинг»), категория, клуб
+      const q = searchTerm.toLowerCase();
+      const matchSearch = !q || [
+        s.productName, s.cashierName, s.sku, s.clientName, s.salespersonName,
+        s.notes, s.paymentMethod, s.freeReason, s.category, s.club, s.buyerType,
+      ].some(v => (v || '').toLowerCase().includes(q));
       
       let matchDate = true;
       if (s.createdAt) {
@@ -809,13 +1121,50 @@ const MerchPage = () => {
     });
   }, [sales, selectedClub, selectedSku, searchTerm, startDate, endDate]);
 
+  // ── Вкладка «Маркетинг»: все бесплатные выдачи (бартер/победители/маркетинг/подарки) ──
+  const [freeReasonFilter, setFreeReasonFilter] = useState('ALL');
+  const filteredFreeSales = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    return sales.filter(s => {
+      if (!s.isFree) return false;
+      if (selectedClub !== 'ALL' && s.club !== selectedClub) return false;
+      if (freeReasonFilter !== 'ALL' && (s.paymentMethod || '') !== freeReasonFilter) return false;
+      if (q && ![s.productName, s.clientName, s.notes, s.paymentMethod, s.cashierName, s.club, s.sku]
+        .some(v => (v || '').toLowerCase().includes(q))) return false;
+      if (s.createdAt) {
+        const d = s.createdAt.seconds ? new Date(s.createdAt.seconds * 1000) : new Date(s.createdAt);
+        if (startDate && d < new Date(startDate + 'T00:00:00')) return false;
+        if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+      }
+      return true;
+    });
+  }, [sales, selectedClub, freeReasonFilter, searchTerm, startDate, endDate]);
+
+  // ── Вкладка «Возвраты»: помеченные возвращёнными чеки ──
+  const filteredReturns = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    return sales.filter(s => {
+      if (!s.returned) return false;
+      if (selectedClub !== 'ALL' && s.club !== selectedClub) return false;
+      if (q && ![s.productName, s.cashierName, s.sku, s.clientName, s.returnedBy, s.club]
+        .some(v => (v || '').toLowerCase().includes(q))) return false;
+      const iso = s.returnedAtISO || (s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000).toISOString() : null);
+      if (iso) {
+        const d = new Date(iso);
+        if (startDate && d < new Date(startDate + 'T00:00:00')) return false;
+        if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+      }
+      return true;
+    }).sort((a, b) => (b.returnedAtISO || '').localeCompare(a.returnedAtISO || ''));
+  }, [sales, selectedClub, searchTerm, startDate, endDate]);
+
   const filteredLogs = useMemo(() => {
     return historyLogs.filter(log => {
       const matchClub = selectedClub === 'ALL' || log.club === selectedClub;
       const matchSku = selectedSku === 'ALL' || (log.details && log.details.includes(`[Арт: ${selectedSku}]`));
-      const matchSearch = log.productName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          log.details?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          log.cashierName?.toLowerCase().includes(searchTerm.toLowerCase());
+      const q = searchTerm.toLowerCase();
+      const matchSearch = !q || [log.productName, log.details, log.cashierName, log.club, log.type]
+        .some(v => (v || '').toLowerCase().includes(q));
       
       let matchDate = true;
       if (log.createdAt) {
@@ -873,7 +1222,7 @@ const MerchPage = () => {
     const filterEnd = endDate ? new Date(endDate + 'T23:59:59') : null;
 
     activeSales.forEach(s => {
-      if (s.qty > 0 && s.paymentMethod !== 'Пересорт') {
+      if (s.qty > 0 && s.paymentMethod !== 'Пересорт' && !s.returned) {
         const saleSum = s.totalSum || 0;
         const saleProfit = s.netProfit || 0;
 
@@ -938,7 +1287,7 @@ const MerchPage = () => {
             <Package size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-[var(--text-primary)] italic uppercase tracking-tight">
+            <h1 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-[var(--text-primary)] italic uppercase tracking-tight`}>
               Учет Мерча и Продаж
             </h1>
             <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
@@ -948,21 +1297,21 @@ const MerchPage = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Club Filter */}
-          <div className="flex bg-[var(--bg-primary)] p-1 rounded-xl border border-[var(--border)]">
+          {/* Club Filter — на мобильном лента без переноса со скроллом внутри блока */}
+          <div className={`flex bg-[var(--bg-primary)] p-1 rounded-xl border border-[var(--border)] ${isMobile ? 'w-full overflow-x-auto' : ''}`} style={isMobile ? { WebkitOverflowScrolling: 'touch' } : undefined}>
             {canSelectAllClubs ? (
               <>
-                <button 
+                <button
                   onClick={() => setSelectedClub('ALL')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === 'ALL' ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === 'ALL' ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                 >
                   Все клубы
                 </button>
                 {CLUBS.map(club => (
-                  <button 
+                  <button
                     key={club}
                     onClick={() => setSelectedClub(club)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === club ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                    className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClub === club ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                   >
                     {club}
                   </button>
@@ -1008,7 +1357,7 @@ const MerchPage = () => {
       </div>
 
       {/* Analytics Dashboard Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="merch-stats grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         
         {isMarketing ? (
           <>
@@ -1265,43 +1614,137 @@ const MerchPage = () => {
 
       </div>
 
+      {/* Входящие поставки (перемещения на приёмку) */}
+      {incomingPending.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {incomingPending.map(t => {
+            const canAcc = canAcceptTransfer(t);
+            const misOpen = mismatchOpen === t.id;
+            return (
+              <div key={t.id} className="rounded-2xl border border-purple-500/30 bg-gradient-to-r from-purple-500/10 to-blue-500/5 p-4">
+                <div className="flex items-start gap-3 flex-wrap">
+                  {t.imageUrl ? (
+                    <img src={t.imageUrl} alt={t.productName} className="w-12 h-12 rounded-xl object-cover border border-[var(--border)] flex-shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center flex-shrink-0">
+                      <Package size={20} className="text-purple-400" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-[180px]">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-300 border border-purple-500/25">📦 Поставка</span>
+                      <span className="text-[11px] font-bold text-[var(--text-muted)]">{t.fromClub} → <b className="text-[var(--text-primary)]">{t.toClub}</b></span>
+                    </div>
+                    <div className="text-sm font-extrabold text-[var(--text-primary)] mt-1">
+                      {t.qty} шт «{t.productName}»{t.sku ? <span className="text-[var(--text-muted)] font-bold text-xs"> · Арт: {t.sku}</span> : null}
+                    </div>
+                    <div className="text-[11px] font-semibold text-[var(--text-muted)] mt-0.5">Отправил: {t.createdByName}</div>
+                  </div>
+                  {canAcc ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!misOpen ? (
+                        <>
+                          <button disabled={transferBusy} onClick={() => handleAcceptTransfer(t, t.qty)}
+                            className="flex items-center gap-1.5 py-2 px-4 rounded-xl text-xs font-black uppercase bg-emerald-500 text-white hover:bg-emerald-600 transition-all disabled:opacity-50">
+                            <CheckCircle size={14} /> Принять {t.qty}
+                          </button>
+                          <button disabled={transferBusy} onClick={() => { setMismatchOpen(t.id); setMismatchQty(String(t.qty)); }}
+                            className="py-2 px-3 rounded-xl text-xs font-bold uppercase bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border)] hover:text-orange-400 transition-all">
+                            Другое кол-во
+                          </button>
+                          <button disabled={transferBusy} onClick={() => handleRejectTransfer(t)}
+                            className="py-2 px-3 rounded-xl text-xs font-bold uppercase bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all">
+                            Отклонить
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-[var(--text-muted)]">Пришло по факту:</span>
+                          <input type="number" min="0" value={mismatchQty} onChange={e => setMismatchQty(e.target.value)}
+                            className="w-20 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm font-bold text-[var(--text-primary)] outline-none" autoFocus />
+                          <button disabled={transferBusy} onClick={() => handleAcceptTransfer(t, mismatchQty)}
+                            className="py-2 px-3 rounded-xl text-xs font-black uppercase bg-emerald-500 text-white hover:bg-emerald-600 transition-all disabled:opacity-50">
+                            Принять
+                          </button>
+                          <button disabled={transferBusy} onClick={() => { setMismatchOpen(null); setMismatchQty(''); }}
+                            className="py-2 px-2 rounded-xl text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-400 border border-orange-500/20 self-center">Ждёт приёмки</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Tabs, Search & Export Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Navigation Tabs */}
-        <div className="flex gap-1.5 p-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl w-fit">
+        {/* Navigation Tabs — на мобильном горизонтальная лента чипов без переноса */}
+        <div className={`flex gap-1.5 p-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl ${isMobile ? 'w-full overflow-x-auto' : 'w-fit'}`} style={isMobile ? { WebkitOverflowScrolling: 'touch' } : undefined}>
           <button
             onClick={() => setActiveTab('inventory')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'inventory' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+            className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'inventory' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
           >
             <Store size={14} /> Склад
           </button>
-          {!isMarketing && (
+          <button
+            onClick={() => setActiveTab('marketing')}
+            className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'marketing' ? 'bg-pink-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+          >
+            🎁 Маркетинг
+          </button>
+          {(!isMarketing || marketingExtra) && (
             <>
               <button
                 onClick={() => setActiveTab('sales')}
-                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'sales' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'sales' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
               >
                 <History size={14} /> История продаж
               </button>
+              {!isMarketing && (
+              <button
+                onClick={() => setActiveTab('returns')}
+                className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'returns' ? 'bg-amber-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+              >
+                <RotateCcw size={14} /> Возвраты
+              </button>
+              )}
               {(isChef || !!managerClub) && (
                 <button
                   onClick={() => { setActiveTab('resort'); setResortValues({}); }}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'resort' ? 'bg-orange-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                  className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'resort' ? 'bg-orange-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
                 >
                   <ClipboardList size={14} /> Пересорт
                 </button>
               )}
               <button
+                onClick={() => setActiveTab('transfers')}
+                className={`relative shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'transfers' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+              >
+                <ArrowUpRight size={14} /> Перемещения
+                {incomingPending.length > 0 && (
+                  <span className="ml-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-black">{incomingPending.length}</span>
+                )}
+              </button>
+              {!isMarketing && (
+              <button
                 onClick={() => setActiveTab('logs')}
-                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'logs' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'logs' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
               >
                 <ClipboardList size={14} /> Логи операций
               </button>
+              )}
               {/* Sales totals tab */}
-              {selectedClub !== 'ALL' && (
+              {selectedClub !== 'ALL' && !isMarketing && (
                 <button
                   onClick={() => setActiveTab('nurly-sales')}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nurly-sales' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                  className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nurly-sales' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
                 >
                   <TrendingUp size={14} /> Итого продаж
                 </button>
@@ -1310,25 +1753,25 @@ const MerchPage = () => {
           )}
         </div>
 
-        {/* Search Input & CSV Export */}
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+        {/* Search Input & CSV Export — на мобильном компактная колонка */}
+        <div className={isMobile ? 'flex flex-wrap items-center gap-2 w-full' : 'flex flex-wrap items-center gap-3 w-full sm:w-auto'}>
           {/* Date Range Selector */}
-          <div className="flex items-center gap-2 bg-[var(--bg-card)] px-3 py-2 rounded-2xl border border-[var(--border)] shadow-md h-[42px]">
-            <input 
+          <div className={`flex items-center gap-2 bg-[var(--bg-card)] px-3 py-2 rounded-2xl border border-[var(--border)] shadow-md h-[42px] ${isMobile ? 'w-full' : ''}`}>
+            <input
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
-              className="bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] w-[115px] cursor-pointer"
+              className={`bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] cursor-pointer ${isMobile ? 'flex-1 min-w-0' : 'w-[115px]'}`}
               title="Начало периода"
             />
             <span className="text-[var(--text-muted)] text-xs">—</span>
-            <input 
+            <input
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
               onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
-              className="bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] w-[115px] cursor-pointer"
+              className={`bg-transparent border-none outline-none text-xs font-bold text-[var(--text-primary)] cursor-pointer ${isMobile ? 'flex-1 min-w-0' : 'w-[115px]'}`}
               title="Конец периода"
             />
             {(startDate || endDate) && (
@@ -1346,7 +1789,7 @@ const MerchPage = () => {
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
-              className="bg-[var(--bg-card)] px-3 py-2 rounded-2xl border border-[var(--border)] text-xs font-bold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] h-[42px] cursor-pointer"
+              className={`bg-[var(--bg-card)] px-3 py-2 rounded-2xl border border-[var(--border)] text-xs font-bold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] h-[42px] cursor-pointer ${isMobile ? 'w-full' : ''}`}
             >
               <option value="default">Сортировка: По умолчанию</option>
               <option value="date">Сортировка: По дате (новые)</option>
@@ -1367,7 +1810,7 @@ const MerchPage = () => {
 
           <button
             onClick={handleExportCSV}
-            title="Экспортировать отчет в CSV (Excel)"
+            title="Выгрузить полный Excel-отчёт: склад, продажи, возвраты, маркетинг, перемещения, журнал"
             className="p-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] rounded-2xl border border-[var(--border)] flex items-center justify-center transition-all shadow-md h-[42px] w-[42px] shrink-0"
           >
             <Download size={18} />
@@ -1376,14 +1819,137 @@ const MerchPage = () => {
       </div>
 
       {/* Content Body */}
-      {activeTab === 'nurly-sales' ? (
+      {activeTab === 'returns' ? (
+        /* --- RETURNS TAB --- */
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-4 text-[11px] font-black uppercase tracking-wider">
+            <span className="text-[var(--text-muted)]">Возвратов: <b className="text-[var(--text-primary)]">{filteredReturns.length}</b></span>
+            <span className="text-[var(--text-muted)]">Товара: <b className="text-[var(--text-primary)]">{filteredReturns.reduce((s, x) => s + (x.qty || 0), 0)} шт</b></span>
+            <span className="text-[var(--text-muted)]">На сумму: <b className="text-amber-500">{filteredReturns.reduce((s, x) => s + (x.totalSum || 0), 0).toLocaleString('ru')} ₸</b></span>
+          </div>
+
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden">
+            {filteredReturns.length === 0 ? (
+              <div className="text-center py-16 text-[var(--text-muted)] text-sm font-semibold">Возвратов нет</div>
+            ) : (
+              <div className="divide-y divide-[var(--border)]">
+                {filteredReturns.map(s => {
+                  const sold = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : null;
+                  const ret = s.returnedAtISO ? new Date(s.returnedAtISO) : null;
+                  const fmt = (d) => d ? d.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+                  return (
+                    <div key={s.id} className="flex items-center gap-3 px-4 py-3 flex-wrap">
+                      <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+                        <RotateCcw size={16} className="text-amber-500" />
+                      </div>
+                      <div className="flex-1 min-w-[200px]">
+                        <div className="text-sm font-extrabold text-[var(--text-primary)]">{s.productName}{s.size ? ` (${s.size})` : ''} × {s.qty}</div>
+                        <div className="text-[11px] font-semibold text-[var(--text-muted)] mt-0.5">
+                          {s.club} · продана {fmt(sold)}{s.cashierName ? ` (${s.cashierName})` : ''} · возврат {fmt(ret)}{s.returnedBy ? ` (${s.returnedBy})` : ''}
+                        </div>
+                        {s.clientName && s.clientName !== 'Гость' && (
+                          <div className="text-[10px] text-[var(--text-muted)] mt-0.5">Покупатель: {s.clientName}</div>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border)]">{s.paymentMethod || '—'}</span>
+                      <span className="text-sm font-black text-amber-500 flex-shrink-0">−{(s.totalSum || 0).toLocaleString('ru')} ₸</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : activeTab === 'marketing' ? (
+        /* --- MARKETING (бесплатные выдачи) TAB --- */
+        <div className="flex flex-col gap-4">
+          {/* Фильтр по причине + сводка */}
+          <div className="flex flex-wrap items-center gap-2">
+            {['ALL', 'Маркетинг', 'Бартер', 'Победитель', 'Подарок', 'Другое'].map(r => (
+              <button key={r} onClick={() => setFreeReasonFilter(r)}
+                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider border transition-all ${freeReasonFilter === r ? 'bg-pink-500 text-white border-pink-500' : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:text-[var(--text-primary)]'}`}>
+                {r === 'ALL' ? 'Все причины' : r}
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-4 text-[11px] font-black uppercase tracking-wider">
+              <span className="text-[var(--text-muted)]">Выдано: <b className="text-[var(--text-primary)]">{filteredFreeSales.reduce((s, x) => s + (x.qty || 0), 0)} шт</b></span>
+              {canSeeCost && (
+                <span className="text-[var(--text-muted)]">Себестоимость: <b className="text-orange-400">{filteredFreeSales.reduce((s, x) => s + (x.qty || 0) * (x.costPrice || 0), 0).toLocaleString('ru')} ₸</b></span>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden">
+            {filteredFreeSales.length === 0 ? (
+              <div className="text-center py-16 text-[var(--text-muted)] text-sm font-semibold">Бесплатных выдач не найдено</div>
+            ) : (
+              <div className="divide-y divide-[var(--border)]">
+                {filteredFreeSales.map(s => {
+                  const d = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : (s.createdAt ? new Date(s.createdAt) : null);
+                  return (
+                    <div key={s.id} className="flex items-center gap-3 px-4 py-3 flex-wrap">
+                      <div className="w-10 h-10 rounded-lg bg-pink-500/10 border border-pink-500/20 flex items-center justify-center flex-shrink-0 text-base">🎁</div>
+                      <div className="flex-1 min-w-[180px]">
+                        <div className="text-sm font-extrabold text-[var(--text-primary)]">{s.productName}{s.size ? ` (${s.size})` : ''} × {s.qty}</div>
+                        <div className="text-[11px] font-semibold text-[var(--text-muted)] mt-0.5">
+                          {s.club} · {s.clientName || '—'}{s.notes ? ` · ${s.notes}` : ''} · выдал(а) {s.cashierName}
+                          {d ? ` · ${d.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-pink-500/10 text-pink-400 border border-pink-500/20">{s.paymentMethod || 'Бесплатно'}</span>
+                      {canSeeCost && (
+                        <span className="text-xs font-black text-orange-400 flex-shrink-0">−{((s.qty || 0) * (s.costPrice || 0)).toLocaleString('ru')} ₸</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : activeTab === 'transfers' ? (
+        /* --- TRANSFERS TAB --- */
+        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden">
+          {myTransfersList.length === 0 ? (
+            <div className="text-center py-16 text-[var(--text-muted)] text-sm font-semibold">Перемещений пока нет</div>
+          ) : (
+            <div className="divide-y divide-[var(--border)]">
+              {myTransfersList.map(t => {
+                const st = t.status;
+                const stColor = st === 'accepted' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                  : st === 'rejected' ? 'text-red-400 bg-red-500/10 border-red-500/20'
+                  : 'text-orange-400 bg-orange-500/10 border-orange-500/20';
+                const stLabel = st === 'accepted' ? (t.receivedQty !== undefined && t.receivedQty !== t.qty ? `Принято ${t.receivedQty}/${t.qty}` : 'Принято')
+                  : st === 'rejected' ? 'Отклонено' : 'Ожидает приёмки';
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-4 py-3 flex-wrap">
+                    {t.imageUrl ? (
+                      <img src={t.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover border border-[var(--border)] flex-shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-[var(--bg-hover)] border border-[var(--border)] flex items-center justify-center flex-shrink-0"><Package size={16} className="text-[var(--text-muted)] opacity-50" /></div>
+                    )}
+                    <div className="flex-1 min-w-[160px]">
+                      <div className="text-sm font-extrabold text-[var(--text-primary)]">{t.qty} шт «{t.productName}»</div>
+                      <div className="text-[11px] font-semibold text-[var(--text-muted)] mt-0.5">
+                        {t.fromClub} → <b className="text-[var(--text-secondary)]">{t.toClub}</b> · {t.createdByName}
+                        {t.createdAtISO ? ` · ${new Date(t.createdAtISO).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${stColor}`}>{stLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : activeTab === 'nurly-sales' ? (
         /* --- SALES TOTALS TAB --- */
         (() => {
           const activeClubForSales = selectedClub;
           const _now = new Date();
           const currentMonthKey = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
           const nurlySales = sales.filter(s => {
-            if (s.club !== activeClubForSales || (s.qty || 0) <= 0 || s.paymentMethod === 'Пересорт') return false;
+            if (s.club !== activeClubForSales || (s.qty || 0) <= 0 || s.paymentMethod === 'Пересорт' || s.returned) return false;
             if (s.createdAt?.seconds) {
               const d = new Date(s.createdAt.seconds * 1000);
               const saleMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -1430,11 +1996,11 @@ const MerchPage = () => {
           return (
             <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border)] shadow-xl overflow-hidden">
               {/* Grand total banner */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02))' }}>
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, rgba(125,111,179,0.08), rgba(125,111,179,0.02))' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.08em', marginBottom: 4 }}>{activeClubForSales} · Общая сумма продаж</div>
-                    <div style={{ fontSize: 32, fontWeight: 950, color: '#8b5cf6' }}>{grandTotal.toLocaleString('ru-RU')} ₸</div>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: '#7D6FB3', letterSpacing: '0.08em', marginBottom: 4 }}>{activeClubForSales} · Общая сумма продаж</div>
+                    <div style={{ fontSize: 32, fontWeight: 950, color: '#7D6FB3' }}>{grandTotal.toLocaleString('ru-RU')} ₸</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{filtered.length} продаж · {Object.keys(byPerson).length} сотрудников</div>
                   </div>
                   {/* Month switcher */}
@@ -1446,15 +2012,15 @@ const MerchPage = () => {
                     const hasPrev = currentIdx > 0;
                     const hasNext = currentIdx < availableMonths.length - 1;
                     return (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(139,92,246,0.1)', borderRadius: 12, padding: '6px 10px', border: '1px solid rgba(139,92,246,0.2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(125,111,179,0.1)', borderRadius: 12, padding: '6px 10px', border: '1px solid rgba(125,111,179,0.2)' }}>
                         <button
                           onClick={() => hasPrev && setMonth(availableMonths[currentIdx - 1].year, availableMonths[currentIdx - 1].month)}
-                          style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: hasPrev ? 'rgba(139,92,246,0.15)' : 'transparent', color: hasPrev ? '#8b5cf6' : 'var(--text-muted)', cursor: hasPrev ? 'pointer' : 'default', fontWeight: 900, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: hasPrev ? 'rgba(125,111,179,0.15)' : 'transparent', color: hasPrev ? '#7D6FB3' : 'var(--text-muted)', cursor: hasPrev ? 'pointer' : 'default', fontWeight: 900, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >‹</button>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: '#8b5cf6', minWidth: 100, textAlign: 'center' }}>{cur?.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: '#7D6FB3', minWidth: 100, textAlign: 'center' }}>{cur?.label}</span>
                         <button
                           onClick={() => hasNext && setMonth(availableMonths[currentIdx + 1].year, availableMonths[currentIdx + 1].month)}
-                          style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: hasNext ? 'rgba(139,92,246,0.15)' : 'transparent', color: hasNext ? '#8b5cf6' : 'var(--text-muted)', cursor: hasNext ? 'pointer' : 'default', fontWeight: 900, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: hasNext ? 'rgba(125,111,179,0.15)' : 'transparent', color: hasNext ? '#7D6FB3' : 'var(--text-muted)', cursor: hasNext ? 'pointer' : 'default', fontWeight: 900, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >›</button>
                       </div>
                     );
@@ -1470,7 +2036,7 @@ const MerchPage = () => {
                       type="checkbox"
                       checked={autoDistributeBySchedule}
                       onChange={(e) => setAutoDistributeBySchedule(e.target.checked)}
-                      style={{ width: 15, height: 15, accentColor: '#8b5cf6', cursor: 'pointer', borderRadius: 4 }}
+                      style={{ width: 15, height: 15, accentColor: '#7D6FB3', cursor: 'pointer', borderRadius: 4 }}
                     />
                     <span>Распределять продажи по графику смен (по дате и времени смены)</span>
                   </label>
@@ -1523,7 +2089,7 @@ const MerchPage = () => {
                       <div key={name} style={{ background: 'var(--bg-hover)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(139,92,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, color: '#8b5cf6' }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(125,111,179,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, color: '#7D6FB3' }}>
                               {idx + 1}
                             </div>
                             <div>
@@ -1536,7 +2102,7 @@ const MerchPage = () => {
                             {/* Commission rate input — hidden for service employees */}
                             {!isServicePerson && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-primary)', border: `1px solid ${hasCustomRate ? '#8b5cf6' : 'var(--border)'}`, borderRadius: 10, padding: '4px 8px', height: '36px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-primary)', border: `1px solid ${hasCustomRate ? '#7D6FB3' : 'var(--border)'}`, borderRadius: 10, padding: '4px 8px', height: '36px' }}>
                                   <input
                                     type="number"
                                     placeholder="—"
@@ -1584,9 +2150,9 @@ const MerchPage = () => {
                             )}
                             
                             <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: 15, fontWeight: 950, color: '#8b5cf6' }}>{data.total.toLocaleString('ru-RU')} ₸</div>
+                              <div style={{ fontSize: 15, fontWeight: 950, color: '#7D6FB3' }}>{data.total.toLocaleString('ru-RU')} ₸</div>
                               {!isServicePerson && award > 0 && (
-                                <div style={{ fontSize: 11, fontWeight: 900, color: '#10b981', marginTop: 1 }}>
+                                <div style={{ fontSize: 11, fontWeight: 900, color: '#5F9C81', marginTop: 1 }}>
                                   Награда: {award.toLocaleString('ru-RU')} ₸{customRate !== null ? ` (${customRate}%)` : ''}
                                 </div>
                               )}
@@ -1609,7 +2175,7 @@ const MerchPage = () => {
                           </button>
                           
                           {expandedPersons[name] && (
-                            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 6, borderLeft: '2px solid rgba(139,92,246,0.2)' }}>
+                            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 6, borderLeft: '2px solid rgba(125,111,179,0.2)' }}>
                               {data.sales.map(s => {
                                 const sDate = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
                                 const numAdmins = s.autoNames?.length || 1;
@@ -1648,8 +2214,8 @@ const MerchPage = () => {
                               })}
                               {/* Total reward for this person */}
                               {!isServicePerson && award > 0 && (
-                                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed rgba(139,92,246,0.3)', display: 'flex', justifyContent: 'flex-end' }}>
-                                  <span style={{ fontSize: 11, fontWeight: 900, color: '#10b981' }}>
+                                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed rgba(125,111,179,0.3)', display: 'flex', justifyContent: 'flex-end' }}>
+                                  <span style={{ fontSize: 11, fontWeight: 900, color: '#5F9C81' }}>
                                     Итого награда: {award.toLocaleString('ru-RU')} ₸
                                   </span>
                                 </div>
@@ -1710,6 +2276,12 @@ const MerchPage = () => {
                             <span className="px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-[9px] font-black uppercase tracking-wider">Пересорт</span>
                           ) : log.type === 'supply' ? (
                             <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[9px] font-black uppercase tracking-wider">Поставка</span>
+                          ) : log.type === 'transfer_out' ? (
+                            <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[9px] font-black uppercase tracking-wider">Отправка</span>
+                          ) : log.type === 'transfer_in' ? (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-black uppercase tracking-wider">Приёмка</span>
+                          ) : log.type === 'transfer_rejected' ? (
+                            <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-black uppercase tracking-wider">Возврат</span>
                           ) : (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-black uppercase tracking-wider">Добавление</span>
                           )}
@@ -1731,7 +2303,8 @@ const MerchPage = () => {
       ) : activeTab === 'resort' ? (
         /* --- RESORT (INVENTORY RECOUNT) TAB --- */
         <div className="bg-[var(--bg-card)] rounded-3xl border border-orange-500/20 shadow-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between" style={{ background: 'rgba(245,158,11,0.04)' }}>
+          {/* Мобильный: шапка пересорта переносится, кнопки не вылезают за экран */}
+          <div className={`border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-3 ${isMobile ? 'px-4 py-3' : 'px-6 py-4'}`} style={{ background: 'rgba(192,143,79,0.04)' }}>
             <div>
               <div className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wide flex items-center gap-2">
                 <ClipboardList size={16} className="text-orange-400" /> Пересорт / Инвентаризация
@@ -1794,6 +2367,11 @@ const MerchPage = () => {
                         <span className="font-black text-sm text-[var(--text-primary)]">{p.stock} шт</span>
                       </td>
                       <td className="px-6 py-3 text-center">
+                        {p.sizes && Object.keys(p.sizes).length > 0 ? (
+                          <span className="text-[10px] font-bold text-[var(--text-muted)]" title="У товара размерная сетка — фактические остатки правятся по размерам в карточке товара («Изменить»)">
+                            по размерам →<br/>в карточке
+                          </span>
+                        ) : (
                         <input
                           type="number"
                           min="0"
@@ -1802,11 +2380,12 @@ const MerchPage = () => {
                           onChange={e => setResortValues(prev => ({ ...prev, [p.id]: e.target.value }))}
                           className="w-20 text-center font-black text-sm rounded-lg border outline-none py-1.5 px-2 transition-all"
                           style={{
-                            background: hasDiff ? 'rgba(245,158,11,0.08)' : 'var(--bg-hover)',
-                            borderColor: hasDiff ? '#f59e0b' : 'var(--border)',
-                            color: hasDiff ? '#f59e0b' : 'var(--text-primary)',
+                            background: hasDiff ? 'rgba(192,143,79,0.08)' : 'var(--bg-hover)',
+                            borderColor: hasDiff ? '#C08F4F' : 'var(--border)',
+                            color: hasDiff ? '#C08F4F' : 'var(--text-primary)',
                           }}
                         />
+                        )}
                       </td>
                       <td className="px-6 py-3 text-center">
                         {diff === null ? (
@@ -1839,6 +2418,150 @@ const MerchPage = () => {
               <Package size={48} className="mx-auto opacity-35 mb-4 text-purple-400" />
               <p className="text-sm font-bold uppercase tracking-wider">Нет товаров на складе</p>
               <p className="text-xs mt-1">Добавьте новый товар или измените фильтр клуба</p>
+            </div>
+          ) : isMobile ? (
+            /* Мобильный: вертикальные карточки товара вместо широкой таблицы */
+            <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filteredProducts.map(p => {
+                const isLow = p.stock <= p.minStock;
+                const isOut = p.stock === 0;
+                const stockColor = isOut ? '#B06A6A' : isLow ? '#C08F4F' : '#5F9C81';
+                const canSell = !isMarketing && !isKomdir;
+                const canManage = !isMarketing && (isChef || (managerClub && p.club === managerClub));
+                return (
+                  <div key={p.id} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 14, padding: 12 }}>
+                    {/* Фото + название + цена/остаток */}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt={p.name} style={{ width: 46, height: 46, borderRadius: 12, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--bg-card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Image size={16} style={{ opacity: 0.4, color: 'var(--text-muted)' }} />
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', lineHeight: '17px' }}>{p.name}</div>
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
+                          {p.category}{p.sku ? ` · Арт: ${p.sku}` : ''} · {p.club}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 900, color: '#5F9C81', whiteSpace: 'nowrap' }}>{(p.salePrice || 0).toLocaleString()} ₸</div>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: stockColor, whiteSpace: 'nowrap', marginTop: 2 }}>
+                          {isOut ? 'Нет в наличии' : `${p.stock} шт${isLow ? ' · мало' : ''}`}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Размерная сетка: остатки по размерам */}
+                    {p.sizes && Object.keys(p.sizes).length > 0 && (
+                      <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                        {SIZES.filter(sz => p.sizes[sz] !== undefined).map(sz => (
+                          <span key={sz} style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 7, background: (p.sizes[sz] || 0) > 0 ? 'rgba(125,111,179,0.12)' : 'rgba(176,106,106,0.1)', color: (p.sizes[sz] || 0) > 0 ? 'var(--accent-purple)' : '#B06A6A', border: '1px solid var(--border)' }}>
+                            {sz}·{p.sizes[sz] || 0}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Доп. цены (по ролям) */}
+                    <div style={{ display: 'flex', gap: 10, marginTop: 8, fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                      {canSeeCost && <span>Себест.: <b style={{ color: 'var(--text-secondary)' }}>{(p.costPrice || 0).toLocaleString()} ₸</b></span>}
+                      <span>Сотрудник: <b style={{ color: 'var(--accent-purple)' }}>{(p.employeePrice || 0).toLocaleString()} ₸</b></span>
+                      <span>Мин: <b style={{ color: 'var(--text-secondary)' }}>{p.minStock}</b></span>
+                    </div>
+                    {/* Действия — крупные кнопки под палец */}
+                    {(canSell || canManage) && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                        {canSell && (
+                          <button
+                            disabled={isOut}
+                            onClick={() => {
+                              setSelectedProductForSale(p);
+                              setSaleForm({
+                                qty: '1',
+                                paymentMethod: 'Kaspi',
+                                clientName: '',
+                                buyerType: 'client',
+                                customPrice: String(p.salePrice),
+                                notes: '',
+                                isFree: false,
+                                freeReason: 'Бартер',
+                                size: ''
+                              });
+                              setShowSaleModal(true);
+                            }}
+                            style={{ flex: 1, minWidth: 100, height: 40, borderRadius: 11, fontSize: 12, fontWeight: 800, border: `1px solid ${isOut ? 'var(--border)' : 'rgba(95,156,129,0.3)'}`, background: isOut ? 'var(--bg-card)' : 'rgba(95,156,129,0.12)', color: isOut ? 'var(--text-muted)' : '#5F9C81', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: isOut ? 'not-allowed' : 'pointer' }}
+                          >
+                            <ShoppingCart size={14} /> Продать
+                          </button>
+                        )}
+                        {canManage && (
+                          <>
+                            <button
+                              onClick={() => { setSelectedProductForSupply(p); setShowSupplyModal(true); }}
+                              style={{ flex: 1, minWidth: 100, height: 40, borderRadius: 11, fontSize: 12, fontWeight: 800, border: '1px solid rgba(85,128,168,0.3)', background: 'rgba(85,128,168,0.12)', color: '#5580A8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}
+                            >
+                              <Plus size={14} /> Поставка
+                            </button>
+                            <button
+                              disabled={isOut}
+                              onClick={() => openTransferModal(p)}
+                              style={{ flex: 1, minWidth: 110, height: 40, borderRadius: 11, fontSize: 12, fontWeight: 800, border: `1px solid ${isOut ? 'var(--border)' : 'rgba(125,111,179,0.3)'}`, background: isOut ? 'var(--bg-card)' : 'rgba(125,111,179,0.12)', color: isOut ? 'var(--text-muted)' : 'var(--accent-purple)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: isOut ? 'not-allowed' : 'pointer' }}
+                            >
+                              <ArrowUpRight size={14} /> Переместить
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {/* Служебные действия: редактирование, фото, удаление (зона ≥36px) */}
+                    {canManage && (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                        <button
+                          onClick={() => {
+                            setEditingProduct(p);
+                            setPhotoFile(null);
+                            setPhotoPreview(p.imageUrl || null);
+                            setPhotoBase64(null);
+                            setProductForm({
+                              name: p.name,
+                              sku: p.sku || '',
+                              club: p.club,
+                              category: p.category,
+                              costPrice: String(p.costPrice || ''),
+                              salePrice: String(p.salePrice || ''),
+                              employeePrice: String(p.employeePrice || ''),
+                              stock: String(p.stock || ''),
+                              minStock: String(p.minStock || ''),
+                              useSizes: !!p.sizes && Object.keys(p.sizes).length > 0,
+                              sizes: Object.fromEntries(Object.entries(p.sizes || {}).map(([k, v]) => [k, String(v)]))
+                            });
+                            setShowProductModal(true);
+                          }}
+                          style={{ flex: 1, height: 38, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+                        >
+                          <Edit3 size={13} /> Изменить
+                        </button>
+                        {p.imageUrl && (
+                          <button
+                            onClick={() => handleDeletePhoto(p)}
+                            title="Удалить фото"
+                            style={{ width: 44, height: 38, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-card)', color: '#C08F4F', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                          >
+                            <Image size={13} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteProduct(p.id)}
+                          title="Удалить товар"
+                          style={{ width: 44, height: 38, borderRadius: 10, border: '1px solid rgba(176,106,106,0.25)', background: 'rgba(176,106,106,0.08)', color: '#B06A6A', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1911,6 +2634,12 @@ const MerchPage = () => {
                             {p.stock}
                           </span>
                           <span className="text-[9px] font-bold text-[var(--text-muted)] block">мин: {p.minStock}</span>
+                          {/* Размерная сетка: остатки по размерам */}
+                          {p.sizes && Object.keys(p.sizes).length > 0 && (
+                            <span className="text-[9px] font-black block mt-0.5" style={{ color: 'var(--accent-purple)' }}>
+                              {SIZES.filter(sz => p.sizes[sz] !== undefined).map(sz => `${sz}·${p.sizes[sz] || 0}`).join('  ')}
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex justify-center">
@@ -1939,7 +2668,8 @@ const MerchPage = () => {
                                     customPrice: String(p.salePrice),
                                     notes: '',
                                     isFree: false,
-                                    freeReason: 'Бартер'
+                                    freeReason: 'Бартер',
+                                    size: ''
                                   });
                                   setShowSaleModal(true);
                                 }}
@@ -1960,6 +2690,16 @@ const MerchPage = () => {
                                   className="flex items-center gap-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all"
                                 >
                                   + Поставка
+                                </button>
+
+                                {/* Transfer Button */}
+                                <button
+                                  disabled={isOut}
+                                  onClick={() => openTransferModal(p)}
+                                  title="Переместить в другую студию"
+                                  className={`flex items-center gap-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase border transition-all ${isOut ? 'bg-gray-500/10 text-gray-500 border-gray-500/10 cursor-not-allowed' : 'bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20'}`}
+                                >
+                                  <ArrowUpRight size={11} /> Переместить
                                 </button>
 
                                 {/* Edit Button */}
@@ -2031,6 +2771,63 @@ const MerchPage = () => {
               <p className="text-sm font-bold uppercase tracking-wider">Нет транзакций</p>
               <p className="text-xs mt-1">Здесь будут отображаться продажи и складские поставки</p>
             </div>
+          ) : isMobile ? (
+            /* Мобильный: карточки чеков вместо широкой таблицы */
+            <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filteredSales.map(s => {
+                const isSale = s.qty > 0;
+                const isReturned = !!s.returned;
+                const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
+                return (
+                  <div key={s.id} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 14, padding: 12, opacity: isReturned ? 0.65 : 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{s.productName}{s.size ? ` (${s.size})` : ''}</div>
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
+                          {s.club}{s.category ? ` · ${s.category}` : ''}{s.sku ? ` · Арт: ${s.sku}` : ''}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 900, whiteSpace: 'nowrap', color: isReturned ? '#C08F4F' : isSale ? '#5F9C81' : '#5580A8', textDecoration: isReturned ? 'line-through' : 'none' }}>
+                          {isSale && !isReturned ? '+' : ''}{(s.totalSum || 0).toLocaleString()} ₸
+                        </div>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: isSale ? '#5F9C81' : '#5580A8', marginTop: 2 }}>{isSale ? '+' : ''}{s.qty} шт</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 8 }}>
+                      {s.paymentMethod === 'Складская поставка' ? 'Склад' : s.paymentMethod} · {s.cashierName} · {dateObj.toLocaleDateString('ru-RU')} {dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    {s.clientName && s.clientName !== 'Гость' && (
+                      <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
+                        {s.buyerType === 'employee' ? 'Сотрудник: ' : 'Клиент: '}{s.clientName}
+                      </div>
+                    )}
+                    {s.notes && (
+                      <div style={{ fontSize: 10.5, fontStyle: 'italic', color: 'var(--accent-purple)', marginTop: 2 }}>💬 {s.notes}</div>
+                    )}
+                    {/* Возврат / удаление операции — те же права, что и на десктопе */}
+                    {isReturned ? (
+                      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: '#C08F4F' }}>
+                        <RotateCcw size={13} /> Возвращена{s.returnedAtISO ? ` · ${new Date(s.returnedAtISO).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}{s.returnedBy ? ` · ${s.returnedBy}` : ''}
+                      </div>
+                    ) : isMarketing ? null : (
+                      <button
+                        onClick={() => handleDeleteSale(s)}
+                        style={{
+                          marginTop: 10, width: '100%', height: 40, borderRadius: 11, fontSize: 12, fontWeight: 800,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer',
+                          border: isSale ? '1px solid rgba(192,143,79,0.3)' : '1px solid var(--border)',
+                          background: isSale ? 'rgba(192,143,79,0.1)' : 'var(--bg-card)',
+                          color: isSale ? '#C08F4F' : 'var(--text-secondary)',
+                        }}
+                      >
+                        {isSale ? (<><RotateCcw size={14} /> Оформить возврат</>) : (<><Trash2 size={14} /> Удалить операцию</>)}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
@@ -2049,10 +2846,11 @@ const MerchPage = () => {
                 <tbody>
                   {filteredSales.map((s) => {
                     const isSale = s.qty > 0;
+                    const isReturned = !!s.returned;
                     const dateObj = s.createdAt?.seconds ? new Date(s.createdAt.seconds * 1000) : new Date();
-                    
+
                     return (
-                      <tr key={s.id} className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)]/40 transition-colors">
+                      <tr key={s.id} className={`border-b border-[var(--border)] hover:bg-[var(--bg-hover)]/40 transition-colors ${isReturned ? 'opacity-60' : ''}`}>
                         <td className="px-6 py-4 text-xs font-semibold text-[var(--text-secondary)]">
                           {dateObj.toLocaleDateString('ru-RU')} в {dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                         </td>
@@ -2060,7 +2858,7 @@ const MerchPage = () => {
                           <span className="text-xs font-black uppercase text-[var(--text-primary)]">{s.club}</span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="font-extrabold text-sm text-[var(--text-primary)] block">{s.productName}</span>
+                          <span className="font-extrabold text-sm text-[var(--text-primary)] block">{s.productName}{s.size ? ` (${s.size})` : ''}</span>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">{s.category}</span>
                             {s.sku && (
@@ -2079,7 +2877,9 @@ const MerchPage = () => {
                           )}
                         </td>
                         <td className="px-6 py-4 text-right font-black">
-                          {isSale ? (
+                          {isReturned ? (
+                            <span className="text-amber-500 line-through">{(s.totalSum || 0).toLocaleString()} ₸</span>
+                          ) : isSale ? (
                             <span className="text-emerald-400">+{(s.totalSum || 0).toLocaleString()} ₸</span>
                           ) : (
                             <span className="text-blue-400">{(s.totalSum || 0).toLocaleString()} ₸</span>
@@ -2112,13 +2912,30 @@ const MerchPage = () => {
                           {s.cashierName}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => handleDeleteSale(s)}
-                            className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-red-500 rounded-lg border border-[var(--border)] transition-all"
-                            title="Удалить операцию"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          {isReturned ? (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 text-amber-500 rounded-lg border border-amber-500/25 text-[11px] font-black uppercase tracking-wide"
+                              title={`Возврат оформлен${s.returnedAtISO ? ' ' + new Date(s.returnedAtISO).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}${s.returnedBy ? ' · ' + s.returnedBy : ''}`}
+                            >
+                              <RotateCcw size={12} /> Возвращена
+                            </span>
+                          ) : isMarketing ? null : isSale ? (
+                            <button
+                              onClick={() => handleDeleteSale(s)}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 rounded-lg border border-amber-500/25 transition-all text-[11px] font-black uppercase tracking-wide"
+                              title="Оформить возврат — товар вернётся на склад (доступно в любое время)"
+                            >
+                              <RotateCcw size={12} /> Возврат
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleDeleteSale(s)}
+                              className="p-2 bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-red-500 rounded-lg border border-[var(--border)] transition-all"
+                              title="Удалить операцию"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -2132,8 +2949,9 @@ const MerchPage = () => {
 
       {/* ─── MODAL: ADD / EDIT PRODUCT ─── */}
       {showProductModal && (isChef || !!managerClub) && ReactDOM.createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md relative flex flex-col" style={{maxHeight: '90vh'}}>
+        /* Мобильный: модалка прижата к низу шторкой */
+        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <Store size={18} className="text-[var(--accent-purple)]" />
@@ -2254,10 +3072,53 @@ const MerchPage = () => {
                 </div>
               )}
 
+              {/* ── Размерная сетка: одна карточка = модель, остатки по размерам ── */}
+              <button
+                type="button"
+                onClick={() => setProductForm({ ...productForm, useSizes: !productForm.useSizes })}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border transition-all"
+                style={{
+                  background: productForm.useSizes ? 'rgba(125,111,179,0.08)' : 'var(--bg-primary)',
+                  borderColor: productForm.useSizes ? 'rgba(125,111,179,0.45)' : 'var(--border)',
+                }}
+              >
+                <span className="text-left">
+                  <span className="block text-[12px] font-black" style={{ color: 'var(--text-primary)' }}>Размерная сетка</span>
+                  <span className="block text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>остатки по размерам (S/M/L…), общий остаток считается сам</span>
+                </span>
+                <span style={{ width: 40, height: 22, borderRadius: 999, position: 'relative', flexShrink: 0, background: productForm.useSizes ? 'var(--accent-purple)' : 'var(--border)', transition: 'background 0.15s' }}>
+                  <span style={{ position: 'absolute', top: 2, left: productForm.useSizes ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
+                </span>
+              </button>
+
+              {productForm.useSizes && (
+                <div className="rounded-xl border border-[var(--border)] p-3" style={{ background: 'var(--bg-primary)' }}>
+                  <div className="grid grid-cols-4 gap-2">
+                    {SIZES.map(sz => (
+                      <div key={sz}>
+                        <label className="text-[9px] font-black uppercase tracking-wider block mb-1 text-center" style={{ color: 'var(--text-muted)' }}>{sz}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={productForm.sizes?.[sz] ?? ''}
+                          onChange={e => setProductForm({ ...productForm, sizes: { ...(productForm.sizes || {}), [sz]: e.target.value } })}
+                          className="w-full px-2 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-sm font-bold text-center text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-[11px] font-black text-right" style={{ color: 'var(--accent-purple)' }}>
+                    Итого: {SIZES.reduce((a, sz) => a + (parseInt(productForm.sizes?.[sz]) || 0), 0)} шт
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
+                {!productForm.useSizes && (
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Начальный остаток</label>
-                  <input 
+                  <input
                     type="number"
                     placeholder="25"
                     disabled={!!editingProduct}
@@ -2266,9 +3127,10 @@ const MerchPage = () => {
                     className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
+                )}
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Минимум для алерта</label>
-                  <input 
+                  <input
                     type="number"
                     placeholder="5"
                     value={productForm.minStock}
@@ -2366,8 +3228,9 @@ const MerchPage = () => {
 
       {/* ─── MODAL: RECORD A SALE ─── */}
       {showSaleModal && selectedProductForSale && ReactDOM.createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={{maxHeight: '90vh'}}>
+        /* Мобильный: модалка прижата к низу шторкой */
+        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <ShoppingCart size={18} className="text-emerald-400" />
@@ -2452,6 +3315,26 @@ const MerchPage = () => {
                     </div>
                   </div>
 
+                  {/* Размер — для товаров с размерной сеткой */}
+                  {selectedProductForSale.sizes && Object.keys(selectedProductForSale.sizes).length > 0 && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {SIZES.filter(sz => (selectedProductForSale.sizes[sz] || 0) > 0).map(sz => (
+                          <button
+                            key={sz}
+                            type="button"
+                            onClick={() => setSaleForm({ ...saleForm, size: sz })}
+                            className={`px-3 rounded-xl text-xs font-black border transition-all ${saleForm.size === sz ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)]'}`}
+                            style={{ minHeight: 40 }}
+                          >
+                            {sz} <span style={{ opacity: 0.7, fontWeight: 700 }}>·{selectedProductForSale.sizes[sz]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Inputs Grid */}
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -2508,6 +3391,26 @@ const MerchPage = () => {
                     </div>
                   </div>
 
+                  {/* Размер — для товаров с размерной сеткой (бесплатная выдача тоже списывает) */}
+                  {selectedProductForSale.sizes && Object.keys(selectedProductForSale.sizes).length > 0 && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {SIZES.filter(sz => (selectedProductForSale.sizes[sz] || 0) > 0).map(sz => (
+                          <button
+                            key={sz}
+                            type="button"
+                            onClick={() => setSaleForm({ ...saleForm, size: sz })}
+                            className={`px-3 rounded-xl text-xs font-black border transition-all ${saleForm.size === sz ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)]'}`}
+                            style={{ minHeight: 40 }}
+                          >
+                            {sz} <span style={{ opacity: 0.7, fontWeight: 700 }}>·{selectedProductForSale.sizes[sz]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Quantity input for free sale */}
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Количество (шт)</label>
@@ -2550,7 +3453,7 @@ const MerchPage = () => {
               {/* Salesperson selector inside modal for all clubs */}
               {todayClubEmployees.length > 0 && (
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-[#8b5cf6] block mb-1.5 flex items-center gap-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[#7D6FB3] block mb-1.5 flex items-center gap-1.5">
                     <Users size={12} />
                     Кому идет продажа (выберите до 2 админов)
                   </label>
@@ -2584,7 +3487,7 @@ const MerchPage = () => {
                               }
                               setSaleForm({ ...saleForm, salespersonName: nextNames.join(', ') });
                             }}
-                            className={`py-1.5 px-2.5 rounded-xl text-[10px] font-black transition-all border text-left flex flex-col ${isSel ? 'bg-purple-600/15 text-[#8b5cf6] border-[#8b5cf6]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                            className={`py-1.5 px-2.5 rounded-xl text-[10px] font-black transition-all border text-left flex flex-col ${isSel ? 'bg-purple-600/15 text-[#7D6FB3] border-[#7D6FB3]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
                           >
                             <span>{emp.name.split(' ')[0]}</span>
                             <span className="text-[8px] opacity-70 font-semibold">{emp.shift}</span>
@@ -2626,9 +3529,76 @@ const MerchPage = () => {
       , document.body)}
 
       {/* ─── MODAL: SUPPLY / RESTOCK ─── */}
+      {showTransferModal && selectedProductForTransfer && ReactDOM.createPortal(
+        /* Мобильный: модалка прижата к низу шторкой */
+        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`} onClick={() => !transferBusy && setShowTransferModal(false)}>
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
+              <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
+                <ArrowUpRight size={18} className="text-purple-400" /> Перемещение
+              </h3>
+              <button onClick={() => setShowTransferModal(false)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"><X size={18} /></button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)]">
+                <span className="text-[10px] font-black uppercase text-purple-400 tracking-widest">{selectedProductForTransfer.category} • {selectedProductForTransfer.club}</span>
+                <h4 className="font-extrabold text-sm text-[var(--text-primary)] mt-1">{selectedProductForTransfer.name}</h4>
+                <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border)]/60">
+                  <span className="text-xs text-[var(--text-secondary)] font-semibold">На складе {selectedProductForTransfer.club}:</span>
+                  <span className="font-black text-sm text-[var(--text-primary)]">{selectedProductForTransfer.stock} шт</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Куда переместить</label>
+                <select value={transferForm.toClub} onChange={e => setTransferForm(f => ({ ...f, toClub: e.target.value }))}
+                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 py-2.5 text-sm font-bold text-[var(--text-primary)] outline-none">
+                  <option value="">Выберите студию…</option>
+                  {CLUBS.filter(c => c !== selectedProductForTransfer.club).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              {selectedProductForTransfer.sizes && Object.keys(selectedProductForTransfer.sizes).length > 0 && (
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {SIZES.filter(sz => (selectedProductForTransfer.sizes[sz] || 0) > 0).map(sz => (
+                      <button key={sz} type="button" onClick={() => setTransferForm(f => ({ ...f, size: sz }))}
+                        className={`px-3 rounded-xl text-xs font-black border transition-all ${transferForm.size === sz ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)]'}`}
+                        style={{ minHeight: 40 }}>
+                        {sz} <span style={{ opacity: 0.7, fontWeight: 700 }}>·{selectedProductForTransfer.sizes[sz]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Количество (шт)</label>
+                <input type="number" min="1" max={selectedProductForTransfer.stock} value={transferForm.qty}
+                  onChange={e => setTransferForm(f => ({ ...f, qty: e.target.value }))} placeholder="0"
+                  className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl px-3 py-2.5 text-sm font-bold text-[var(--text-primary)] outline-none" autoFocus />
+              </div>
+
+              <div className="text-[11px] font-semibold text-[var(--text-muted)] leading-relaxed bg-purple-500/5 border border-purple-500/15 rounded-xl px-3 py-2.5">
+                Товар спишется со склада <b className="text-[var(--text-secondary)]">{selectedProductForTransfer.club}</b> сразу. На складе-получателе он появится после подтверждения приёмки.
+              </div>
+
+              <button onClick={handleCreateTransfer} disabled={transferBusy}
+                className="w-full py-3 rounded-xl bg-[var(--accent-purple)] text-white text-sm font-black uppercase tracking-wider hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                <ArrowUpRight size={16} /> {transferBusy ? 'Отправка…' : 'Создать перемещение'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {showSupplyModal && selectedProductForSupply && (isChef || (managerClub && selectedProductForSupply.club === managerClub)) && ReactDOM.createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={{maxHeight: '90vh'}}>
+        /* Мобильный: модалка прижата к низу шторкой */
+        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <Plus size={18} className="text-blue-400" />
@@ -2652,6 +3622,21 @@ const MerchPage = () => {
                   <span className="font-black text-sm text-[var(--text-primary)]">{selectedProductForSupply.stock} шт</span>
                 </div>
               </div>
+
+              {selectedProductForSupply.sizes && Object.keys(selectedProductForSupply.sizes).length > 0 && (
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер поставки</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {SIZES.map(sz => (
+                      <button key={sz} type="button" onClick={() => setSupplyForm(f => ({ ...f, size: sz }))}
+                        className={`px-3 rounded-xl text-xs font-black border transition-all ${supplyForm.size === sz ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)]'}`}
+                        style={{ minHeight: 40 }}>
+                        {sz}{(selectedProductForSupply.sizes[sz] || 0) > 0 ? <span style={{ opacity: 0.7, fontWeight: 700 }}> ·{selectedProductForSupply.sizes[sz]}</span> : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Количество к поставке (шт)</label>

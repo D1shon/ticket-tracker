@@ -18,6 +18,8 @@ const FALLBACK_IP_MAP = {
   '95.161.225.166': 'VILLA',
   '92.46.44.66':    '4YOU',
   '95.141.141.57':  'NURLY ORDA',
+  '62.32.84.138':   'PROMENADE',
+  '95.59.126.26':   'EUROPE CITY',
 }
 
 // In-memory cache — persists across warm invocations, reloads on cold start
@@ -30,7 +32,10 @@ async function getIpMap() {
   if (ipMapCache && now - ipMapCachedAt < IP_MAP_TTL) return ipMapCache
   try {
     const snap = await admin.firestore().collection('checkin_config').doc('ip_map').get()
-    ipMapCache = snap.data()?.ips ?? {}
+    const ips = snap.data()?.ips
+    // Пустой/отсутствующий конфиг (например, случайно очистили в настройках) —
+    // не оставляем чекин без единого IP: подмешиваем захардкоженный фолбэк
+    ipMapCache = (ips && Object.keys(ips).length > 0) ? ips : { ...FALLBACK_IP_MAP, ...(ips ?? {}) }
     ipMapCachedAt = now
     return ipMapCache
   } catch (err) {
@@ -52,7 +57,7 @@ export default async function handler(req, res) {
     .split(',')[0]
     .trim()
 
-  const { userId, userName, localSubnetOk, checkType } = req.body ?? {}
+  const { userId, userName, userClub, localSubnetOk, checkType } = req.body ?? {}
   if (!userId) return res.status(400).json({ error: 'userId required' })
 
   try {
@@ -63,13 +68,17 @@ export default async function handler(req, res) {
     admin.firestore().collection('checkins').add({
       userId,
       userName: userName ?? null,
+      // Клуб сотрудника из приложения: по нему менеджер видит НЕУДАЧНЫЕ попытки
+      // (clubId у них null — IP не из сети клуба, фильтр по clubId их не находит)
+      userClub: userClub ?? null,
       clubId,
       ipAddress: ip,
       localSubnetOk: localSubnetOk ?? null,
       checkType: checkType === 'out' ? 'out' : 'in',
       status: clubId ? 'verified' : 'failed',
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      date: new Date().toISOString().split('T')[0],
+      // Дата по Алматы (UTC+5): чекин в 00:00–04:59 ночи не должен уезжать во «вчера»
+      date: new Date(Date.now() + 5 * 3600 * 1000).toISOString().split('T')[0],
     }).catch(err => console.error('checkin log failed:', err.message))
 
     return res.json({ allowed: !!clubId, clubId, ip, v: 3 })

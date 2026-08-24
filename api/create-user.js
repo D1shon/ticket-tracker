@@ -16,7 +16,43 @@ export default async function handler(req, res) {
   }
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { email, password, name, role, club } = req.body ?? {};
+  const { email, password, name, role, club, action } = req.body ?? {};
+
+  // Сброс пароля: удаляем Auth-аккаунт — при следующем входе человек
+  // просто придумает новый пароль (стандартный сценарий первого входа)
+  // Диагностика: есть ли Auth-аккаунт и флаг пароля
+  if (action === 'check') {
+    if (!email) return res.status(400).json({ error: 'email required' });
+    const out = { email: email.toLowerCase() };
+    try {
+      const u = await admin.auth().getUserByEmail(email);
+      out.authAccount = { uid: u.uid, created: u.metadata.creationTime, lastSignIn: u.metadata.lastSignInTime || null, disabled: u.disabled };
+    } catch (e) {
+      out.authAccount = e.code === 'auth/user-not-found' ? null : `error: ${e.code}`;
+    }
+    try {
+      const meta = await admin.firestore().collection('auth_meta').doc(email.toLowerCase()).get();
+      out.authMeta = meta.exists ? meta.data() : null;
+    } catch (e) { out.authMeta = `error: ${e.message}`; }
+    return res.json(out);
+  }
+
+  if (action === 'reset-password') {
+    if (!email) return res.status(400).json({ error: 'email required' });
+    try {
+      // Флаг «пароль установлен» тоже сбрасываем — иначе форма входа
+      // продолжит требовать старый пароль вместо создания нового
+      await admin.firestore().collection('auth_meta').doc(email.toLowerCase()).delete().catch(() => {});
+      const u = await admin.auth().getUserByEmail(email);
+      await admin.auth().deleteUser(u.uid);
+      return res.json({ ok: true, reset: true, uid: u.uid });
+    } catch (e) {
+      if (e.code === 'auth/user-not-found') return res.json({ ok: true, reset: true, note: 'аккаунта не было' });
+      console.error(e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (!email || !password || !name || !role) {
     return res.status(400).json({ error: 'email, password, name, role required' });
   }

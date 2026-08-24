@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { isMobileDevice } from '../lib/isMobile';
 import { MessageCircle, FileText, AlertTriangle, Clock, Smartphone, QrCode, Power, WifiOff, Search, ArrowLeft, Phone } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { db } from '../lib/firebase';
@@ -7,14 +8,14 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 
 // Завершающие реплики клиента («спасибо», «ок», «рахмет»…) — диалог не ждёт ответа,
 // если мы уже отвечали ранее и клиент закрыл разговор такой фразой.
 const CLOSING_RE = /^(спасибо+|благодар(ю|им|очка)|спс|пасиб[оа]?|ok|ок(ей)?|хорошо|отлично|супер|класс|понятно|ясно|понял[аи]?|договорились|да|ага|угу|рахмет|ра[хқ]мет( сізге| вам)?|жарайды|болды|👍|🙏|❤️?|😊|☺️)[\s!.)»😊🙏👍❤️💪🔥]*$/i;
 
 // Детерминированный цвет аватара по имени/номеру
-const AV_COLORS = ['#4f8ef7', '#9b5de5', '#f59e0b', '#22c55e', '#ef4444', '#06b6d4', '#ec4899', '#8b5cf6'];
+const AV_COLORS = ['#5580A8', '#9b5de5', '#C08F4F', '#5F9C81', '#B06A6A', '#06b6d4', '#B0688D', '#7D6FB3'];
 const avColor = (s) => AV_COLORS[[...String(s || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % AV_COLORS.length];
 
 const Avatar = ({ name, size = 38 }) => (
@@ -52,12 +53,12 @@ const WaDemoPage = ({ embedded = false }) => {
   const [activeChat, setActiveChat] = useState(null);
   const [chatQuery, setChatQuery] = useState('');
   const [now, setNow] = useState(Date.now());
-  const [isMobileW, setIsMobileW] = useState(() => window.innerWidth <= 768);
+  const [isMobileW, setIsMobileW] = useState(() => isMobileDevice());
   const bottomRef = useRef(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
   useEffect(() => {
-    const h = () => setIsMobileW(window.innerWidth <= 768);
+    const h = () => setIsMobileW(isMobileDevice());
     window.addEventListener('resize', h);
     return () => window.removeEventListener('resize', h);
   }, []);
@@ -253,9 +254,9 @@ const WaDemoPage = ({ embedded = false }) => {
 
       {/* Мост офлайн */}
       {!bridgeAlive && (
-        <Card style={{ border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.05)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <WifiOff size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>
+        <Card style={{ border: '1px solid rgba(176,106,106,0.35)', background: 'rgba(176,106,106,0.05)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <WifiOff size={16} style={{ color: '#B06A6A', flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#B06A6A' }}>
             Служба моста не отвечает — компьютер Sales5 выключен или служба остановлена. Сообщения сейчас не собираются.
           </span>
         </Card>
@@ -276,7 +277,7 @@ const WaDemoPage = ({ embedded = false }) => {
           ) : st.status === 'starting' ? (
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>Готовлю QR-код… (5–10 секунд)</div>
           ) : st.status === 'reconnecting' ? (
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>Переподключаюсь к номеру…</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#C08F4F' }}>Переподключаюсь к номеру…</div>
           ) : (
             <>
               <Smartphone size={36} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
@@ -305,7 +306,7 @@ const WaDemoPage = ({ embedded = false }) => {
             {activeClub} подключён · +{st.phone}
           </span>
           {isChef && (
-            <button onClick={requestDisconnect} title="Отключить номер" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+            <button onClick={requestDisconnect} title="Отключить номер" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 10, border: '1px solid rgba(176,106,106,0.3)', background: 'transparent', color: '#B06A6A', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
               <Power size={12} /> Отключить
             </button>
           )}
@@ -329,30 +330,30 @@ const WaDemoPage = ({ embedded = false }) => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Stat label="Обращений сегодня" value={dayStats.total} />
-            <Stat label="Ждут ответа" value={dayStats.waiting.length} color={dayStats.waiting.length ? '#ef4444' : '#22c55e'} />
-            <Stat label="Отвечено" value={dayStats.answered} color="#22c55e" />
-            <Stat label="Средний ответ" value={dayStats.medianReply != null ? `${dayStats.medianReply} мин` : '—'} color="#f59e0b" />
+            <Stat label="Ждут ответа" value={dayStats.waiting.length} color={dayStats.waiting.length ? '#B06A6A' : '#5F9C81'} />
+            <Stat label="Отвечено" value={dayStats.answered} color="#5F9C81" />
+            <Stat label="Средний ответ" value={dayStats.medianReply != null ? `${dayStats.medianReply} мин` : '—'} color="#C08F4F" />
           </div>
           {dayStats.waiting.length > 0 && (
             <Card>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <AlertTriangle size={14} style={{ color: '#ef4444' }} />
-                <span style={{ fontSize: 11, fontWeight: 900, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ждут ответа прямо сейчас</span>
+                <AlertTriangle size={14} style={{ color: '#B06A6A' }} />
+                <span style={{ fontSize: 11, fontWeight: 900, color: '#B06A6A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ждут ответа прямо сейчас</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {dayStats.waiting.map((w, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, background: w.waitMin > 30 ? 'rgba(239,68,68,0.06)' : 'var(--bg-hover)', border: `1px solid ${w.waitMin > 30 ? 'rgba(239,68,68,0.3)' : 'var(--border)'}` }}>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, background: w.waitMin > 30 ? 'rgba(176,106,106,0.06)' : 'var(--bg-hover)', border: `1px solid ${w.waitMin > 30 ? 'rgba(176,106,106,0.3)' : 'var(--border)'}` }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>{w.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.text}</div>
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 900, color: w.waitMin > 30 ? '#ef4444' : '#f59e0b', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: w.waitMin > 30 ? '#B06A6A' : '#C08F4F', whiteSpace: 'nowrap' }}>
                       <Clock size={10} style={{ display: 'inline', verticalAlign: '-1px' }} /> {w.waitMin} мин
                     </span>
                     <button
                       onClick={() => dismissWaiting(w)}
                       title="Диалог завершён — ответ не нужен"
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 9, border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(34,197,94,0.08)', color: '#22c55e', fontSize: 10, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 9, border: '1px solid rgba(95,156,129,0.35)', background: 'rgba(95,156,129,0.08)', color: '#5F9C81', fontSize: 10, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       ✓ Завершено
                     </button>
@@ -399,14 +400,14 @@ const WaDemoPage = ({ embedded = false }) => {
       {tab === 'report' && (
         clubReport ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#5F9C81', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               ✅ Отчёт ИИ · {activeClub} · за {clubReport.day}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Stat label="Диалогов" value={clubReport.stats?.totalDialogs ?? 0} />
-              <Stat label="Отвечено" value={clubReport.stats?.answered ?? 0} color="#22c55e" />
-              <Stat label="Без ответа" value={clubReport.stats?.unanswered ?? 0} color="#ef4444" />
-              <Stat label="Средний ответ" value={`${clubReport.stats?.avgReplyMin ?? '—'} мин`} color="#f59e0b" />
+              <Stat label="Отвечено" value={clubReport.stats?.answered ?? 0} color="#5F9C81" />
+              <Stat label="Без ответа" value={clubReport.stats?.unanswered ?? 0} color="#B06A6A" />
+              <Stat label="Средний ответ" value={`${clubReport.stats?.avgReplyMin ?? '—'} мин`} color="#C08F4F" />
             </div>
             {(clubReport.topics || []).length > 0 && (
               <Card>
@@ -426,10 +427,10 @@ const WaDemoPage = ({ embedded = false }) => {
               </Card>
             )}
             {(clubReport.alerts || []).length > 0 && (
-              <Card style={{ border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.04)' }}>
+              <Card style={{ border: '1px solid rgba(176,106,106,0.3)', background: 'rgba(176,106,106,0.04)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <AlertTriangle size={14} style={{ color: '#ef4444' }} />
-                  <span style={{ fontSize: 11, fontWeight: 900, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ИИ обратил внимание</span>
+                  <AlertTriangle size={14} style={{ color: '#B06A6A' }} />
+                  <span style={{ fontSize: 11, fontWeight: 900, color: '#B06A6A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ИИ обратил внимание</span>
                 </div>
                 {clubReport.alerts.map((a, i) => {
                   // ИИ может прислать строку или объект — показываем безопасно
@@ -496,14 +497,14 @@ const WaDemoPage = ({ embedded = false }) => {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ flex: 1, fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
-                            <span style={{ fontSize: 9.5, fontWeight: 700, color: c.waiting ? '#f59e0b' : 'var(--text-muted)', flexShrink: 0 }}>{fmtT(c.last?.timestampISO)}</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: c.waiting ? '#C08F4F' : 'var(--text-muted)', flexShrink: 0 }}>{fmtT(c.last?.timestampISO)}</span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
                             <span style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {c.last?.direction === 'out' ? 'Вы: ' : ''}{c.last?.text || '📎 вложение'}
                             </span>
                             {c.waiting && (
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 6px rgba(245,158,11,0.7)', flexShrink: 0 }} title="Ждёт ответа" />
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#C08F4F', boxShadow: '0 0 6px rgba(192,143,79,0.7)', flexShrink: 0 }} title="Ждёт ответа" />
                             )}
                           </div>
                         </div>

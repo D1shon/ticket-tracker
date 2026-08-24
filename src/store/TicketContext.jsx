@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { signInAnonymously, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInAnonymously, signOut, onAuthStateChanged,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 
 // ─── Strict Whitelist and Role Mapping ─────────────────────────────────────────
 // Only these exact email addresses are allowed to access the application.
@@ -10,6 +11,7 @@ export const USER_ROLES = {
   'magzhan@hj.fit':   { role: 'chef', club: null, displayName: 'Магжан' },
   'iliyas.s@hj.fit':  { role: 'chef', club: null, displayName: 'Илияс' },
   'anuar@hj.fit':     { role: 'chef', club: null, displayName: 'Ануар' },
+  'adil@hj.fit':      { role: 'chef', club: null, displayName: 'Адиль Утепбергенов' }, // разработчик, права chef
 
   // ── 4YOU ─────────────────────────────────────────────────────────────────
   'saniya@hj.fit':              { role: 'manager', club: '4YOU', displayName: 'Сания' },
@@ -29,17 +31,24 @@ export const USER_ROLES = {
 
   // ── NURLY ORDA ────────────────────────────────────────────────────────────
   'ainura030594@gmail.com': { role: 'manager', club: 'NURLY ORDA', displayName: 'Айнур' },
-  'azimuus@gmail.com':      { role: 'manager', club: 'NURLY ORDA', displayName: 'Азиз' },
+  'azimuus@gmail.com':      { role: 'manager', club: 'NURLY ORDA', clubs: ['NURLY ORDA', 'EUROPE CITY'], displayName: 'Азиз' },
 
   // ── PROMENADE ─────────────────────────────────────────────────────────────
   'k.useingazin@gmail.com': { role: 'manager', club: 'PROMENADE', displayName: 'Куат' },
+  'adaienough@gmail.com':   { role: 'manager', club: 'PROMENADE', displayName: 'Адай' },
+  'sabirameb@gmail.com':    { role: 'manager', club: 'PROMENADE', displayName: 'Сабира' },
+
+  // ── EUROPE CITY ───────────────────────────────────────────────────────────
+  'edokjp@gmail.com':  { role: 'manager', club: 'EUROPE CITY', displayName: 'Эдель' },
+  'k.dana_01@list.ru': { role: 'manager', club: 'EUROPE CITY', displayName: 'Дана' },
 
   // ── RESTRICTED ADMINS (schedule + sales only, no financials, no warehouse) ──
-  'admin-colibri':        { role: 'admin', club: 'COLIBRI',    displayName: 'Админ Colibri'    },
-  'admin-villa':          { role: 'admin', club: 'VILLA',       displayName: 'Админ Villa'      },
-  'admin-4you':           { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'       },
-  'admin-nurlyorda':      { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda' },
-  'admin-promenade':      { role: 'admin', club: 'PROMENADE',   displayName: 'Админ Promenade'  },
+  'admin-colibri@hj.fit':   { role: 'admin', club: 'COLIBRI',     displayName: 'Админ Colibri'     },
+  'admin-villa@hj.fit':     { role: 'admin', club: 'VILLA',       displayName: 'Админ Villa'       },
+  'admin-4you@hj.fit':      { role: 'admin', club: '4YOU',        displayName: 'Админ 4you'        },
+  'admin-nurlyorda@hj.fit': { role: 'admin', club: 'NURLY ORDA',  displayName: 'Админ Nurly Orda'  },
+  'admin-promenade@hj.fit': { role: 'admin', club: 'PROMENADE',   displayName: 'Админ Promenade'   },
+  'admin-europecity@hj.fit':{ role: 'admin', club: 'EUROPE CITY', displayName: 'Админ Europe City' },
   'ikoperper@gmail.com':              { role: 'admin', club: '4YOU', displayName: 'Искандер'  },
   'alibekakniet38@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Акниет'    },
   'bhtg.l.bhtg.l@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Бахыткуль' },
@@ -59,6 +68,13 @@ export const USER_ROLES = {
   'mkayrlynova@mail.ru':     { role: 'admin', club: 'VILLA', displayName: 'Меруерт' },
   'kushanlos123@gmail.com':  { role: 'admin', club: 'VILLA', displayName: 'Салим'   },
 
+  // ── PROMENADE ─────────────────────────────────────────────────────────────
+  'maryamkb100707@gmail.com':      { role: 'admin', club: 'PROMENADE', displayName: 'Марьям' },
+  'sarakayevaf@gmail.com':         { role: 'admin', club: 'PROMENADE', displayName: 'Фатима' },
+  'infosun2818@gmail.com':         { role: 'admin', club: 'PROMENADE', displayName: 'Санжар' },
+  'zhamilyakuskulakova@gmail.com': { role: 'admin', club: 'PROMENADE', displayName: 'Жамиля' },
+  'armetidq@icloud.com':           { role: 'admin', club: 'PROMENADE', displayName: 'Аружан' },
+
   // ── Marketing (restricted warehouse views, all clubs) ─────────────────────
   'guldana.k@hj.fit': { role: 'marketing', club: null, displayName: 'Гульдана' },
 
@@ -71,9 +87,18 @@ export const USER_ROLES = {
   'umitony99@gmail.com':    { role: 'rop', club: 'COLIBRI',    displayName: 'Умида' },
   'aiman.k@hj.fit':         { role: 'rop', club: '4YOU',       displayName: 'Айман' },
   'iamkamilya23@gmail.com': { role: 'rop', club: 'NURLY ORDA', displayName: 'Камиля' },
+  'sladosstt@gmail.com':    { role: 'rop', club: 'PROMENADE',  displayName: 'РОП Promenade' },
+  'kamzinova3@gmail.com':   { role: 'rop', club: 'EUROPE CITY', displayName: 'Камзинова' },
+
+  // ── Наблюдатель «Утерянные вещи» — только эта вкладка, только просмотр ────
+  'luiza_1101@mail.ru': { role: 'lostviewer', club: null, displayName: 'Луиза' },
 
   // ── Viewer (no tickets, schedule, calls, dashboard, archive) ──────────────
-  'nurali.m@hj.fit': { role: 'viewer', club: null, displayName: 'Нурали' },
+  // tech — техник: только Чек-листы и InStudio, по всем клубам
+  'nurali.m@hj.fit': { role: 'tech', club: null, displayName: 'Нурали' },
+  'roman.v@hj.fit': { role: 'chef', club: null, displayName: 'Роман' },
+  'madiyar.a@hj.fit': { role: 'tech', club: null, displayName: 'Мадияр' },
+  'iliyas.s@hj.fit': { role: 'chef', club: null, displayName: 'Илияс' },
 };
 
 // ─── Dynamic users (added by managers via Settings → Админы) ──────────────────
@@ -114,10 +139,14 @@ export function applyDynamicUsers(usersMap) {
 
     // A dynamic entry never overrides a hardcoded account
     if (key in STATIC_USER_ROLES) continue;
+    // Разрешённые роли для динамических аккаунтов: admin (по умолчанию) и rop.
+    // МОП создаётся как rop с флагом mop — те же права, но без создания аккаунтов.
+    const ALLOWED_DYN_ROLES = ['admin', 'rop'];
     USER_ROLES[key] = {
-      role: 'admin', // dynamic accounts are always restricted admins
+      role: ALLOWED_DYN_ROLES.includes(profile.role) ? profile.role : 'admin',
       club: profile.club || null,
       displayName: profile.displayName || key.split('@')[0],
+      mop: !!profile.mop,
     };
     dynamicUserKeys.add(key);
   }
@@ -146,7 +175,9 @@ import {
   doc,
   getDoc,
   getDocs,
-  serverTimestamp
+  serverTimestamp,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import { auth, db, getStorageLazy } from '../lib/firebase';
 import { formatAuthor } from '../utils/formatters';
@@ -167,35 +198,13 @@ function isFirebaseId(id) {
   return id.length >= 15 && !id.startsWith('temp_');
 }
 
-const INITIAL_DEMO_TICKETS = [
-  {
-    id: '1', club: '4YOU', title: 'Переход на летний режим вентиляции',
-    description: 'Переход на летний режим вентиляции.',
-    status: 'new', priority: 'medium',
-    assignee: 'Сания (4YOU)', createdAt: '2026-03-30T10:00:00.000Z',
-    comments: [],
-  },
-  {
-    id: '9', club: '4YOU', title: 'Переустановка счетчиков гор воды',
-    description: 'Переустановка счетчиков горячей воды и пломбировка.',
-    status: 'new', priority: 'medium',
-    assignee: 'Сания (4YOU)', createdAt: '2026-04-01T10:00:00.000Z',
-    comments: [],
-  },
-  {
-    id: '19', club: '4YOU', title: 'Фен Борк сломан (на ремонте)',
-    description: 'Ждём детали для сервис центра.',
-    status: 'new', priority: 'critical',
-    assignee: 'Сания (4YOU)', createdAt: '2026-03-15T09:00:00.000Z',
-    comments: [],
-  }
-];
-
+// Демо-заявки удалены: на новом устройстве они выглядели как реальные заявки
+// 4YOU «в работе», а смена их статусов тихо не сохранялась.
 function loadCachedTickets() {
   try {
     const raw = localStorage.getItem(TICKETS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : INITIAL_DEMO_TICKETS;
-  } catch { return INITIAL_DEMO_TICKETS; }
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
 }
 
 function sortByRecentActivity(arr) {
@@ -279,6 +288,7 @@ export const TicketProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const allTicketsRef = useRef(tickets);
+  const serverConfirmedRef = useRef(false); // получен ли хоть один снапшот С СЕРВЕРА
   useEffect(() => { allTicketsRef.current = tickets; }, [tickets]);
 
   // Keep the push token fresh for devices that already opted in
@@ -307,12 +317,13 @@ export const TicketProvider = ({ children }) => {
   }, [user?.email]);
 
   // ─── Persist cache ────────────────────────────────────────────────────────
+  // Пустой список тоже сохраняем, но только после серверного снапшота:
+  // иначе удалённые заявки «воскресали» из старого кеша при следующем запуске.
   useEffect(() => {
-    if (tickets.length > 0) {
-      try {
-        localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
-      } catch {}
-    }
+    if (tickets.length === 0 && !serverConfirmedRef.current) return;
+    try {
+      localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
+    } catch {}
   }, [tickets]);
 
   // ─── Profile Helper ──────────────────────────────────────────────────────
@@ -323,12 +334,24 @@ export const TicketProvider = ({ children }) => {
 
     const registered = USER_ROLES[email];
     if (registered) {
+      // Мультиклубный менеджер (registered.clubs) — активный клуб выбирается переключателем
+      // и хранится в localStorage; подставляется в user.club, чтобы все страницы работали как есть.
+      const clubs = Array.isArray(registered.clubs) && registered.clubs.length > 1 ? registered.clubs : null;
+      let club = registered.club;
+      if (clubs) {
+        const saved = localStorage.getItem('hj_active_club_' + email);
+        club = (saved && clubs.includes(saved)) ? saved
+             : (registered.club && clubs.includes(registered.club)) ? registered.club
+             : clubs[0];
+      }
       // Self-edited name (synced via user_profiles) wins over the hardcoded one
       return {
         ...u,
         displayName: customName || registered.displayName || u.displayName || email.split('@')[0],
         role: registered.role,
-        club: registered.club
+        club,
+        clubs,
+        mop: registered.mop || false,
       };
     }
 
@@ -342,93 +365,137 @@ export const TicketProvider = ({ children }) => {
   }, []);
 
   // ─── Auth ─────────────────────────────────────────────────────────────────
+  // Реальная авторизация Firebase (email + пароль). Сессия хранится самим
+  // Firebase и переживает перезагрузку; после «Выйти» нужен повторный вход
+  // с паролем. Пароли Firebase хранит зашифрованными — их не видит никто.
   useEffect(() => {
-    // Clear legacy mock sessions
     localStorage.removeItem('app_mock_user');
+    localStorage.removeItem('app_session_user'); // легаси беспарольная сессия
 
-    // Restore session from localStorage if available and verified
-    const saved = localStorage.getItem('app_session_user');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (isEmailAllowed(parsed.email)) {
-          setUser(enrichUserWithRole(parsed));
-          
-          // Authenticate Firebase anonymously if needed to authorize Firestore connection
-          if (!auth.currentUser) {
-            signInAnonymously(auth).catch(err => {
-              console.error("[TicketContext] Anonymous auth restoration failed:", err);
-            });
-          }
-          
-          setLoading(false);
-          return;
-        } else {
-          // Stale or invalid session, purge it
-          localStorage.removeItem('app_session_user');
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser && !fbUser.isAnonymous && fbUser.email) {
+        const email = fbUser.email.toLowerCase().trim();
+        // Динамический пользователь (МОП / созданный админ) может ещё не быть в
+        // локальном whitelist (кэш app_users не успел подтянуться при рестарте сессии).
+        // НЕ выкидываем сразу — сначала дотягиваем его из app_users, иначе аккаунт «вылетает».
+        if (!isEmailAllowed(email)) {
+          try {
+            const snap = await getDoc(doc(db, 'app_users', email));
+            if (snap.exists()) {
+              let cached = {};
+              try { cached = JSON.parse(localStorage.getItem(DYNAMIC_USERS_CACHE_KEY) || '{}'); } catch {}
+              applyDynamicUsers({ ...cached, [email]: snap.data() });
+            }
+          } catch {}
         }
-      } catch {}
-    }
-
-    setUser(null);
-    setLoading(false);
+        if (isEmailAllowed(email)) {
+          setUser(enrichUserWithRole({ email, uid: fbUser.uid }));
+        } else {
+          // Реально нигде не зарегистрирован — выходим
+          signOut(auth).catch(() => {});
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+    return unsub;
   }, [enrichUserWithRole]);
 
-  const login = async (email) => {
+  // Проверка email: разрешён ли и есть ли уже установленный пароль.
+  // Возвращает { allowed, hasPassword }.
+  const checkEmail = async (email) => {
     const normalizedEmail = (email || '').toLowerCase().trim();
+    if (!normalizedEmail) return { allowed: false, hasPassword: false };
 
-    // Not in the static whitelist or local cache — check Firestore for a
-    // dynamically added account (manager-created admin) before rejecting.
-    if (!isEmailAllowed(normalizedEmail) && normalizedEmail) {
+    // На странице входа пользователь ещё не авторизован — даём анонимный доступ,
+    // чтобы прочитать флаг пароля и app_users (иначе на новом устройстве проверка
+    // падала и система каждый раз предлагала «создать пароль»).
+    if (!auth.currentUser) { try { await signInAnonymously(auth); } catch {} }
+
+    // Динамический админ (создан менеджером) — подтягиваем из app_users
+    if (!isEmailAllowed(normalizedEmail)) {
       try {
-        await signInAnonymously(auth);
         const snap = await getDoc(doc(db, 'app_users', normalizedEmail));
-        if (snap.exists()) {
+        if (snap.exists() && !snap.data().revoked) {
           const cached = JSON.parse(localStorage.getItem(DYNAMIC_USERS_CACHE_KEY) || '{}');
           applyDynamicUsers({ ...cached, [normalizedEmail]: snap.data() });
         }
-      } catch (e) {
-        console.error('[TicketContext] app_users lookup failed:', e);
-      }
+      } catch {}
     }
-
     if (!isEmailAllowed(normalizedEmail)) {
-      throw new Error('Этот email не зарегистрирован в системе. Обратитесь к администратору.');
+      return { allowed: false, hasPassword: false };
     }
-    
-    // Authenticate with Firebase anonymously to satisfy security rules (request.auth != null)
-    let offlineMode = false;
+
+    // Флаг «пароль установлен» в auth_meta (сам пароль тут не хранится)
+    let hasPassword = false;
     try {
-      await signInAnonymously(auth);
-    } catch (authErr) {
-      console.error("[TicketContext] Anonymous auth failed:", authErr);
-      offlineMode = true;
-    }
-    
-    const sessionUser = { email: normalizedEmail, uid: 'session_' + normalizedEmail };
-    const enriched = enrichUserWithRole(sessionUser);
-    setUser(enriched);
-    localStorage.setItem('app_session_user', JSON.stringify(sessionUser));
+      const meta = await getDoc(doc(db, 'auth_meta', normalizedEmail));
+      hasPassword = !!meta.exists() && meta.data().hasPassword === true;
+    } catch {}
+    return { allowed: true, hasPassword };
+  };
 
-    // Log admin logins for activity tracking (visible to chef/manager in HR Monitors)
-    if (enriched.role === 'admin' && !offlineMode) {
-      const now = new Date();
-      addDoc(collection(db, 'hr_monitor_activity'), {
-        type: 'login',
-        adminEmail:   enriched.email,
-        adminName:    enriched.displayName,
-        club:         enriched.club,
-        date:         now.toISOString().slice(0, 10),
-        timestampISO: now.toISOString(),
-      }).catch(() => {});
-    }
+  const logAdminLogin = (enriched) => {
+    if (enriched?.role !== 'admin') return;
+    const now = new Date();
+    addDoc(collection(db, 'hr_monitor_activity'), {
+      type: 'login', adminEmail: enriched.email, adminName: enriched.displayName,
+      club: enriched.club, date: now.toISOString().slice(0, 10), timestampISO: now.toISOString(),
+    }).catch(() => {});
+  };
 
-    if (offlineMode) {
-      toast.warning('Вход выполнен в автономном режиме. Облачная база данных недоступна (требуется включить Anonymous Auth в Firebase Console).', {
-        duration: 8000
-      });
-    } else {
-      toast.success('Вход выполнен');
+  // Первый вход: сотрудник придумывает пароль
+  const createPassword = async (email, password) => {
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    if (!isEmailAllowed(normalizedEmail)) throw new Error('Этот email не зарегистрирован в системе. Обратитесь к администратору.');
+    if ((password || '').length < 6) throw new Error('Пароль должен быть не короче 6 символов.');
+    try {
+      await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    } catch (e) {
+      if (e.code === 'auth/email-already-in-use') {
+        // Аккаунт уже есть — чиним «отвалившийся» флаг и просим ввести пароль
+        try { await setDoc(doc(db, 'auth_meta', normalizedEmail), { hasPassword: true }, { merge: true }); } catch {}
+        const err = new Error('У вас уже есть пароль — введите его.');
+        err.code = 'ACCOUNT_EXISTS';
+        throw err;
+      }
+      if (e.code === 'auth/operation-not-allowed') throw new Error('Вход по паролю не включён в Firebase. Обратитесь к Дильшату.');
+      throw new Error('Не удалось создать пароль: ' + (e.code || e.message));
+    }
+    try { await setDoc(doc(db, 'auth_meta', normalizedEmail), { hasPassword: true, setAtISO: new Date().toISOString() }, { merge: true }); } catch {}
+    logAdminLogin(enrichUserWithRole({ email: normalizedEmail }));
+    toast.success('Пароль создан, вы вошли');
+  };
+
+  // Обычный вход по паролю
+  const loginWithPassword = async (email, password) => {
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    if (!isEmailAllowed(normalizedEmail)) throw new Error('Этот email не зарегистрирован в системе. Обратитесь к администратору.');
+    try {
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    } catch (e) {
+      if (e.code === 'auth/user-not-found') {
+        const err = new Error('Пароль ещё не создан — придумайте его.');
+        err.code = 'NO_ACCOUNT';
+        throw err;
+      }
+      if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password') throw new Error('Неверный пароль.');
+      if (e.code === 'auth/too-many-requests') throw new Error('Слишком много попыток. Подождите пару минут.');
+      throw new Error('Не удалось войти: ' + (e.code || e.message));
+    }
+    logAdminLogin(enrichUserWithRole({ email: normalizedEmail }));
+    toast.success('Вход выполнен');
+  };
+
+  const resetPassword = async (email) => {
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    try {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      toast.success('Письмо для сброса пароля отправлено на ' + normalizedEmail);
+    } catch (e) {
+      throw new Error('Не удалось отправить письмо: ' + (e.code || e.message));
     }
   };
 
@@ -438,6 +505,15 @@ export const TicketProvider = ({ children }) => {
     setUser(null);
     toast.success('Вы вышли из системы');
   };
+
+  // Переключение активного клуба для мультиклубного менеджера (user.clubs)
+  const switchClub = useCallback((club) => {
+    setUser(prev => {
+      if (!prev || !Array.isArray(prev.clubs) || !prev.clubs.includes(club) || prev.club === club) return prev;
+      try { localStorage.setItem('hj_active_club_' + (prev.email || '').toLowerCase().trim(), club); } catch {}
+      return { ...prev, club };
+    });
+  }, []);
 
   // ─── Dynamic users live sync (app_users → USER_ROLES) ────────────────────
   useEffect(() => {
@@ -482,12 +558,15 @@ export const TicketProvider = ({ children }) => {
 
           // Toasts on status/ticket changes are now handled cleanly by NotificationContext.jsx
           const fresh = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (!snapshot.metadata.fromCache) serverConfirmedRef.current = true;
           setTickets(prev => {
             // If Firestore returned real data — use it as the single source of truth.
             // Only fall back to cached/demo data when Firestore is completely empty.
             if (fresh.length === 0) {
-              // Keep previous state (may include demo tickets in offline mode)
-              return prev.length > 0 ? prev : prev;
+              // Пусто из локального кеша (оффлайн/старт) — держим прежнее состояние.
+              // Пусто С СЕРВЕРА — реально нет заявок: очищаем (иначе удалённая
+              // последняя заявка вечно висела бы у всех остальных клиентов).
+              return snapshot.metadata.fromCache ? prev : [];
             }
 
             // Merge: Firestore data wins; also keep any temp_ (optimistic) tickets
@@ -519,10 +598,14 @@ export const TicketProvider = ({ children }) => {
     };
   }, []);
 
-  // Fire-and-forget push to the club's staff + chefs, excluding the actor
-  const sendPush = useCallback((title, body, club, url, tag) => {
-    pushNotify({ title, body, club, excludeEmail: user?.email || '', url: url || '/', tag: tag || '' });
+  // Fire-and-forget push. roles=null → всем сотрудникам клуба; иначе только указанным ролям.
+  const sendPush = useCallback((title, body, club, url, tag, roles = null) => {
+    pushNotify({ title, body, club, excludeEmail: user?.email || '', url: url || '/', tag: tag || '', roles });
   }, [user]);
+
+  // Пуши по заявкам приходят ТОЛЬКО менеджерскому составу (менеджер своего клуба + шеф),
+  // НЕ администраторам. Клуб фильтруется в pushNotify (свой клуб + глобальные шеф).
+  const TICKET_PUSH_ROLES = ['manager', 'chef'];
 
   const PUSH_STATUS_LABELS = {
     new: 'Новая заявка', in_progress: 'Принята в работу', paused: 'Пауза',
@@ -540,7 +623,7 @@ export const TicketProvider = ({ children }) => {
       await updateDoc(doc(db, 'tickets', String(ticketId)), withActor);
       if (updates.status && ticket && updates.status !== ticket.status) {
         const label = PUSH_STATUS_LABELS[updates.status] || updates.status;
-        sendPush(`Статус: ${label}`, `Заявка «${ticket.title || 'Без названия'}»`, ticket.club, `/tickets/${ticketId}`, `status-${ticketId}`);
+        sendPush(`Статус: ${label}`, `Заявка «${ticket.title || 'Без названия'}»`, ticket.club, `/tickets/${ticketId}`, `status-${ticketId}`, TICKET_PUSH_ROLES);
       }
     } catch (error) {
       toast.error('Ошибка сохранения в облаке');
@@ -562,9 +645,13 @@ export const TicketProvider = ({ children }) => {
 
   const addTicket = useCallback(async (ticketData) => {
     try {
+      // Колонки «Новые» больше нет — созданная заявка сразу «берётся в работу»
+      const finalStatus = (ticketData.status && ticketData.status !== 'new') ? ticketData.status : 'in_progress';
       await addDoc(collection(db, 'tickets'), {
         ...ticketData,
-        status: ticketData.status ?? 'new',
+        status: finalStatus,
+        // Заявка «взята в работу» с момента создания — таймер стартует сразу
+        ...(finalStatus === 'in_progress' ? { statusChangedAt: new Date().toISOString() } : {}),
         createdAt: serverTimestamp(),
         createdBy: user?.uid || 'anonymous',
         createdByEmail: user?.email || '',
@@ -572,20 +659,71 @@ export const TicketProvider = ({ children }) => {
         comments: [],
       });
       toast.success(ticketData.status === 'scheduled' ? 'Задача запланирована' : 'Задача создана');
-      sendPush('🆕 Новая заявка', `«${ticketData.title || 'Без названия'}»`, ticketData.club, '/tickets');
+      // Запланированная заявка НЕ пушится при создании — push уйдёт в день (и время) наступления
+      if (ticketData.status !== 'scheduled') {
+        sendPush('🆕 Новая заявка', `«${ticketData.title || 'Без названия'}»`, ticketData.club, '/tickets', '', TICKET_PUSH_ROLES);
+      }
     } catch (error) {
       toast.error('Ошибка создания задачи');
       throw error;
     }
   }, [user, sendPush]);
 
+  // ── Запланированные заявки: при наступлении даты (и времени, если задано)
+  // автоматически переводим в «Новые» и шлём push менеджерам клуба.
+  // Проверка раз в минуту у каждого открытого клиента; двойной push гасится tag'ом.
+  const activationAttemptedRef = useRef(new Set()); // не ставим один тикет в очередь записи дважды за сессию
+  useEffect(() => {
+    if (!user) return;
+    const pad = (n) => String(n).padStart(2, '0');
+    const check = () => {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const nowHM = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      allTicketsRef.current.forEach(t => {
+        if (!isFirebaseId(String(t.id))) return;
+        if (activationAttemptedRef.current.has(t.id)) return; // уже пытались в этой сессии
+        // Легаси-статус «new» тихо переводим «в работу» (колонки «Новые» больше нет).
+        // statusChangedAt обязателен — иначе заявка висит «в работе» без таймера.
+        if (t.status === 'new') {
+          activationAttemptedRef.current.add(t.id);
+          updateDoc(doc(db, 'tickets', String(t.id)), { status: 'in_progress', statusChangedAt: new Date().toISOString() })
+            .catch(() => { activationAttemptedRef.current.delete(t.id); });
+          return;
+        }
+        if (t.status !== 'scheduled' || !t.scheduledFor) return;
+        const due = t.scheduledFor < today
+          || (t.scheduledFor === today && (!t.scheduledTime || t.scheduledTime <= nowHM));
+        if (!due) return;
+        activationAttemptedRef.current.add(t.id);
+        updateDoc(doc(db, 'tickets', String(t.id)), { status: 'in_progress', activatedAtISO: new Date().toISOString(), statusChangedAt: new Date().toISOString() })
+          .then(() => {
+            sendPush('📅 Запланированная заявка — в работе', `«${t.title || 'Без названия'}»${t.scheduledTime ? ` · на ${t.scheduledTime}` : ''}`, t.club, `/tickets/${t.id}`, `sched-${t.id}`, TICKET_PUSH_ROLES);
+          })
+          // Ошибка записи (сеть/квота) → снимаем метку, чтобы цикл повторил попытку
+          .catch(() => { activationAttemptedRef.current.delete(t.id); });
+      });
+    };
+    check();
+    const iv = setInterval(check, 60_000);
+    return () => clearInterval(iv);
+  }, [user, sendPush]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Комментарии пишутся через arrayUnion/arrayRemove: раньше перезаписывался
+  // ВЕСЬ массив из локального состояния — два человека, написавшие почти
+  // одновременно, затирали сообщения друг друга.
   const deleteComment = useCallback(async (ticketId, commentId) => {
     const ticket = allTicketsRef.current.find(t => String(t.id) === String(ticketId));
+    const target = (ticket?.comments || []).find(c => c.id === commentId);
     const updatedComments = (ticket?.comments || []).filter(c => c.id !== commentId);
     setTickets(prev => prev.map(t => String(t.id) === String(ticketId) ? { ...t, comments: updatedComments } : t));
     if (!isFirebaseId(String(ticketId))) return;
     try {
-      await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: updatedComments });
+      if (target) {
+        await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: arrayRemove(target) });
+      } else {
+        await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: updatedComments });
+      }
     } catch {
       toast.error('Ошибка удаления сообщения');
     }
@@ -601,14 +739,13 @@ export const TicketProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
       attachment,
     };
-    const updatedComments = [...(ticket?.comments || []), newComment];
-    setTickets(prev => prev.map(t => String(t.id) === String(ticketId) ? { ...t, comments: updatedComments } : t));
+    setTickets(prev => prev.map(t => String(t.id) === String(ticketId) ? { ...t, comments: [...(t.comments || []), newComment] } : t));
     if (!isFirebaseId(String(ticketId))) return;
     try {
-      await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: updatedComments });
+      await updateDoc(doc(db, 'tickets', String(ticketId)), { comments: arrayUnion(newComment) });
       toast.success('Комментарий добавлен');
       const preview = (commentText || '').slice(0, 80) || (attachment ? '📎 Файл' : '');
-      sendPush('💬 Новое сообщение', `«${ticket?.title || 'Заявка'}»: ${preview}`, ticket?.club, `/tickets/${ticketId}`, `msg-${ticketId}`);
+      sendPush('💬 Новое сообщение', `«${ticket?.title || 'Заявка'}»: ${preview}`, ticket?.club, `/tickets/${ticketId}`, `msg-${ticketId}`, TICKET_PUSH_ROLES);
     } catch (error) {
       toast.error('Ошибка добавления комментария');
     }
@@ -739,7 +876,7 @@ export const TicketProvider = ({ children }) => {
   }, [user?.email]);
 
   return (
-    <TicketContext.Provider value={{ user, tickets, loading, login, logout, addTicket, updateTicket, deleteTicket, addComment, deleteComment, uploadFile, updateDisplayName }}>
+    <TicketContext.Provider value={{ user, tickets, loading, checkEmail, createPassword, loginWithPassword, resetPassword, logout, switchClub, addTicket, updateTicket, deleteTicket, addComment, deleteComment, uploadFile, updateDisplayName }}>
       {children}
     </TicketContext.Provider>
   );

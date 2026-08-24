@@ -17,13 +17,13 @@
   --text-secondary: #475569;
   --text-muted:     #94A3B8;
 
-  /* Accents — same in both themes */
-  --accent-blue:    #3B82F6;
-  --accent-purple:  #8B5CF6;
-  --accent-green:   #10B981;
-  --accent-orange:  #F59E0B;
-  --accent-red:     #EF4444;
-  --accent-gold:    #FBBF24;
+  /* Accents — same in both themes (строгая приглушённая палитра) */
+  --accent-blue:    #5580A8;
+  --accent-purple:  #7D6FB3;
+  --accent-green:   #5F9C81;
+  --accent-orange:  #C08F4F;
+  --accent-red:     #B06A6A;
+  --accent-gold:    #C4A75A;
 
   /* Sidebar */
   --sidebar-bg:     #FFFFFF;
@@ -96,7 +96,7 @@ button, a, [role="button"] {
 }
 img { -webkit-user-drag: none; }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), ((pointer: coarse) and (max-height: 540px)) {
   body {
     overscroll-behavior-y: contain; /* no accidental pull-to-refresh */
   }
@@ -259,17 +259,18 @@ select.input-app {
 }
 
 /* Club Badges */
-.badge-4you    { background: rgba(59,130,246,0.1); color: var(--accent-blue);   border: 1px solid rgba(59,130,246,0.2); }
-.badge-colibri { background: rgba(16,185,129,0.1); color: var(--accent-green);  border: 1px solid rgba(16,185,129,0.2); }
-.badge-villa   { background: rgba(245,158,11,0.1); color: var(--accent-orange); border: 1px solid rgba(245,158,11,0.2); }
-.badge-nurly   { background: rgba(139,92,246,0.1); color: var(--accent-purple); border: 1px solid rgba(139,92,246,0.2); }
-.badge-promenade { background: rgba(20,184,166,0.1); color: #14b8a6;            border: 1px solid rgba(20,184,166,0.2); }
-.badge-prime   { background: rgba(239,68,68,0.1);  color: var(--accent-red);    border: 1px solid rgba(239,68,68,0.2); }
+.badge-4you    { background: rgba(85,128,168,0.1); color: var(--accent-blue);   border: 1px solid rgba(85,128,168,0.2); }
+.badge-colibri { background: rgba(95,156,129,0.1); color: var(--accent-green);  border: 1px solid rgba(95,156,129,0.2); }
+.badge-villa   { background: rgba(192,143,79,0.1); color: var(--accent-orange); border: 1px solid rgba(192,143,79,0.2); }
+.badge-nurly   { background: rgba(125,111,179,0.1); color: var(--accent-purple); border: 1px solid rgba(125,111,179,0.2); }
+.badge-promenade { background: rgba(20,184,166,0.1); color: #5F9C96;            border: 1px solid rgba(20,184,166,0.2); }
+.badge-europe  { background: rgba(176,104,141,0.1); color: #B0688D;            border: 1px solid rgba(176,104,141,0.2); }
+.badge-prime   { background: rgba(176,106,106,0.1);  color: var(--accent-red);    border: 1px solid rgba(176,106,106,0.2); }
 
 /* Priority Badges */
-.priority-critical { background: rgba(239,68,68,0.1); color: var(--accent-red);    border: 1px solid rgba(239,68,68,0.2); }
-.priority-high     { background: rgba(245,158,11,0.1); color: var(--accent-orange); border: 1px solid rgba(245,158,11,0.2); }
-.priority-medium   { background: rgba(251,191,36,0.1); color: #B45309;             border: 1px solid rgba(251,191,36,0.2); }
+.priority-critical { background: rgba(176,106,106,0.1); color: var(--accent-red);    border: 1px solid rgba(176,106,106,0.2); }
+.priority-high     { background: rgba(192,143,79,0.1); color: var(--accent-orange); border: 1px solid rgba(192,143,79,0.2); }
+.priority-medium   { background: rgba(196,167,90,0.1); color: #B45309;             border: 1px solid rgba(196,167,90,0.2); }
 [data-theme="dark"] .priority-medium { color: var(--accent-gold); }
 .priority-low      { background: var(--bg-hover);      color: var(--text-secondary); border: 1px solid var(--border); }
 
@@ -459,7 +460,7 @@ select.input-app {
   z-index: 1000;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), ((pointer: coarse) and (max-height: 540px)) {
   body { font-size: 12px !important; }
   
   .main-content-wrapper {
@@ -623,7 +624,7 @@ select.input-app {
 .shift-morning-weekend {
   background: #a7f3d0;
   color: #064e3b;
-  border-color: #34d399;
+  border-color: #6FA98F;
 }
 /* Evening (blue) */
 .shift-evening {
@@ -652,32 +653,91 @@ select.input-app {
 
 /* Dark theme overrides */
 [data-theme="dark"] .shift-morning {
-  background: rgba(16,185,129,0.12);
-  color: #34d399;
-  border-color: rgba(16,185,129,0.25);
+  background: rgba(95,156,129,0.12);
+  color: #6FA98F;
+  border-color: rgba(95,156,129,0.25);
 }
 [data-theme="dark"] .shift-morning-weekend {
   background: rgba(6,95,70,0.35);
   color: #6ee7b7;
-  border-color: rgba(52,211,153,0.3);
+  border-color: rgba(111,169,143,0.3);
 }
 [data-theme="dark"] .shift-evening {
-  background: rgba(59,130,246,0.18);
+  background: rgba(85,128,168,0.18);
   color: #60a5fa;
-  border-color: rgba(59,130,246,0.35);
+  border-color: rgba(85,128,168,0.35);
 }
 [data-theme="dark"] .shift-fullday {
-  background: rgba(236,72,153,0.18);
+  background: rgba(176,104,141,0.18);
   color: #f472b6;
-  border-color: rgba(236,72,153,0.35);
+  border-color: rgba(176,104,141,0.35);
 }
 [data-theme="dark"] .shift-custom {
-  background: rgba(139,92,246,0.12);
+  background: rgba(125,111,179,0.12);
   color: #a78bfa;
-  border-color: rgba(139,92,246,0.30);
+  border-color: rgba(125,111,179,0.30);
 }
 [data-theme="dark"] .shift-empty {
   background: var(--bg-hover);
   color: var(--text-muted);
   border-color: var(--border);
-}
+}
+/* InStudio: крупный заметный placeholder в поле описания заявки */
+.instudio-desc::placeholder {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
+
+/* ── График на мобильном: компактная таблица ───────────────────────
+   Меньше высота строк и отступы, узкая колонка сотрудника,
+   уменьшенные шрифты — таблица перестаёт «ломаться» на телефоне */
+@media (max-width: 768px), ((pointer: coarse) and (max-height: 540px)) {
+  .table-scroll-container table th,
+  .table-scroll-container table td {
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+    padding-left: 5px !important;
+    padding-right: 5px !important;
+  }
+  .table-scroll-container table th:first-child,
+  .table-scroll-container table td:first-child {
+    min-width: 100px !important;
+    width: 100px !important;
+    max-width: 100px !important;
+  }
+  .table-scroll-container table td:first-child {
+    font-size: 12px !important;
+  }
+  /* Иконки управления сотрудником (↑ ↓ 🔧 🗑) — плотнее */
+  .table-scroll-container table td:first-child svg {
+    width: 13px !important;
+    height: 13px !important;
+  }
+  .table-scroll-container table td:first-child .flex,
+  .table-scroll-container table td:first-child [class*="gap"] {
+    gap: 6px !important;
+  }
+}
+
+/* ── Склад на мобильном: компактные карточки аналитики ──────────
+   Крупные плитки со стоимостью/выручкой ужимаются: меньше отступы
+   и шрифты, числа не режутся */
+@media (max-width: 768px), ((pointer: coarse) and (max-height: 540px)) {
+  .merch-stats > div {
+    padding: 12px 13px !important;
+    border-radius: 16px !important;
+  }
+  .merch-stats * { min-width: 0; }
+  .merch-stats span[class*="text-xl"],
+  .merch-stats span[class*="text-2xl"] {
+    font-size: 16px !important;
+    line-height: 1.2 !important;
+  }
+  .merch-stats span[class*="text-[10px]"] { font-size: 9px !important; }
+  .merch-stats span[class*="text-[9px]"]  { font-size: 8px !important; }
+  .merch-stats [class*="w-10"] { width: 30px !important; height: 30px !important; }
+}

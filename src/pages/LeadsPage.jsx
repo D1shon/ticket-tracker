@@ -8,13 +8,13 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
-const CLUB_COLORS = { '4YOU': '#4f8ef7', 'COLIBRI': '#9b5de5', 'VILLA': '#f59e0b', 'NURLY ORDA': '#22c55e', 'PROMENADE': '#14b8a6' };
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUB_COLORS = { '4YOU': '#5580A8', 'COLIBRI': '#9b5de5', 'VILLA': '#C08F4F', 'NURLY ORDA': '#5F9C81', 'PROMENADE': '#5F9C96', 'EUROPE CITY': '#B0688D' };
 
 const STATUS_META = {
-  new:       { label: 'Новый',     color: '#4f8ef7' },
-  accepted:  { label: 'Принято',   color: '#f59e0b' },
-  contacted: { label: 'Связались', color: '#22c55e' },
+  new:       { label: 'Новый',     color: '#5580A8' },
+  accepted:  { label: 'Принято',   color: '#C08F4F' },
+  contacted: { label: 'Связались', color: '#5F9C81' },
 };
 
 // Лиды из WhatsApp: мост находит входящие про цены/абонементы/билеты
@@ -192,14 +192,16 @@ const LeadsPage = () => {
                   )}
                   {l.phone ? (
                     <a href={`https://wa.me/${l.phone}`} target="_blank" rel="noopener noreferrer"
+                      title="Открыть чат с клиентом в WhatsApp"
                       style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#25D366', textDecoration: 'none' }}>
                       <Phone size={11} /> +{l.phone}
                     </a>
                   ) : l.source !== 'manual' && (
-                    <span title="WhatsApp скрыл номер клиента (приватность). Ответьте в ленте WhatsApp клуба."
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#25D366' }}>
-                      <MessageCircle size={11} /> WhatsApp · номер скрыт
-                    </span>
+                    <a href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer"
+                      title={`Номер скрыт настройками приватности WhatsApp — прямой ссылки на чат нет. Откройте рабочий WhatsApp и найдите чат по имени: ${l.chatName || '—'}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#25D366', textDecoration: 'none' }}>
+                      <MessageCircle size={11} /> Найти чат в WhatsApp ↗
+                    </a>
                   )}
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', marginLeft: 'auto' }}>
                     <Clock size={10} /> {fmtDate(l.timestampISO)}
@@ -224,8 +226,8 @@ const LeadsPage = () => {
                     {l.status === 'new' && (
                       <button onClick={() => setStatus(l, 'accepted')} style={{
                         display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 10,
-                        border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.1)',
-                        color: '#f59e0b', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                        border: '1px solid rgba(192,143,79,0.35)', background: 'rgba(192,143,79,0.1)',
+                        color: '#C08F4F', fontSize: 11, fontWeight: 800, cursor: 'pointer',
                       }}>
                         <CheckCircle2 size={12} /> Принято
                       </button>
@@ -233,7 +235,7 @@ const LeadsPage = () => {
                     {l.status !== 'contacted' && (
                       <button onClick={() => setStatus(l, 'contacted')} style={{
                         display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 10,
-                        border: 'none', background: '#22c55e', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                        border: 'none', background: '#5F9C81', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer',
                       }}>
                         <PhoneCall size={12} /> Связались
                       </button>

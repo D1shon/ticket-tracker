@@ -9,19 +9,22 @@ const clubColors = {
   'VILLA': 'badge-villa',
   'NURLY ORDA': 'badge-nurly',
   'PROMENADE': 'badge-promenade',
+  'EUROPE CITY': 'badge-europe',
   'PRIME': 'badge-prime',
 };
 
 const priorityLabels = {
-  critical: { label: 'Критический', cls: 'priority-critical' },
-  high: { label: 'Высокий', cls: 'priority-high' },
-  medium: { label: 'Средний', cls: 'priority-medium' },
-  low: { label: 'Низкий', cls: 'priority-low' },
+  critical: { label: 'Критический', cls: 'priority-critical', color: '#B06A6A' },
+  high: { label: 'Высокий', cls: 'priority-high', color: '#BF8055' },
+  medium: { label: 'Средний', cls: 'priority-medium', color: '#C4A75A' },
+  low: { label: 'Низкий', cls: 'priority-low', color: '#5F9C81' },
 };
 
-// Mock user's club (in a real app, this would come from the auth context)
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+
 const ArchivePage = () => {
   const [search, setSearch] = useState('');
+  const [clubFilter, setClubFilter] = useState('ALL');
   const { tickets, user } = useTickets();
   const navigate = useNavigate();
 
@@ -45,13 +48,15 @@ const ArchivePage = () => {
     return true; 
   });
 
-  // Filter by User's Club if restricted
+  // Filter by User's Club if restricted; иначе — по выбранной кнопке клуба
   if (userClub) {
     archivedTickets = archivedTickets.filter(t => (t.club || '').toUpperCase() === userClub);
+  } else if (clubFilter !== 'ALL') {
+    archivedTickets = archivedTickets.filter(t => (t.club || '').toUpperCase() === clubFilter);
   }
 
   if (search) {
-    archivedTickets = archivedTickets.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
+    archivedTickets = archivedTickets.filter(t => (t.title || '').toLowerCase().includes(search.toLowerCase()));
   }
 
   return (
@@ -70,6 +75,28 @@ const ArchivePage = () => {
           </p>
         </div>
       </div>
+
+      {/* Фильтр по клубам (у запертых на клубе не показывается) */}
+      {!userClub && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {['ALL', ...CLUBS].map(c => (
+            <button
+              key={c}
+              onClick={() => setClubFilter(c)}
+              style={{
+                padding: '8px 16px', borderRadius: 12, cursor: 'pointer',
+                fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em',
+                background: clubFilter === c ? 'var(--accent-purple)' : 'var(--bg-card)',
+                color: clubFilter === c ? '#fff' : 'var(--text-secondary)',
+                border: `1px solid ${clubFilter === c ? 'var(--accent-purple)' : 'var(--border)'}`,
+                transition: 'all 0.2s',
+              }}
+            >
+              {c === 'ALL' ? 'Все' : c}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Search */}
       <div className="flex items-center gap-4 mb-5">

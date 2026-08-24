@@ -84,6 +84,7 @@ const MobileScanner = () => {
         body: JSON.stringify({
           userId: user?.email || adminName || 'unknown',
           userName: user?.displayName || adminName || null,
+          userClub: user?.club || null,
           localSubnetOk,
           checkType: type,
         }),
@@ -125,7 +126,7 @@ const MobileScanner = () => {
   if (status === 'success') {
     return (
       <div style={{ height: '100vh', background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-        <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, animation: 'scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#5F9C81', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, animation: 'scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
           <CheckCircle2 size={40} color="#000" strokeWidth={3} />
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.03em' }}>
@@ -135,7 +136,7 @@ const MobileScanner = () => {
           {checkType === 'out' ? <>Хорошего отдыха, <b style={{ color: '#fff' }}>{displayName}</b></> : <>Добро пожаловать, <b style={{ color: '#fff' }}>{displayName}</b></>}
         </p>
         {result?.clubId && (
-          <p style={{ color: '#22c55e', fontSize: 13, fontWeight: 700, marginBottom: 40, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <p style={{ color: '#5F9C81', fontSize: 13, fontWeight: 700, marginBottom: 40, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {result.clubId}
           </p>
         )}
@@ -149,14 +150,14 @@ const MobileScanner = () => {
   if (status === 'error') {
     return (
       <div style={{ height: '100vh', background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-        <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, animation: 'scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#B06A6A', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, animation: 'scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
           <X size={40} color="#000" strokeWidth={3} />
         </div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.03em', color: '#ef4444' }}>Нет доступа</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.03em', color: '#B06A6A' }}>Нет доступа</h1>
         {result?.localNetworkError ? (
           <p style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8, textAlign: 'center', lineHeight: 1.6 }}>
             Ваш IP: <code style={{ color: '#fff', background: '#1c1c1e', padding: '2px 8px', borderRadius: 6 }}>{result.ip}</code><br />
-            Нужна подсеть: <code style={{ color: '#f59e0b', background: '#1c1c1e', padding: '2px 8px', borderRadius: 6 }}>{result.expectedSubnet}</code>
+            Нужна подсеть: <code style={{ color: '#C08F4F', background: '#1c1c1e', padding: '2px 8px', borderRadius: 6 }}>{result.expectedSubnet}</code>
           </p>
         ) : result?.ip ? (
           <p style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8, textAlign: 'center', lineHeight: 1.6 }}>
@@ -181,9 +182,9 @@ const MobileScanner = () => {
         <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
           HJTRACK <span style={{ color: 'var(--accent-purple)' }}>●</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, background: 'rgba(34,197,94,0.1)' }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
-          <span style={{ fontSize: 10, fontWeight: 800, color: '#22c55e' }}>IP CHECK ACTIVE</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, background: 'rgba(95,156,129,0.1)' }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#5F9C81' }} />
+          <span style={{ fontSize: 10, fontWeight: 800, color: '#5F9C81' }}>IP CHECK ACTIVE</span>
         </div>
       </div>
 
@@ -200,14 +201,14 @@ const MobileScanner = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <button
               onClick={() => handleCheckin('in')}
-              style={{ width: '100%', padding: '22px', borderRadius: 24, background: 'var(--accent-purple)', color: '#fff', fontSize: 16, fontWeight: 800, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 20px 40px rgba(139,92,246,0.25)', cursor: 'pointer' }}
+              style={{ width: '100%', padding: '22px', borderRadius: 24, background: 'var(--accent-purple)', color: '#fff', fontSize: 16, fontWeight: 800, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 20px 40px rgba(125,111,179,0.25)', cursor: 'pointer' }}
             >
               <ShieldCheck size={22} />
               CHECK-IN
             </button>
             <button
               onClick={() => handleCheckin('out')}
-              style={{ width: '100%', padding: '22px', borderRadius: 24, background: '#1c1c1e', color: '#f59e0b', fontSize: 16, fontWeight: 800, border: '1px solid rgba(245,158,11,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer' }}
+              style={{ width: '100%', padding: '22px', borderRadius: 24, background: '#1c1c1e', color: '#C08F4F', fontSize: 16, fontWeight: 800, border: '1px solid rgba(192,143,79,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer' }}
             >
               <X size={22} />
               CHECK-OUT

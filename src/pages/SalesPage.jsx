@@ -1,26 +1,36 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, increment, serverTimestamp, where } from 'firebase/firestore';
+import ReactDOM from 'react-dom';
+import { collection, query, onSnapshot, updateDoc, deleteDoc, doc, increment, serverTimestamp, where, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
 import { TrendingUp, ShoppingCart, Package, Search, Check, X, AlertTriangle, RotateCcw, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 const PAYMENT_METHODS = ['Kaspi', 'Наличные', 'Карта'];
 const FREE_REASONS = ['Бартер', 'Победитель', 'Маркетинг', 'Подарок', 'Другое'];
 
 const CLUB_COLORS = {
-  '4YOU':       '#3b82f6',
-  'COLIBRI':    '#10b981',
-  'VILLA':      '#f59e0b',
-  'NURLY ORDA': '#8b5cf6',
-  'PROMENADE':  '#14b8a6',
+  '4YOU':       '#5580A8',
+  'COLIBRI':    '#5F9C81',
+  'VILLA':      '#C08F4F',
+  'NURLY ORDA': '#7D6FB3',
+  'PROMENADE':  '#5F9C96',
+  'EUROPE CITY': '#B0688D',
 };
 
 const SalesPage = () => {
   const { user } = useTickets();
+  // Мобильный режим — только визуальные ветки, логика продаж не меняется
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
   const isChef = useMemo(() => user?.role === 'chef' || user?.role === 'viewer', [user]);
   const userClub = useMemo(() => user?.club || null, [user]);
 
@@ -48,6 +58,7 @@ const SalesPage = () => {
   const [todayClubEmployees, setTodayClubEmployees] = useState([]);
   const [selectedSalesperson, setSelectedSalesperson] = useState('');
   const [notes, setNotes] = useState('');
+  const [saleSize, setSaleSize] = useState(''); // размер для товаров с размерной сеткой
 
   useEffect(() => {
     setLoadingProducts(true);
@@ -145,32 +156,51 @@ const SalesPage = () => {
     setSubmitting(true);
     try {
       const finalSalePrice = isFree ? 0 : (customPrice !== '' ? (parseFloat(customPrice) || 0) : (selectedProduct.salePrice || 0));
-      await addDoc(collection(db, 'merch_sales'), {
-        productId: selectedProduct.id,
-        productName: selectedProduct.name,
-        category: selectedProduct.category || '',
-        sku: selectedProduct.sku || '',
-        club: activeClub,
-        qty,
-        costPrice: selectedProduct.costPrice || 0,
-        salePrice: finalSalePrice,
-        totalSum: saleTotal,
-        netProfit: isFree ? -(selectedProduct.costPrice || 0) * qty : saleTotal - (selectedProduct.costPrice || 0) * qty,
-        paymentMethod: isFree ? freeReason : paymentMethod,
-        isFree,
-        buyerType: isFree ? 'client' : buyerType,
-        clientName: buyerName.trim() || (buyerType === 'employee' ? 'Сотрудник' : 'Гость'),
-        notes: notes.trim() || null,
-        cashierName: user?.name || user?.email || 'Менеджер',
-        salespersonName: selectedSalesperson || null,
-        createdAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, 'merch_products', selectedProduct.id), {
-        stock: increment(-qty),
-        updatedAt: serverTimestamp(),
+      // Продажа и списание — атомарной транзакцией: либо обе записи, либо ни одной
+      await runTransaction(db, async (tx) => {
+        const prodRef = doc(db, 'merch_products', selectedProduct.id);
+        const prodSnap = await tx.get(prodRef);
+        if (!prodSnap.exists()) throw new Error('PRODUCT_MISSING');
+        const live = prodSnap.data();
+        const liveStock = live.stock || 0;
+        if (qty > liveStock) throw new Error(`NOT_ENOUGH:${liveStock}`);
+        // Размерная сетка: размер обязателен, списание по размеру
+        const hasSizes = live.sizes && Object.keys(live.sizes).length > 0;
+        if (hasSizes) {
+          if (!saleSize) throw new Error('SIZE_REQUIRED');
+          const szStock = live.sizes[saleSize] || 0;
+          if (qty > szStock) throw new Error(`NOT_ENOUGH_SIZE:${saleSize}:${szStock}`);
+        }
+        tx.set(doc(collection(db, 'merch_sales')), {
+          productId: selectedProduct.id,
+          productName: selectedProduct.name,
+          size: hasSizes ? saleSize : null,
+          category: selectedProduct.category || '',
+          sku: selectedProduct.sku || '',
+          club: activeClub,
+          qty,
+          costPrice: selectedProduct.costPrice || 0,
+          salePrice: finalSalePrice,
+          totalSum: saleTotal,
+          netProfit: isFree ? -(selectedProduct.costPrice || 0) * qty : saleTotal - (selectedProduct.costPrice || 0) * qty,
+          paymentMethod: isFree ? freeReason : paymentMethod,
+          isFree,
+          buyerType: isFree ? 'client' : buyerType,
+          clientName: buyerName.trim() || (buyerType === 'employee' ? 'Сотрудник' : 'Гость'),
+          notes: notes.trim() || null,
+          cashierName: user?.name || user?.email || 'Менеджер',
+          salespersonName: selectedSalesperson || null,
+          createdAt: serverTimestamp(),
+        });
+        tx.update(prodRef, {
+          stock: increment(-qty),
+          ...(hasSizes ? { [`sizes.${saleSize}`]: increment(-qty) } : {}),
+          updatedAt: serverTimestamp(),
+        });
       });
       toast.success(`${isFree ? '🎁 Бесплатно' : '✅ Продажа'}: ${selectedProduct.name} × ${qty}`);
       setSelectedProduct(null);
+      setSaleSize('');
       setQty(1);
       setSearch('');
       setIsFree(false);
@@ -181,7 +211,12 @@ const SalesPage = () => {
       setSelectedSalesperson('');
     } catch (err) {
       console.error(err);
-      toast.error('Ошибка при проведении');
+      const msg = String(err?.message || '');
+      if (msg === 'PRODUCT_MISSING') toast.error('Карточка товара удалена со склада — продажа НЕ проведена. Обновите страницу.');
+      else if (msg === 'SIZE_REQUIRED') toast.error('Выберите размер — у этого товара размерная сетка');
+      else if (msg.startsWith('NOT_ENOUGH_SIZE')) toast.error(`Недостаточно размера ${msg.split(':')[1]} (остаток: ${msg.split(':')[2]} шт)`);
+      else if (msg.startsWith('NOT_ENOUGH')) toast.error(`Недостаточно товара (фактический остаток: ${msg.split(':')[1]} шт) — продажа НЕ проведена`);
+      else toast.error('Ошибка при проведении — ничего не записано, попробуйте ещё раз');
     } finally {
       setSubmitting(false);
     }
@@ -193,6 +228,7 @@ const SalesPage = () => {
     try {
       await updateDoc(doc(db, 'merch_products', sale.productId), {
         stock: increment(sale.qty),
+        ...(sale.size ? { [`sizes.${sale.size}`]: increment(sale.qty) } : {}),
         updatedAt: serverTimestamp(),
       });
       await deleteDoc(doc(db, 'merch_sales', sale.id));
@@ -236,14 +272,16 @@ const SalesPage = () => {
 
         {/* Club selector — Chef only */}
         {isChef && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          /* Мобильный: лента чипов без переноса, скролл по горизонтали внутри блока */
+          <div style={{ display: 'flex', gap: 6, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', paddingBottom: isMobile ? 2 : 0 }}>
             {CLUBS.map(c => {
               const cc = CLUB_COLORS[c];
               const active = activeClub === c;
               return (
                 <button key={c} onClick={() => { setActiveClub(c); setSelectedProduct(null); setSearch(''); }}
                   style={{
-                    padding: '6px 14px', borderRadius: 10, fontSize: 11, fontWeight: 800,
+                    padding: isMobile ? '8px 14px' : '6px 14px', borderRadius: 10, fontSize: 11, fontWeight: 800,
+                    whiteSpace: 'nowrap', flexShrink: 0,
                     border: `1px solid ${active ? cc : 'var(--border)'}`,
                     background: active ? `${cc}18` : 'var(--bg-hover)',
                     color: active ? cc : 'var(--text-secondary)',
@@ -256,10 +294,11 @@ const SalesPage = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+      {/* Мобильный: одна колонка (товары → продажи дня), форма — шторкой снизу */}
+      <div className={isMobile ? 'flex flex-col gap-3' : 'grid grid-cols-1 md:grid-cols-12 gap-4'}>
 
         {/* LEFT — Product list */}
-        <div className="md:col-span-7" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-card)', display: 'flex', flexDirection: 'column' }}>
+        <div className={isMobile ? undefined : 'md:col-span-7'} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-card)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 6 }}>Выбери товар</div>
             <div style={{ position: 'relative' }}>
@@ -268,7 +307,8 @@ const SalesPage = () => {
                 style={{ width: '100%', paddingLeft: 28, paddingRight: 8, paddingTop: 6, paddingBottom: 6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, color: 'var(--text-primary)', outline: 'none' }} />
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', maxHeight: 600, padding: 12 }}>
+          {/* Мобильный: список без внутреннего скролла — страница скроллится сама */}
+          <div style={{ flex: 1, overflowY: isMobile ? 'visible' : 'auto', maxHeight: isMobile ? 'none' : 600, padding: 12 }}>
             {loadingProducts ? (
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Загрузка...</div>
             ) : clubProducts.length === 0 ? (
@@ -277,12 +317,13 @@ const SalesPage = () => {
                 <div style={{ fontSize: 11, fontWeight: 700 }}>Нет товаров для {activeClub}</div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+              /* Мобильный: строго 2 колонки компактных карточек */
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(130px, 1fr))', gap: isMobile ? 8 : 10 }}>
                 {clubProducts.map(p => {
                   const isOut = p.stock <= 0;
                   const isSel = selectedProduct?.id === p.id;
                   return (
-                    <button key={p.id} onClick={() => { if (!isOut) { setSelectedProduct(p); setQty(1); setCustomPrice(String(p.salePrice || 0)); setBuyerType('client'); setBuyerName(''); setNotes(''); } }} disabled={isOut}
+                    <button key={p.id} onClick={() => { if (!isOut) { setSelectedProduct(p); setQty(1); setSaleSize(''); setCustomPrice(String(p.salePrice || 0)); setBuyerType('client'); setBuyerName(''); setNotes(''); } }} disabled={isOut}
                       style={{
                         textAlign: 'left', border: `1px solid ${isSel ? accentColor : 'var(--border)'}`,
                         borderRadius: 12, overflow: 'hidden', padding: 0, cursor: isOut ? 'not-allowed' : 'pointer',
@@ -325,8 +366,10 @@ const SalesPage = () => {
                           </div>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: p.stock <= 3 ? '#f59e0b' : 'var(--text-muted)' }}>
-                            {p.stock} шт
+                          <span style={{ fontSize: 9, fontWeight: 700, color: p.stock <= 3 ? '#C08F4F' : 'var(--text-muted)' }}>
+                            {p.sizes && Object.keys(p.sizes).length > 0
+                              ? Object.entries(p.sizes).filter(([, v]) => v > 0).map(([sz, v]) => `${sz}·${v}`).join(' ') || '0 шт'
+                              : `${p.stock} шт`}
                           </span>
                           <span style={{ fontSize: 11, fontWeight: 900, color: accentColor }}>
                             {(p.salePrice || 0).toLocaleString()} ₸
@@ -342,10 +385,16 @@ const SalesPage = () => {
         </div>
 
         {/* RIGHT — Form + log */}
-        <div className="md:col-span-5" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className={isMobile ? undefined : 'md:col-span-5'} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-          {/* Form */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: 14, boxShadow: 'var(--shadow-card)' }}>
+          {/* Форма продажи: на десктопе — карточка в колонке, на мобильном — шторка снизу через портал */}
+          {(() => {
+          const formBox = (
+          <div style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 14, boxShadow: 'var(--shadow-card)',
+            ...(isMobile ? { width: '100%', maxHeight: '88vh', overflowY: 'auto', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : {}),
+          }}>
             <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 10 }}>Оформить</div>
 
             {selectedProduct ? (
@@ -353,11 +402,12 @@ const SalesPage = () => {
                 {/* Product chip */}
                 <div style={{ background: 'var(--bg-primary)', border: `1px solid var(--border)`, borderRadius: 12, overflow: 'hidden', marginBottom: 10, boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)' }}>
                   {selectedProduct.imageUrl ? (
-                    <div style={{ width: '100%', height: 240, background: '#08080c', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
+                    /* Мобильный: фото ниже, чтобы форма помещалась в шторку */
+                    <div style={{ width: '100%', height: isMobile ? 150 : 240, background: '#08080c', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
                       <img src={selectedProduct.imageUrl} alt={selectedProduct.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </div>
                   ) : (
-                    <div style={{ width: '100%', height: 240, background: 'var(--bg-hover)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ width: '100%', height: isMobile ? 120 : 240, background: 'var(--bg-hover)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
                       <Package size={36} style={{ opacity: 0.25, color: 'var(--text-muted)' }} />
                       <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 650, marginTop: 6 }}>Нет фото</span>
                     </div>
@@ -365,28 +415,42 @@ const SalesPage = () => {
                   <div style={{ padding: '10px 12px' }}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedProduct.name}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>В наличии: <b style={{ color: selectedProduct.stock <= 3 ? '#f59e0b' : 'var(--text-primary)' }}>{selectedProduct.stock} шт</b></span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>В наличии: <b style={{ color: selectedProduct.stock <= 3 ? '#C08F4F' : 'var(--text-primary)' }}>{selectedProduct.stock} шт</b></span>
                       <span style={{ fontSize: 11, fontWeight: 800, color: accentColor }}>{(selectedProduct.salePrice || 0).toLocaleString()} ₸</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Qty */}
+                {/* Мобильный: кнопки ± не меньше 40px под палец */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                  <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 16, fontWeight: 700, cursor: 'pointer', color: 'var(--text-primary)' }}>−</button>
+                  {/* Размерная сетка: выбор размера обязателен */}
+                  {selectedProduct.sizes && Object.keys(selectedProduct.sizes).length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', width: '100%', marginBottom: 8 }}>
+                      {['XS','S','M','L','XL','XXL','3XL'].filter(sz => (selectedProduct.sizes[sz] || 0) > 0).map(sz => (
+                        <button key={sz} onClick={() => setSaleSize(sz)} style={{
+                          minHeight: 40, padding: '0 14px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 900,
+                          border: saleSize === sz ? '1px solid var(--accent-purple)' : '1px solid var(--border)',
+                          background: saleSize === sz ? 'var(--accent-purple)' : 'var(--bg-hover)',
+                          color: saleSize === sz ? '#fff' : 'var(--text-primary)',
+                        }}>{sz} <span style={{ opacity: 0.7, fontWeight: 700 }}>·{selectedProduct.sizes[sz]}</span></button>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 16, fontWeight: 700, cursor: 'pointer', color: 'var(--text-primary)', flexShrink: 0 }}>−</button>
                   <input type="number" min="1" max={selectedProduct.stock} value={qty}
                     onChange={e => setQty(Math.max(1, Math.min(selectedProduct.stock, parseInt(e.target.value) || 1)))}
-                    style={{ flex: 1, textAlign: 'center', padding: '6px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', outline: 'none' }} />
-                  <button onClick={() => setQty(q => Math.min(selectedProduct.stock, q + 1))} style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 16, fontWeight: 700, cursor: 'pointer', color: 'var(--text-primary)' }}>+</button>
+                    style={{ flex: 1, textAlign: 'center', padding: '6px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', outline: 'none', minWidth: 0 }} />
+                  <button onClick={() => setQty(q => Math.min(selectedProduct.stock, q + 1))} style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 16, fontWeight: 700, cursor: 'pointer', color: 'var(--text-primary)', flexShrink: 0 }}>+</button>
                 </div>
 
                 {/* Free toggle */}
                 <button onClick={() => setIsFree(v => !v)}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
-                    padding: '8px 12px', borderRadius: 10, border: `1px solid ${isFree ? '#f59e0b' : 'var(--border)'}`,
-                    background: isFree ? 'rgba(245,158,11,0.08)' : 'var(--bg-hover)',
-                    color: isFree ? '#f59e0b' : 'var(--text-secondary)',
+                    padding: '8px 12px', borderRadius: 10, border: `1px solid ${isFree ? '#C08F4F' : 'var(--border)'}`,
+                    background: isFree ? 'rgba(192,143,79,0.08)' : 'var(--bg-hover)',
+                    color: isFree ? '#C08F4F' : 'var(--text-secondary)',
                     cursor: 'pointer', fontSize: 11, fontWeight: 800, transition: 'all 0.15s',
                   }}>
                   <Gift size={13} />
@@ -422,9 +486,9 @@ const SalesPage = () => {
                       <button key={r} onClick={() => setFreeReason(r)}
                         style={{
                           padding: '5px 10px', borderRadius: 8, fontSize: 10, fontWeight: 800,
-                          border: `1px solid ${freeReason === r ? '#f59e0b' : 'var(--border)'}`,
-                          background: freeReason === r ? 'rgba(245,158,11,0.12)' : 'var(--bg-hover)',
-                          color: freeReason === r ? '#f59e0b' : 'var(--text-secondary)',
+                          border: `1px solid ${freeReason === r ? '#C08F4F' : 'var(--border)'}`,
+                          background: freeReason === r ? 'rgba(192,143,79,0.12)' : 'var(--bg-hover)',
+                          color: freeReason === r ? '#C08F4F' : 'var(--text-secondary)',
                           cursor: 'pointer',
                         }}>{r}</button>
                     ))}
@@ -472,7 +536,7 @@ const SalesPage = () => {
                 {/* Salesperson selector */}
                 {todayClubEmployees.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: '#8b5cf6', letterSpacing: '0.07em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: '#7D6FB3', letterSpacing: '0.07em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
                       <Users size={11} />
                       Кому идёт продажа (выберите до 2 админов)
                     </div>
@@ -507,9 +571,9 @@ const SalesPage = () => {
                               }}
                               style={{
                                 padding: '6px 12px', borderRadius: 10, fontSize: 11, fontWeight: 800,
-                                border: `1px solid ${isSel ? '#8b5cf6' : 'var(--border)'}`,
-                                background: isSel ? 'rgba(139,92,246,0.15)' : 'var(--bg-hover)',
-                                color: isSel ? '#8b5cf6' : 'var(--text-secondary)',
+                                border: `1px solid ${isSel ? '#7D6FB3' : 'var(--border)'}`,
+                                background: isSel ? 'rgba(125,111,179,0.15)' : 'var(--bg-hover)',
+                                color: isSel ? '#7D6FB3' : 'var(--text-secondary)',
                                 cursor: 'pointer', transition: 'all 0.15s',
                                 display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
                               }}
@@ -527,27 +591,28 @@ const SalesPage = () => {
                 {/* Total */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 10, marginBottom: 10 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Итого</span>
-                  <span style={{ fontSize: 18, fontWeight: 950, color: isFree ? '#f59e0b' : accentColor }}>
+                  <span style={{ fontSize: 18, fontWeight: 950, color: isFree ? '#C08F4F' : accentColor }}>
                     {isFree ? '🎁 0 ₸' : `${saleTotal.toLocaleString()} ₸`}
                   </span>
                 </div>
 
                 {selectedProduct.stock <= qty && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 9, marginBottom: 8 }}>
-                    <AlertTriangle size={11} color="#f59e0b" />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b' }}>Последний товар на складе</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'rgba(192,143,79,0.07)', border: '1px solid rgba(192,143,79,0.2)', borderRadius: 9, marginBottom: 8 }}>
+                    <AlertTriangle size={11} color="#C08F4F" />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#C08F4F' }}>Последний товар на складе</span>
                   </div>
                 )}
 
+                {/* Мобильный: кнопки действий выше 40px */}
                 <div style={{ display: 'flex', gap: 7 }}>
                   <button onClick={() => { setSelectedProduct(null); setQty(1); setIsFree(false); }}
-                    style={{ padding: '9px 12px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    style={{ padding: isMobile ? '12px 16px' : '9px 12px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                     <X size={13} />
                   </button>
                   <button onClick={handleSubmit} disabled={submitting || qty > selectedProduct.stock}
                     style={{
-                      flex: 1, padding: '9px', borderRadius: 11, border: 'none',
-                      background: submitting ? 'var(--bg-hover)' : isFree ? '#f59e0b' : accentColor,
+                      flex: 1, padding: isMobile ? '13px 9px' : '9px', borderRadius: 11, border: 'none',
+                      background: submitting ? 'var(--bg-hover)' : isFree ? '#C08F4F' : accentColor,
                       color: submitting ? 'var(--text-muted)' : '#fff',
                       cursor: submitting ? 'not-allowed' : 'pointer',
                       fontSize: 11, fontWeight: 900, textTransform: 'uppercase',
@@ -565,17 +630,35 @@ const SalesPage = () => {
               </div>
             )}
           </div>
+          );
+          // Десктоп — форма стоит в правой колонке как раньше
+          if (!isMobile) return formBox;
+          // Мобильный — форма появляется шторкой снизу только когда выбран товар
+          if (!selectedProduct) return null;
+          return ReactDOM.createPortal(
+            <div
+              onClick={() => { setSelectedProduct(null); setQty(1); setIsFree(false); }}
+              style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+            >
+              <div onClick={e => e.stopPropagation()} style={{ width: '100%' }}>{formBox}</div>
+            </div>,
+            document.body
+          );
+          })()}
 
           {/* Today's log */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-card)', flex: 1 }}>
             <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em' }}>
               Сегодня · {activeClub} ({clubTodaySales.length})
             </div>
-            <div style={{ maxHeight: 350, overflowY: 'auto' }}>
+            {/* Мобильный: продажи дня — отдельные карточки, без внутреннего скролла */}
+            <div style={isMobile ? { padding: 10, display: 'flex', flexDirection: 'column', gap: 8 } : { maxHeight: 350, overflowY: 'auto' }}>
               {clubTodaySales.length === 0 ? (
                 <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Продаж ещё нет</div>
               ) : clubTodaySales.map(s => (
-                <div key={s.id} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7, background: s.isFree ? 'rgba(245,158,11,0.03)' : 'transparent' }}>
+                <div key={s.id} style={isMobile
+                  ? { padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, background: s.isFree ? 'rgba(192,143,79,0.05)' : 'var(--bg-hover)' }
+                  : { padding: '8px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7, background: s.isFree ? 'rgba(192,143,79,0.03)' : 'transparent' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {s.isFree ? '🎁 ' : ''}{s.productName}
@@ -588,24 +671,25 @@ const SalesPage = () => {
                         </span>
                       )}
                       {s.notes && (
-                        <span style={{ display: 'block', fontSize: 9, color: '#a855f7', fontStyle: 'italic', marginTop: 1 }}>
+                        <span style={{ display: 'block', fontSize: 9, color: '#8E7BB8', fontStyle: 'italic', marginTop: 1 }}>
                           💬 {s.notes}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: s.isFree ? '#f59e0b' : accentColor, flexShrink: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: s.isFree ? '#C08F4F' : accentColor, flexShrink: 0 }}>
                     {s.isFree ? 'Бесплатно' : `${(s.totalSum || 0).toLocaleString()} ₸`}
                   </div>
+                  {/* Мобильный: зона нажатия отмены ≥36px */}
                   <button onClick={() => handleCancelSale(s)} disabled={cancellingId === s.id} title="Отменить"
                     style={{
-                      flexShrink: 0, width: 26, height: 26, borderRadius: 7,
-                      border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.05)',
-                      color: cancellingId === s.id ? 'var(--text-muted)' : '#ef4444',
+                      flexShrink: 0, width: isMobile ? 36 : 26, height: isMobile ? 36 : 26, borderRadius: isMobile ? 10 : 7,
+                      border: '1px solid rgba(176,106,106,0.2)', background: 'rgba(176,106,106,0.05)',
+                      color: cancellingId === s.id ? 'var(--text-muted)' : '#B06A6A',
                       cursor: cancellingId === s.id ? 'not-allowed' : 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                    <RotateCcw size={10} />
+                    <RotateCcw size={isMobile ? 13 : 10} />
                   </button>
                 </div>
               ))}

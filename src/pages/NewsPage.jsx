@@ -1,11 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Newspaper, Send, Plus, Trash2, X, Eye, Check } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { Newspaper, Send, Plus, Trash2, X, Eye, Check, Edit3 } from 'lucide-react';
+import { isMobileDevice } from '../lib/isMobile';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
+import ShiftBoardAnnounce from '../components/news/ShiftBoardAnnounce';
+import CalendarAnnounce from '../components/news/CalendarAnnounce';
+import InStudioAnnounce from '../components/news/InStudioAnnounce';
+import SizesAnnounce from '../components/news/SizesAnnounce';
+
+// Богатые шаблоны новостей (рендерятся вместо текста при p.template === key)
+const RICH_TEMPLATES = {
+  'shift-board': ShiftBoardAnnounce,
+  'calendar': CalendarAnnounce,
+  'instudio': InStudioAnnounce,
+  'merch-sizes': SizesAnnounce,
+};
 
 const NewsPage = () => {
   const { user } = useTickets();
@@ -23,15 +37,31 @@ const NewsPage = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [newText, setNewText] = useState('');
   const [newAudience, setNewAudience] = useState('all');
+  const [newTemplate, setNewTemplate] = useState(''); // '' = обычный текст, иначе ключ RICH_TEMPLATES
+  const [editingPost, setEditingPost] = useState(null); // пост в режиме редактирования
+
+  const openEdit = (post) => {
+    setEditingPost(post);
+    setNewText(post.text || '');
+    setNewAudience(post.audience || 'all');
+    setNewTemplate(post.template || '');
+    setShowAdd(true);
+  };
+  const closeModal = () => { setShowAdd(false); setEditingPost(null); setNewText(''); setNewTemplate(''); setNewAudience('all'); };
   const [saving, setSaving] = useState(false);
   // Просмотры (только для Дильшата): news_seen/{email} → { lastSeenISO, name, role, club }
   const [seenMap, setSeenMap] = useState({});
+  // Явное «Ознакомлен» по каждому посту: news_acks/{postId__email} → ставит галочку в просмотрах
+  const [ackMap, setAckMap] = useState({}); // { postId: Set(email) }
   const [viewPostId, setViewPostId] = useState(null);
   const [isWide, setIsWide] = useState(() => window.innerWidth > 1080);
+  // Мобильный режим: компактные карточки, лента чипов, просмотры — в шторке снизу
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  const [sheetPostId, setSheetPostId] = useState(null); // пост, чьи просмотры открыты в мобильной шторке
   const lastSeenWrittenRef = useRef('');
 
   useEffect(() => {
-    const handler = () => setIsWide(window.innerWidth > 1080);
+    const handler = () => { setIsWide(window.innerWidth > 1080); setIsMobile(isMobileDevice()); };
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
@@ -53,6 +83,36 @@ const NewsPage = () => {
     }, err => console.error('[news_posts]', err));
   }, []);
 
+  // Подтверждения «Ознакомлен» — нужны и сотруднику (состояние кнопки), и панели просмотров
+  useEffect(() => {
+    return onSnapshot(collection(db, 'news_acks'), snap => {
+      const m = {};
+      snap.docs.forEach(d => {
+        const a = d.data();
+        if (a.postId && a.email) (m[a.postId] = m[a.postId] || new Set()).add((a.email || '').toLowerCase());
+      });
+      setAckMap(m);
+    }, err => console.error('[news_acks]', err));
+  }, []);
+
+  const myEmail = (user?.email || '').toLowerCase().trim();
+  const hasAcked = (post) => !!(ackMap[post.id] && ackMap[post.id].has(myEmail));
+  const ackPost = async (post) => {
+    if (!myEmail || hasAcked(post)) return;
+    try {
+      await setDoc(doc(db, 'news_acks', `${post.id}__${myEmail}`), {
+        postId: post.id,
+        email: myEmail,
+        name: user?.displayName || '',
+        role: user?.role || '',
+        club: user?.club || null,
+        ackedAtISO: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+      });
+      toast.success('Отмечено: ознакомлен');
+    } catch { toast.error('Не удалось отметить'); }
+  };
+
   // Посты, доступные этой роли
   const visiblePosts = posts.filter(p =>
     (p.audience !== 'managers' || canSeeManagers) &&
@@ -65,15 +125,13 @@ const NewsPage = () => {
     : canSeeSales && audienceTab === 'sales' ? salesPosts
     : generalPosts;
 
-  // Отметить новости прочитанными — гасит зелёную точку в меню
-  // и фиксирует просмотр в облаке (для панели «кто посмотрел» у Дильшата)
+  // Просмотр в облаке (панель «кто посмотрел» у Дильшата) — по факту открытия страницы.
+  // ВАЖНО: локальный hj_news_seen здесь больше НЕ трогаем — прочитанность считается
+  // по каждой вкладке отдельно (см. эффект ниже), чтобы точка «Менеджерам»/«Отдел продаж»
+  // не гасла, пока их вкладку реально не открыли.
   useEffect(() => {
     if (visiblePosts.length === 0) return;
     const newest = visiblePosts[0].postedAtISO || new Date().toISOString();
-    try {
-      localStorage.setItem('hj_news_seen', newest);
-      window.dispatchEvent(new Event('hj-news-seen'));
-    } catch {}
     const email = (user?.email || '').toLowerCase().trim();
     if (!email || lastSeenWrittenRef.current === newest) return;
     lastSeenWrittenRef.current = newest;
@@ -87,22 +145,76 @@ const NewsPage = () => {
     }, { merge: true }).catch(() => {});
   }, [posts]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Прочитанность по вкладкам: открыл вкладку → её посты прочитаны ──
+  const TAB_SEEN_KEY = { all: 'hj_news_seen_tab_all', managers: 'hj_news_seen_tab_managers', sales: 'hj_news_seen_tab_sales' };
+  const newestOf = (list) => list.reduce((m, p) => ((p.postedAtISO || '') > m ? (p.postedAtISO || '') : m), '');
+  const [, setSeenTick] = useState(0);
+  const tabSeen = (tab) => {
+    try {
+      const marker = localStorage.getItem(TAB_SEEN_KEY[tab]) || '';
+      const legacy = localStorage.getItem('hj_news_seen') || ''; // миграция со старой общей отметки
+      return marker > legacy ? marker : legacy;
+    } catch { return ''; }
+  };
+  const tabUnread = (tab) => {
+    const list = tab === 'managers' ? managerPosts : tab === 'sales' ? salesPosts : generalPosts;
+    const newest = newestOf(list);
+    return !!newest && newest > tabSeen(tab);
+  };
+  useEffect(() => {
+    const list = audienceTab === 'managers' ? managerPosts : audienceTab === 'sales' ? salesPosts : generalPosts;
+    const newest = newestOf(list);
+    if (!newest) return;
+    try {
+      const key = TAB_SEEN_KEY[audienceTab] || TAB_SEEN_KEY.all;
+      if (newest > (localStorage.getItem(key) || '')) {
+        localStorage.setItem(key, newest);
+        window.dispatchEvent(new Event('hj-news-seen'));
+        setSeenTick(t => t + 1);
+      }
+    } catch {}
+  }, [posts, audienceTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const TEMPLATE_FALLBACK = {
+    'shift-board': '🔄 Новое: «Доска задач» — общая доска смены для всей команды. Передачи, поручения, неисправности и напоминания на виду у всех, а под каждой записью можно обсуждать в ветке, как в Slack. Ищите в меню → «Доска задач».',
+    'calendar': '📅 Новое: «Календарь» — напоминалка по хозяйству клуба. Ежемесячные оплаты (интернет, свет, вода), тех-обслуживание и подрядчики — всё на своих датах, с описанием, ссылкой и отметками «сделано» в комментариях. У каждого клуба календарь свой. Ищите в меню → «Календарь».',
+    'instudio': '🛠 Новое: «InStudio» — заявки по технике и софту напрямую команде разработки. Планшеты, турникеты, POS, пульсометры — оформляете заявку с подробным описанием, разработчик берёт её в работу, внутри задачи чат с фото и таймер работы. Неисправности с Доски задач попадают туда автоматически. Меню → «InStudio».',
+    'merch-sizes': '📦 Обновление склада: размерная сетка — одна карточка на модель. Вместо «Hoodie M / L / XL» тремя товарами — одна карточка с остатками по размерам XS–3XL. Продажа с выбором размера (списание именно с него), поставки, перемещения и возвраты — тоже по размерам, размер виден в истории и Excel. Старые товары работают как раньше. Меню → «Склад».',
+  };
+
   const handleAdd = async () => {
     const text = newText.trim();
-    if (!text) return;
+    if (!text && !newTemplate) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, 'news_posts'), {
-        text,
-        source: 'manual',
-        author: user?.displayName || '',
-        audience: newAudience,
-        postedAtISO: new Date().toISOString(),
-        updatedAt: serverTimestamp(),
-      });
+      if (editingPost) {
+        // Редактирование: обновляем текст/аудиторию/формат; postedAtISO НЕ трогаем,
+        // чтобы правка не зажигала зелёные точки «новая новость» заново
+        await updateDoc(doc(db, 'news_posts', editingPost.id), {
+          text: text || TEMPLATE_FALLBACK[newTemplate] || '',
+          template: newTemplate || null,
+          audience: newAudience,
+          editedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        });
+        toast.success('Новость обновлена');
+      } else {
+        await addDoc(collection(db, 'news_posts'), {
+          text: text || TEMPLATE_FALLBACK[newTemplate] || '',
+          template: newTemplate || null,
+          source: newTemplate ? 'release' : 'manual',
+          author: user?.displayName || '',
+          audience: newAudience,
+          postedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        });
+        toast.success('Новость опубликована');
+      }
+      setNewTemplate('');
       setNewText('');
+      setNewAudience('all'); // не тянем аудиторию прошлого поста в следующий
       setShowAdd(false);
-      toast.success('Новость опубликована');
+      setEditingPost(null);
     } catch (e) {
       toast.error('Не удалось сохранить');
     } finally {
@@ -133,13 +245,12 @@ const NewsPage = () => {
       if (post.audience === 'sales' && p.role !== 'komdir' && p.role !== 'rop' && p.role !== 'chef') continue;
       // Менеджер видит просмотры только своего клуба
       if (user?.role === 'manager' && (p.club || '').toUpperCase() !== myClub) continue;
-      const seenISO = seenMap[email]?.lastSeenISO || '';
       out.push({
         email,
         name: seenMap[email]?.name || p.displayName || email.split('@')[0],
         role: p.role,
         club: p.club,
-        seen: !!seenISO && seenISO >= (post.postedAtISO || ''),
+        seen: !!(ackMap[post.id] && ackMap[post.id].has(email)), // галочка = нажал «Ознакомлен»
       });
     }
     out.sort((a, b) => (b.seen - a.seen) || a.name.localeCompare(b.name, 'ru'));
@@ -154,11 +265,11 @@ const NewsPage = () => {
       {rs.map(r => (
         <div key={r.email} style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 10,
-          background: r.seen ? 'rgba(34,197,94,0.07)' : 'transparent',
-          border: '1px solid ' + (r.seen ? 'rgba(34,197,94,0.18)' : 'var(--border)'),
+          background: r.seen ? 'rgba(95,156,129,0.07)' : 'transparent',
+          border: '1px solid ' + (r.seen ? 'rgba(95,156,129,0.18)' : 'var(--border)'),
         }}>
           {r.seen
-            ? <Check size={12} style={{ color: '#22c55e', flexShrink: 0 }} />
+            ? <Check size={12} style={{ color: '#5F9C81', flexShrink: 0 }} />
             : <Eye size={12} style={{ color: 'var(--text-muted)', opacity: 0.4, flexShrink: 0 }} />}
           <span style={{ fontSize: 12, fontWeight: 700, color: r.seen ? 'var(--text-primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
           <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
@@ -174,7 +285,7 @@ const NewsPage = () => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Eye size={14} style={{ color: 'var(--accent-purple)' }} />
         <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)' }}>Просмотры</span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: viewSeenCount === viewReaders.length ? '#22c55e' : 'var(--text-muted)' }}>
+        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: viewSeenCount === viewReaders.length ? '#5F9C81' : 'var(--text-muted)' }}>
           {viewSeenCount}/{viewReaders.length}
         </span>
       </div>
@@ -192,8 +303,8 @@ const NewsPage = () => {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(79,142,247,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Newspaper size={20} style={{ color: '#4f8ef7' }} />
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(85,128,168,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Newspaper size={20} style={{ color: '#5580A8' }} />
           </div>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Новости</h1>
@@ -210,20 +321,29 @@ const NewsPage = () => {
         )}
       </div>
 
-      {/* Окошки аудиторий: Общие / Менеджерам / Отдел продаж — по ролям */}
+      {/* Окошки аудиторий: Общие / Менеджерам / Отдел продаж — по ролям.
+          На мобильном — горизонтальная лента чипов без переноса */}
       {(canSeeManagers || canSeeSales) && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={isMobile
+          ? { display: 'flex', gap: 6, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
+          : { display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
             ['all', `Общие (${generalPosts.length})`],
             ...(canSeeManagers ? [['managers', `👔 Менеджерам (${managerPosts.length})`]] : []),
             ...(canSeeSales ? [['sales', `💼 Отдел продаж (${salesPosts.length})`]] : []),
           ].map(([id, label]) => (
             <button key={id} onClick={() => setAudienceTab(id)} style={{
-              padding: '8px 16px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+              position: 'relative', flexShrink: 0, whiteSpace: 'nowrap',
+              padding: isMobile ? '8px 14px' : '8px 16px', borderRadius: isMobile ? 999 : 12, fontSize: 12, fontWeight: 800, cursor: 'pointer',
               border: '1px solid ' + (audienceTab === id ? 'var(--accent-purple)' : 'var(--border)'),
               background: audienceTab === id ? 'var(--accent-purple)' : 'transparent',
               color: audienceTab === id ? '#fff' : 'var(--text-muted)',
-            }}>{label}</button>
+            }}>
+              {label}
+              {audienceTab !== id && tabUnread(id) && (
+                <span style={{ position: 'absolute', top: -3, right: -3, width: 10, height: 10, borderRadius: '50%', background: '#5F9C81', boxShadow: '0 0 6px #5F9C81', border: '2px solid var(--bg-primary)' }} />
+              )}
+            </button>
           ))}
         </div>
       )}
@@ -237,15 +357,16 @@ const NewsPage = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {shownPosts.map(p => (
             <div key={p.id} style={{
-              background: 'var(--bg-card)', borderRadius: 16, padding: '16px 18px',
+              // На мобильном карточка компактнее (паддинги меньше)
+              background: 'var(--bg-card)', borderRadius: isMobile ? 14 : 16, padding: isMobile ? '12px 13px' : '16px 18px',
               border: '1px solid var(--border)',
-              borderLeft: `3px solid ${p.source === 'telegram' ? '#2AABEE' : p.source === 'release' ? '#22c55e' : 'var(--accent-purple)'}`,
+              borderLeft: `3px solid ${p.source === 'telegram' ? '#2AABEE' : p.source === 'release' ? '#5F9C81' : 'var(--accent-purple)'}`,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                 <span style={{
                   display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7,
-                  background: p.source === 'telegram' ? 'rgba(42,171,238,0.12)' : p.source === 'release' ? 'rgba(34,197,94,0.12)' : 'rgba(139,92,246,0.12)',
-                  color: p.source === 'telegram' ? '#2AABEE' : p.source === 'release' ? '#22c55e' : 'var(--accent-purple)',
+                  background: p.source === 'telegram' ? 'rgba(42,171,238,0.12)' : p.source === 'release' ? 'rgba(95,156,129,0.12)' : 'rgba(125,111,179,0.12)',
+                  color: p.source === 'telegram' ? '#2AABEE' : p.source === 'release' ? '#5F9C81' : 'var(--accent-purple)',
                   textTransform: 'uppercase', letterSpacing: '0.05em',
                 }}>
                   {p.source === 'telegram' ? <><Send size={9} /> Telegram</>
@@ -253,7 +374,7 @@ const NewsPage = () => {
                     : `HJ Track${p.author ? ` · ${p.author}` : ''}`}
                 </span>
                 {p.audience === 'managers' && (
-                  <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7, background: 'rgba(192,143,79,0.12)', color: '#C08F4F', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     👔 Менеджерам
                   </span>
                 )}
@@ -262,21 +383,22 @@ const NewsPage = () => {
                     💼 Отдел продаж
                   </span>
                 )}
-                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{fmtDate(p.postedAtISO)}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{fmtDate(p.postedAtISO)}{p.editedAtISO ? ' · изменено' : ''}</span>
                 {canSeeViews && (() => {
                   const rs = readersFor(p);
                   const n = rs.filter(r => r.seen).length;
                   const active = isWide && viewPost?.id === p.id;
                   return (
                     <button
-                      onClick={() => { if (isWide) setViewPostId(p.id); }}
+                      // Широкий экран — панель справа; мобильный — шторка снизу
+                      onClick={() => { if (isWide) setViewPostId(p.id); else if (isMobile) setSheetPostId(p.id); }}
                       title="Кто посмотрел"
                       style={{
                         marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4,
-                        padding: '3px 9px', borderRadius: 8, cursor: isWide ? 'pointer' : 'default',
+                        padding: isMobile ? '6px 10px' : '3px 9px', borderRadius: 8, cursor: (isWide || isMobile) ? 'pointer' : 'default',
                         border: '1px solid ' + (active ? 'var(--accent-purple)' : 'var(--border)'),
-                        background: active ? 'rgba(139,92,246,0.10)' : 'transparent',
-                        color: n === rs.length ? '#22c55e' : 'var(--text-muted)',
+                        background: active ? 'rgba(125,111,179,0.10)' : 'transparent',
+                        color: n === rs.length ? '#5F9C81' : 'var(--text-muted)',
                         fontSize: 10, fontWeight: 800,
                       }}
                     >
@@ -285,30 +407,52 @@ const NewsPage = () => {
                   );
                 })()}
                 {canPost && (
-                  <button onClick={() => handleDelete(p)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0, opacity: 0.4 }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = 1}
-                    onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
-                  ><Trash2 size={13} /></button>
+                  <>
+                    <button onClick={() => openEdit(p)} title="Редактировать" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0, opacity: 0.4 }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                      onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                    ><Edit3 size={13} /></button>
+                    <button onClick={() => handleDelete(p)} title="Удалить" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0, opacity: 0.4 }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                      onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                    ><Trash2 size={13} /></button>
+                  </>
                 )}
               </div>
-              {p.text && (
+              {p.template && RICH_TEMPLATES[p.template] ? (
+                React.createElement(RICH_TEMPLATES[p.template])
+              ) : p.text && (
                 <div style={{ fontSize: 13.5, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{p.text}</div>
               )}
               {p.mediaNote && (
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 6 }}>{p.mediaNote}</div>
+              )}
+              {myEmail && (
+                <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                  {hasAcked(p) ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: '#5F9C81', background: 'rgba(95,156,129,0.1)', border: '1px solid rgba(95,156,129,0.25)', padding: '7px 14px', borderRadius: 10, width: isMobile ? '100%' : 'auto', minHeight: isMobile ? 42 : 'auto' }}>
+                      <Check size={14} /> Вы ознакомлены
+                    </span>
+                  ) : (
+                    // На мобильном — крупная кнопка во всю ширину (удобно пальцем)
+                    <button onClick={() => ackPost(p)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: isMobile ? 13 : 12, fontWeight: 800, color: '#fff', background: 'var(--accent-purple)', border: 'none', padding: isMobile ? '12px 16px' : '8px 16px', borderRadius: isMobile ? 12 : 10, cursor: 'pointer', width: isMobile ? '100%' : 'auto', minHeight: isMobile ? 44 : 'auto' }}>
+                      <Check size={14} /> Ознакомлен
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Add modal (chef) */}
+      {/* Add modal (chef). На мобильном — шторка снизу */}
       {showAdd && (
-        <div onClick={() => !saving && setShowAdd(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--bg-card)', borderRadius: 20, border: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div onClick={() => !saving && closeModal()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 480, maxHeight: isMobile ? '92vh' : 'none', overflowY: 'auto', background: 'var(--bg-card)', borderRadius: isMobile ? '20px 20px 0 0' : 20, border: '1px solid var(--border)', padding: isMobile ? '16px 16px 24px' : 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>Новая новость</h3>
-              <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}><X size={18} /></button>
+              <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>{editingPost ? 'Редактировать новость' : 'Новая новость'}</h3>
+              <button onClick={closeModal} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}><X size={18} /></button>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[['all', '📢 Всем'], ['managers', '👔 Менеджерам'], ['sales', '💼 Отделу продаж']].map(([id, label]) => (
@@ -320,25 +464,71 @@ const NewsPage = () => {
                 }}>{label}</button>
               ))}
             </div>
+            {/* Шаблон: обычный текст или готовый анонс */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Формат</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[['', '📝 Обычный текст'], ['shift-board', '📣 Анонс: Доска задач']].map(([id, label]) => (
+                  <button key={id || 'plain'} onClick={() => setNewTemplate(id)} style={{
+                    flex: 1, padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                    border: '1px solid ' + (newTemplate === id ? 'var(--accent-purple)' : 'var(--border)'),
+                    background: newTemplate === id ? 'var(--accent-purple)' : 'transparent',
+                    color: newTemplate === id ? '#fff' : 'var(--text-muted)',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
+
+            {newTemplate ? (
+              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', lineHeight: 1.5, fontWeight: 500 }}>
+                Будет опубликована <b style={{ color: 'var(--text-primary)' }}>готовая карточка-анонс</b> «Доска задач» (превью доски, типы записей, что умеет). Текст ниже можно не заполнять — он используется как краткая подпись в уведомлении.
+              </div>
+            ) : null}
+
             <textarea
               autoFocus
-              rows={7}
-              placeholder="Текст новости…"
+              rows={newTemplate ? 3 : 7}
+              placeholder={newTemplate ? 'Короткая подпись (необязательно)…' : 'Текст новости…'}
               value={newText}
               onChange={e => setNewText(e.target.value)}
               style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', fontSize: 14, color: 'var(--text-primary)', outline: 'none', fontWeight: 500, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
             />
             <button
               onClick={handleAdd}
-              disabled={saving || !newText.trim()}
-              style={{ padding: '13px', borderRadius: 14, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving || !newText.trim() ? 0.5 : 1 }}
+              disabled={saving || (!newText.trim() && !newTemplate)}
+              style={{ padding: '13px', borderRadius: 14, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving || (!newText.trim() && !newTemplate) ? 0.5 : 1 }}
             >
-              Опубликовать
+              {editingPost ? 'Сохранить изменения' : 'Опубликовать'}
             </button>
           </div>
         </div>
       )}
     </div>
+
+    {/* Мобильная шторка «кто посмотрел» — открывается кнопкой-глазом на карточке */}
+    {canSeeViews && isMobile && sheetPostId && (() => {
+      const p = posts.find(x => x.id === sheetPostId);
+      if (!p) return null;
+      const rs = readersFor(p);
+      const n = rs.filter(r => r.seen).length;
+      return ReactDOM.createPortal(
+        <div onClick={() => setSheetPostId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 520, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxHeight: '75vh', overflowY: 'auto', background: 'var(--bg-card)', borderTop: '1px solid var(--border)', borderRadius: '20px 20px 0 0', padding: '14px 16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Eye size={14} style={{ color: 'var(--accent-purple)' }} />
+              <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)' }}>Просмотры</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: n === rs.length ? '#5F9C81' : 'var(--text-muted)' }}>{n}/{rs.length}</span>
+              <button onClick={() => setSheetPostId(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, lineHeight: 0 }}><X size={18} /></button>
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.45 }}>
+              {fmtDate(p.postedAtISO)}<br />«{(p.text || '').slice(0, 70)}{(p.text || '').length > 70 ? '…' : ''}»
+            </div>
+            {renderReaders(rs)}
+          </div>
+        </div>,
+        document.body
+      );
+    })()}
 
     {/* Правая панель просмотров — все шефы, только широкий экран */}
     {canSeeViews && isWide && viewPost && (

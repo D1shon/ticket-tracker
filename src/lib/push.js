@@ -51,6 +51,7 @@ export async function enablePush(user) {
     displayName: user?.displayName || '',
     role: user?.role || '',
     club: user?.club || null,
+    clubs: user?.clubs || null, // мультиклубный менеджер получает пуши всех своих клубов
     ua: navigator.userAgent.slice(0, 160),
     standalone: window.navigator.standalone === true
       || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || false,
@@ -85,6 +86,7 @@ async function enablePushSilent(user) {
     displayName: user?.displayName || '',
     role: user?.role || '',
     club: user?.club || null,
+    clubs: user?.clubs || null, // мультиклубный менеджер получает пуши всех своих клубов
     ua: navigator.userAgent.slice(0, 160),
     standalone: window.navigator.standalone === true
       || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || false,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ShoppingBag, Camera, Plus, Trash2, X, Check, Clock, Phone, User } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { ShoppingBag, Camera, Plus, Trash2, X, Check, Clock, Phone, User, Search } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
@@ -7,8 +8,9 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { isMobileDevice } from '../lib/isMobile';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 const MONTH_MS = 30 * 24 * 3600 * 1000;
 
 // Same compression as warehouse photos: 480px JPEG ≈ 25 KB
@@ -39,10 +41,21 @@ const LostItemsPage = () => {
   const userClub = user?.club || null;
   // Chef and managers can delete any item any time; admins — only month-old ones
   const canDeleteAnytime = user?.role === 'chef' || user?.role === 'manager';
+  // Наблюдатель: только просмотр — без приёма, возврата и удаления вещей
+  const isReadOnly = user?.role === 'lostviewer';
 
   const [activeClub, setActiveClub] = useState(userClub || '4YOU');
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('stored'); // 'stored' | 'returned' | 'old' | 'all'
+  const [search, setSearch] = useState('');
+
+  // Мобильный режим — только визуальные изменения
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   // Add form
   const [showAdd, setShowAdd] = useState(false);
@@ -83,6 +96,19 @@ const LostItemsPage = () => {
     return items;
   }, [items, filter, oldItems]);
 
+  // Поиск по описанию, кто принял/вернул, имени и телефону получателя
+  const searched = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    if (!s) return visible;
+    return visible.filter(i =>
+      (i.note || '').toLowerCase().includes(s) ||
+      (i.acceptedBy || '').toLowerCase().includes(s) ||
+      (i.returnedBy || '').toLowerCase().includes(s) ||
+      (i.returnedTo?.name || '').toLowerCase().includes(s) ||
+      (i.returnedTo?.phone || '').toLowerCase().includes(s)
+    );
+  }, [visible, search]);
+
   const handlePhotoSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -120,7 +146,15 @@ const LostItemsPage = () => {
       setNote('');
       setShowAdd(false);
     } catch (e) {
-      toast.error('Ошибка сохранения: ' + (e?.message || e));
+      const msg = String(e?.message || e);
+      if (/Indexed/i.test(msg)) {
+        // iOS/Safari убил соединение с локальным кэшем в фоне — лечится только
+        // перезагрузкой страницы. Сообщаем по-человечески и обновляем сами.
+        toast.error('Сбой кэша браузера — страница сейчас обновится, попробуйте ещё раз', { duration: 4000 });
+        setTimeout(() => window.location.reload(), 2500);
+      } else {
+        toast.error('Ошибка сохранения: ' + msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -185,19 +219,23 @@ const LostItemsPage = () => {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(139,92,246,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ShoppingBag size={20} style={{ color: '#8b5cf6' }} />
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(125,111,179,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShoppingBag size={20} style={{ color: '#7D6FB3' }} />
           </div>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Утерянные вещи</h1>
+            <h1 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Утерянные вещи</h1>
             <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, margin: 0 }}>Приём, хранение и возврат забытых вещей</p>
           </div>
         </div>
         {visibleClubs.length > 1 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          /* мобайл: клубные табы — горизонтальная лента без переноса */
+          <div style={isMobile
+            ? { display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'nowrap', width: '100%', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
+            : { display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {visibleClubs.map(club => (
               <button key={club} onClick={() => setActiveClub(club)} style={{
-                padding: '6px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                padding: isMobile ? '8px 14px' : '6px 14px', borderRadius: isMobile ? 999 : 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                whiteSpace: 'nowrap', flexShrink: 0,
                 border: '1px solid ' + (activeClub === club ? 'var(--accent-purple)' : 'var(--border)'),
                 background: activeClub === club ? 'var(--accent-purple)' : 'transparent',
                 color: activeClub === club ? '#fff' : 'var(--text-muted)',
@@ -207,21 +245,25 @@ const LostItemsPage = () => {
         )}
       </div>
 
-      {/* Accept button */}
-      <button
-        onClick={() => setShowAdd(true)}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          padding: '14px 20px', borderRadius: 16, border: 'none',
-          background: 'var(--accent-purple)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer',
-          boxShadow: '0 6px 20px rgba(139,92,246,0.3)',
-        }}
-      >
-        <Camera size={18} /> Принять вещь
-      </button>
+      {/* Accept button — наблюдателю недоступно (только просмотр) */}
+      {!isReadOnly && (
+        <button
+          onClick={() => setShowAdd(true)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '14px 20px', borderRadius: 16, border: 'none',
+            background: 'var(--accent-purple)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer',
+            boxShadow: '0 6px 20px rgba(125,111,179,0.3)',
+          }}
+        >
+          <Camera size={18} /> Принять вещь
+        </button>
+      )}
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {/* Filters — на мобильном лента без переноса */}
+      <div style={isMobile
+        ? { display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'nowrap', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
+        : { display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {[
           { id: 'stored',   label: `Хранятся (${items.filter(i => i.status === 'stored').length})` },
           { id: 'returned', label: `Возвращены (${items.filter(i => i.status === 'returned').length})` },
@@ -229,30 +271,106 @@ const LostItemsPage = () => {
           { id: 'all',      label: 'Все' },
         ].map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)} style={{
-            padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            border: '1px solid ' + (filter === f.id ? (f.id === 'old' ? '#f59e0b' : 'var(--accent-purple)') : 'var(--border)'),
-            background: filter === f.id ? (f.id === 'old' ? 'rgba(245,158,11,0.15)' : 'var(--accent-purple)') : 'transparent',
-            color: filter === f.id ? (f.id === 'old' ? '#f59e0b' : '#fff') : 'var(--text-muted)',
+            padding: isMobile ? '8px 14px' : '7px 14px', borderRadius: isMobile ? 999 : 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0,
+            border: '1px solid ' + (filter === f.id ? (f.id === 'old' ? '#C08F4F' : 'var(--accent-purple)') : 'var(--border)'),
+            background: filter === f.id ? (f.id === 'old' ? 'rgba(192,143,79,0.15)' : 'var(--accent-purple)') : 'transparent',
+            color: filter === f.id ? (f.id === 'old' ? '#C08F4F' : '#fff') : 'var(--text-muted)',
           }}>{f.label}</button>
         ))}
       </div>
 
+      {/* Search */}
+      <div style={{ position: 'relative' }}>
+        <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+        <input
+          type="text"
+          placeholder="Поиск: описание, кто принял/вернул, телефон…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '11px 38px 11px 40px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, outline: 'none' }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}>
+            <X size={15} />
+          </button>
+        )}
+      </div>
+
       {filter === 'old' && oldItems.length > 0 && (
-        <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>
+        <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(192,143,79,0.08)', border: '1px solid rgba(192,143,79,0.25)', fontSize: 12, color: '#C08F4F', fontWeight: 600 }}>
           Эти вещи хранятся больше месяца — их можно удалить (вещь выкинута)
         </div>
       )}
 
       {/* Items — compact rows */}
-      {visible.length === 0 ? (
+      {searched.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed var(--border)', borderRadius: 20, color: 'var(--text-muted)', fontSize: 14, fontWeight: 600 }}>
-          {filter === 'old' ? 'Нет вещей, лежащих больше месяца' : filter === 'returned' ? 'Возвращённых вещей пока нет' : 'Вещей пока нет'}
+          {search.trim() ? `Ничего не найдено по запросу «${search.trim()}»` : filter === 'old' ? 'Нет вещей, лежащих больше месяца' : filter === 'returned' ? 'Возвращённых вещей пока нет' : 'Вещей пока нет'}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {visible.map(item => {
+        /* мобайл: сетка карточек 2 колонки с крупными фото; десктоп: компактные строки */
+        <div style={isMobile
+          ? { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }
+          : { display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {searched.map(item => {
             const isOld = item.status === 'stored' && item.acceptedAtISO && (now - new Date(item.acceptedAtISO).getTime()) > MONTH_MS;
-            const accent = item.status === 'returned' ? '#10b981' : isOld ? '#f59e0b' : '#8b5cf6';
+            const accent = item.status === 'returned' ? '#5F9C81' : isOld ? '#C08F4F' : '#7D6FB3';
+            if (isMobile) return (
+              // Вертикальная карточка: фото сверху, действия снизу (≥44px)
+              <div key={item.id} style={{
+                background: 'var(--bg-card)', borderRadius: 14,
+                border: '1px solid var(--border)', borderTop: `3px solid ${accent}`,
+                padding: 10, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0,
+              }}>
+                <div
+                  onClick={() => item.photo && setPreviewPhoto(item.photo)}
+                  style={{ width: '100%', aspectRatio: '1 / 1', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-hover)', cursor: item.photo ? 'zoom-in' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {item.photo
+                    ? <img src={item.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    : <ShoppingBag size={26} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
+                  }
+                </div>
+                <span style={{ fontSize: 8.5, fontWeight: 900, padding: '3px 8px', borderRadius: 999, background: `${accent}18`, color: accent, textTransform: 'uppercase', letterSpacing: '0.04em', alignSelf: 'flex-start' }}>
+                  {item.status === 'returned' ? '✓ Возвращена' : isOld ? `⚠ ${daysStored(item.acceptedAtISO)} дн.` : 'Хранится'}
+                </span>
+                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {item.note || 'Без описания'}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                  <Clock size={9} /> {fmtDate(item.acceptedAtISO)}
+                  {item.acceptedBy && <span>· {item.acceptedBy}</span>}
+                </div>
+                {item.status === 'returned' && item.returnedTo && (
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#5F9C81', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                    {item.returnedTo.name && <><User size={9} /> {item.returnedTo.name}</>}
+                    <Phone size={9} /> {item.returnedTo.phone}
+                  </div>
+                )}
+                {!isReadOnly && (item.status === 'stored' || isOld || canDeleteAnytime) && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
+                    {item.status === 'stored' && (
+                      <button
+                        onClick={() => { setReturnItem(item); setReturnName(''); setReturnPhone(''); }}
+                        style={{ flex: 1, minHeight: 44, borderRadius: 12, border: '1px solid rgba(95,156,129,0.35)', background: 'rgba(95,156,129,0.1)', color: '#5F9C81', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                      >
+                        Возвращено
+                      </button>
+                    )}
+                    {(isOld || canDeleteAnytime) && (
+                      <button
+                        onClick={() => handleDelete(item)}
+                        title="Удалить вещь"
+                        style={{ minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12, border: '1px solid rgba(176,106,106,0.3)', background: 'rgba(176,106,106,0.08)', color: '#B06A6A', cursor: 'pointer', lineHeight: 0 }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
             return (
               <div key={item.id} style={{
                 background: 'var(--bg-card)', borderRadius: 14,
@@ -285,19 +403,20 @@ const LostItemsPage = () => {
                     {item.acceptedBy && <span>· {item.acceptedBy}</span>}
                   </div>
                   {item.status === 'returned' && item.returnedTo && (
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#10b981', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#5F9C81', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                       {item.returnedTo.name && <><User size={9} /> {item.returnedTo.name}</>}
                       <Phone size={9} /> {item.returnedTo.phone}
                     </div>
                   )}
                 </div>
 
-                {/* Actions */}
+                {/* Actions — наблюдателю недоступны */}
+                {!isReadOnly && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   {item.status === 'stored' && (
                     <button
                       onClick={() => { setReturnItem(item); setReturnName(''); setReturnPhone(''); }}
-                      style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(16,185,129,0.35)', background: 'rgba(16,185,129,0.1)', color: '#10b981', fontSize: 11, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(95,156,129,0.35)', background: 'rgba(95,156,129,0.1)', color: '#5F9C81', fontSize: 11, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
                       Возвращено
                     </button>
@@ -306,30 +425,34 @@ const LostItemsPage = () => {
                     <button
                       onClick={() => handleDelete(item)}
                       title="Удалить вещь"
-                      style={{ padding: '8px 9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#ef4444', cursor: 'pointer', lineHeight: 0 }}
+                      style={{ padding: '8px 9px', borderRadius: 10, border: '1px solid rgba(176,106,106,0.3)', background: 'rgba(176,106,106,0.08)', color: '#B06A6A', cursor: 'pointer', lineHeight: 0 }}
                     >
                       <Trash2 size={13} />
                     </button>
                   )}
                 </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* ── Fullscreen photo preview ── */}
-      {previewPhoto && (
+      {/* ── Fullscreen photo preview ──
+          Порталы в document.body: внутри animate-fade transform ломает
+          position:fixed — на телефоне окно оказывалось внизу страницы */}
+      {previewPhoto && ReactDOM.createPortal(
         <div onClick={() => setPreviewPhoto(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'zoom-out' }}>
           <img src={previewPhoto} alt="" style={{ maxWidth: '100%', maxHeight: '90dvh', borderRadius: 16 }} />
           <button onClick={() => setPreviewPhoto(null)} style={{ position: 'fixed', top: 'calc(16px + env(safe-area-inset-top))', right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 12, padding: 10, color: '#fff', cursor: 'pointer', lineHeight: 0 }}>
             <X size={18} />
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Accept modal ── */}
-      {showAdd && (
+      {showAdd && ReactDOM.createPortal(
         <div onClick={() => !saving && setShowAdd(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: 'var(--bg-card)', borderRadius: 20, border: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '90dvh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -377,11 +500,12 @@ const LostItemsPage = () => {
               <Check size={16} /> {saving ? 'Сохранение…' : 'Принято'}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Return modal ── */}
-      {returnItem && (
+      {returnItem && ReactDOM.createPortal(
         <div onClick={() => !returning && setReturnItem(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: 'var(--bg-card)', borderRadius: 20, border: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -403,14 +527,15 @@ const LostItemsPage = () => {
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 padding: '13px', borderRadius: 14, border: 'none',
-                background: '#10b981', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer',
+                background: '#5F9C81', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer',
                 opacity: returning || !phoneValid ? 0.5 : 1,
               }}
             >
               <Check size={16} /> {returning ? 'Сохранение…' : 'Вещь возвращена'}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

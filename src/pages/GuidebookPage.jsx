@@ -686,7 +686,7 @@ const GuidebookPage = () => {
                 {isChef && !searchQuery && (
                   <button
                     onClick={openNewEditor}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: 'rgba(123,61,255,0.08)', border: '1px dashed rgba(123,61,255,0.3)', borderRadius: 14, color: 'var(--accent-purple)', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: 'rgba(125,111,179,0.08)', border: '1px dashed rgba(125,111,179,0.3)', borderRadius: 14, color: 'var(--accent-purple)', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
                   >
                     <Plus size={14} /> Добавить первую статью
                   </button>
@@ -766,7 +766,7 @@ const GuidebookPage = () => {
                     {isChef && (
                       <button
                         onClick={openNewEditor}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', background: 'rgba(123,61,255,0.06)', border: '1px dashed rgba(123,61,255,0.3)', borderRadius: 16, color: 'var(--accent-purple)', fontSize: 12, fontWeight: 800, cursor: 'pointer', width: '100%' }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', background: 'rgba(125,111,179,0.06)', border: '1px dashed rgba(125,111,179,0.3)', borderRadius: 16, color: 'var(--accent-purple)', fontSize: 12, fontWeight: 800, cursor: 'pointer', width: '100%' }}
                       >
                         <Plus size={14} /> Добавить статью
                       </button>
@@ -938,10 +938,10 @@ const GuidebookPage = () => {
             <div>
               <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Содержимое</label>
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>## Заголовок</code>{'  '}
-                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>### Подзаголовок</code>{'  '}
-                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>- Пункт списка</code>{'  '}
-                <code style={{ background: 'rgba(123,61,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>✅ / ⚠️ / ❌ Каллаут</code>
+                <code style={{ background: 'rgba(125,111,179,0.08)', padding: '1px 5px', borderRadius: 4 }}>## Заголовок</code>{'  '}
+                <code style={{ background: 'rgba(125,111,179,0.08)', padding: '1px 5px', borderRadius: 4 }}>### Подзаголовок</code>{'  '}
+                <code style={{ background: 'rgba(125,111,179,0.08)', padding: '1px 5px', borderRadius: 4 }}>- Пункт списка</code>{'  '}
+                <code style={{ background: 'rgba(125,111,179,0.08)', padding: '1px 5px', borderRadius: 4 }}>✅ / ⚠️ / ❌ Каллаут</code>
               </div>
               <textarea
                 value={editorForm.content}

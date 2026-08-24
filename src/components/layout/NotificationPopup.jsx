@@ -1,188 +1,94 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { isMobileDevice } from '../../lib/isMobile';
 import { useNotifications } from '../../store/NotificationContext';
 import { useNavigate } from 'react-router-dom';
+import { Bell } from 'lucide-react';
 
+// Маленькая плашка «Новое сообщение», выезжающая ИЗ колокольчика.
+// ПК — колокольчик справа сверху (#notification-bell-btn),
+// мобайл — колокольчик слева сверху (#notification-bell-mobile).
+// Направление выезда подстраивается: если колокольчик справа — плашка выезжает
+// влево, если слева — вправо.
 const NotificationPopup = () => {
   const { popupNotif, dismissPopup } = useNotifications();
   const navigate = useNavigate();
-  const cardRef = useRef(null);
-  const timers = useRef([]);
-
   const [notif, setNotif] = useState(null);
-  const [cardVisible, setCardVisible] = useState(false);
-  const [textVisible, setTextVisible] = useState(false);
-
+  const [shown, setShown] = useState(false);
+  const [pos, setPos] = useState({ top: 20, right: 16, side: 'right' });
+  const timers = useRef([]);
   const after = (ms, fn) => { const t = setTimeout(fn, ms); timers.current.push(t); return t; };
   const clearAll = () => { timers.current.forEach(clearTimeout); timers.current = []; };
-
-  const fly = () => {
-    const card = cardRef.current;
-    const bell = document.getElementById('notification-bell-btn');
-    if (!card || !bell) { close(); return; }
-
-    const cR = card.getBoundingClientRect();
-    const bR = bell.getBoundingClientRect();
-    const dx = (bR.left + bR.width / 2) - (cR.left + cR.width / 2);
-    const dy = (bR.top  + bR.height / 2) - (cR.top  + cR.height / 2);
-
-    card.style.transition = 'transform 0.52s cubic-bezier(0.55,0,1,0.75), opacity 0.42s ease 0.08s';
-    card.style.transform  = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.06)`;
-    card.style.opacity    = '0';
-
-    after(620, close);
-  };
-
-  const close = () => {
-    clearAll();
-    setCardVisible(false);
-    setTextVisible(false);
-    after(420, () => {
-      setNotif(null);
-      dismissPopup();
-    });
-  };
 
   useEffect(() => {
     if (!popupNotif) return;
     clearAll();
-    setCardVisible(false);
-    setTextVisible(false);
-
-    if (cardRef.current) {
-      cardRef.current.style.transition = '';
-      cardRef.current.style.transform  = '';
-      cardRef.current.style.opacity    = '';
+    const isMobile = isMobileDevice();
+    const bell = document.getElementById(isMobile ? 'notification-bell-mobile' : 'notification-bell-btn')
+      || document.getElementById('notification-bell-btn')
+      || document.getElementById('notification-bell-mobile');
+    let p;
+    if (bell) {
+      const b = bell.getBoundingClientRect();
+      const cx = b.left + b.width / 2;
+      const cy = b.top + b.height / 2;
+      if (cx > window.innerWidth / 2) {
+        p = { top: cy, right: Math.round(window.innerWidth - b.left + 8), side: 'right' };
+      } else {
+        p = { top: cy, left: Math.round(b.right + 8), side: 'left' };
+      }
+    } else {
+      p = { top: 20, right: 16, side: 'right' };
     }
-
+    setPos(p);
     setNotif(popupNotif);
-    after(80,   () => setCardVisible(true));
-    after(880,  () => setTextVisible(true));
-    after(4600, fly);
-
+    setShown(false);
+    after(40, () => setShown(true));
+    after(3600, () => { setShown(false); after(340, () => { setNotif(null); dismissPopup(); }); });
     return clearAll;
   }, [popupNotif?.id]);
 
   if (!notif) return null;
 
-  const txt = (delay = 0) => ({
-    opacity:    textVisible ? 1 : 0,
-    transform:  textVisible ? 'translateY(0)' : 'translateY(7px)',
-    transition: `opacity 0.3s ease ${delay}s, transform 0.3s ease ${delay}s`,
-  });
+  const go = () => {
+    clearAll();
+    setShown(false);
+    if (notif.ticketId) navigate(`/tickets/${notif.ticketId}`);
+    after(320, () => { setNotif(null); dismissPopup(); });
+  };
+
+  const originX = pos.side === 'right' ? 'right' : 'left';
+  const tuck = pos.side === 'right' ? '10px' : '-10px'; // старт «внутри» колокольчика
 
   return (
-    <>
-      <style>{`@keyframes hjFlip{0%{transform:rotateY(0)}40%{transform:rotateY(200deg)}72%{transform:rotateY(348deg)}100%{transform:rotateY(360deg)}}`}</style>
-
-      {/* overlay */}
-      <div style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(9,10,15,0.68)',
-        opacity: cardVisible ? 1 : 0,
-        transition: 'opacity 0.36s ease',
-        zIndex: 9990,
-        pointerEvents: cardVisible ? 'auto' : 'none',
-      }} onClick={close} />
-
-      {/* card */}
-      <div
-        ref={cardRef}
-        style={{
-          position: 'fixed', top: '50%', left: '50%',
-          width: 296,
-          background: 'var(--bg-card)',
-          border: '1px solid rgba(200,168,75,0.22)',
-          borderRadius: 22,
-          padding: '30px 22px 22px',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          boxShadow: '0 32px 72px rgba(0,0,0,0.6), 0 0 48px rgba(200,168,75,0.1)',
-          zIndex: 9991,
-          opacity:   cardVisible ? 1 : 0,
-          transform: cardVisible
-            ? 'translate(-50%,-50%) scale(1)'
-            : 'translate(-50%,-50%) scale(0.8)',
-          transition: 'opacity 0.42s ease, transform 0.42s cubic-bezier(0.34,1.5,0.64,1)',
-        }}
-      >
-        {/* HJ mark */}
-        <div style={{
-          width: 68, height: 68,
-          background: 'rgba(200,168,75,0.12)',
-          border: '1.5px solid rgba(200,168,75,0.25)',
-          borderRadius: 18,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 24, fontWeight: 900, color: '#C8A84B',
-          marginBottom: 20,
-          perspective: 600,
-        }}>
-          <span style={{
-            display: 'block',
-            transformStyle: 'preserve-3d',
-            animation: cardVisible ? 'hjFlip 0.72s cubic-bezier(0.4,0,0.2,1) forwards' : 'none',
-          }}>HJ</span>
-        </div>
-
-        {/* eyebrow */}
-        <div style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
-          textTransform: 'uppercase', color: '#C8A84B', marginBottom: 8,
-          ...txt(0),
-        }}>
-          Новое уведомление
-        </div>
-
-        {/* title */}
-        <div style={{
-          fontSize: 16, fontWeight: 600, lineHeight: 1.45,
-          textAlign: 'center', color: 'var(--text-primary)', marginBottom: 5,
-          ...txt(0.07),
-        }}>
-          {notif.title}
-        </div>
-
-        {/* description */}
-        <div style={{
-          fontSize: 12.5, color: 'var(--text-secondary)',
-          textAlign: 'center', marginBottom: 22,
-          ...txt(0.13),
-        }}>
-          {notif.description}
-        </div>
-
-        {/* action button */}
-        <button
-          onClick={() => {
-            clearAll();
-            fly();
-            if (notif.ticketId) {
-              setTimeout(() => navigate(`/tickets/${notif.ticketId}`), 80);
-            }
-          }}
-          style={{
-            width: '100%', padding: '11px 0',
-            background: '#C8A84B', color: '#080600',
-            fontSize: 13.5, fontWeight: 700, letterSpacing: '0.04em',
-            border: 'none', borderRadius: 12, cursor: 'pointer',
-            ...txt(0.18),
-          }}
-        >
-          {notif.ticketId ? 'Открыть заявку' : 'Посмотреть'}
-        </button>
-
-        {/* dismiss */}
-        <button
-          onClick={() => { clearAll(); fly(); }}
-          style={{
-            marginTop: 10, fontSize: 12,
-            color: 'var(--text-muted)',
-            background: 'none', border: 'none', cursor: 'pointer',
-            ...txt(0.24),
-          }}
-        >
-          Закрыть
-        </button>
-      </div>
-    </>
+    <div
+      onClick={go}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        ...(pos.side === 'right' ? { right: pos.right } : { left: pos.left }),
+        transform: shown
+          ? 'translateY(-50%) translateX(0) scale(1)'
+          : `translateY(-50%) translateX(${tuck}) scale(0.5)`,
+        transformOrigin: `${originX} center`,
+        opacity: shown ? 1 : 0,
+        transition: 'opacity 0.3s ease, transform 0.42s cubic-bezier(0.34,1.45,0.6,1)',
+        zIndex: 9995,
+        display: 'flex', alignItems: 'center', gap: 8,
+        background: 'var(--bg-card)',
+        border: '1px solid rgba(200,168,75,0.4)',
+        color: 'var(--text-primary)',
+        borderRadius: 999,
+        padding: '8px 15px 8px 9px',
+        boxShadow: '0 10px 26px rgba(0,0,0,0.4)',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span style={{ display: 'flex', width: 24, height: 24, borderRadius: '50%', background: 'rgba(200,168,75,0.16)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Bell size={14} style={{ color: '#C8A84B' }} />
+      </span>
+      <span style={{ fontSize: 13, fontWeight: 700 }}>Новое сообщение</span>
+    </div>
   );
 };
 

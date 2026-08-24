@@ -33,7 +33,16 @@ async function attachDenoiser(audioTrack) {
     const processor = denoiserExt.createProcessor();
     audioTrack.pipe(processor).pipe(audioTrack.processorDestination);
     await processor.enable();
-    console.log('[denoiser] ИИ-шумоподавление включено');
+    // Мягкий режим — чтобы ИИ не «съедал» голос и не делал его роботизированным
+    try { await processor.setLevel?.('SOFT'); } catch {}
+    try { await processor.setMode?.('NSNG'); } catch {}
+    // Если устройство не тянет обработку (слабый телефон) — авто-отключаем шумодав,
+    // иначе голос звучит как робот. Лучше лёгкий фон, чем искажённая речь.
+    processor.onoverload = async () => {
+      console.warn('[denoiser] перегрузка — отключаю ИИ-шумодав, остаётся браузерный ANS');
+      try { await processor.disable(); } catch {}
+    };
+    console.log('[denoiser] ИИ-шумоподавление включено (мягкий режим)');
     return processor;
   } catch (e) {
     console.warn('[denoiser] enable failed, используем браузерный ANS:', e);
@@ -136,7 +145,7 @@ export const CallProvider = ({ children }) => {
   };
 
   // ─── Join ───────────────────────────────────────────────────────────────────
-  const joinCall = async (displayName) => {
+  const joinCall = async (displayName, opts = {}) => {
     // Повторный клик по «войти» (или клик во время подключения) молча игнорируем —
     // раньше это приводило к ошибкам «client already connecting»
     if (joiningRef.current || isInCall) return;
@@ -146,7 +155,9 @@ export const CallProvider = ({ children }) => {
     let createdAudioTrack = null;
     let createdVideoTrack = null;
     try {
-      const channel = getChannel(displayName);
+      // Приватный созвон приходит со своим уникальным каналом — посторонние
+      // через общий зал в него не попадут
+      const channel = opts.channel || getChannel(displayName);
       channelRef.current = channel;
 
       setRoomName(displayName);
@@ -197,6 +208,16 @@ export const CallProvider = ({ children }) => {
             u.uid === user.uid ? { ...u, audioTrack: null } : u
           ));
         }
+      });
+
+      // ── Remote user joined (ещё до публикации медиа) — показываем плитку сразу,
+      //     чтобы участник без камеры/звука был виден в списке ──
+      clientRef.current.on('user-joined', (u) => {
+        const isScreen = typeof u.uid === 'string' && u.uid.endsWith('_screen');
+        if (isScreen) return;
+        setRemoteUsers(prev => prev.find(x => x.uid === u.uid)
+          ? prev
+          : [...prev, { uid: u.uid, videoTrack: null, audioTrack: null, isScreen: false }]);
       });
 
       // ── Remote user left ──
@@ -367,6 +388,35 @@ export const CallProvider = ({ children }) => {
     setIsScreenSharing(false);
   };
 
+  // ─── Повторное подключение микрофона (вошли слушателем / браузер не дал доступ)
+  const retryMic = async () => {
+    if (!clientRef.current || !channelRef.current) return false;
+    if (localAudioTrack) return true;
+    try {
+      const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        encoderConfig: 'speech_standard', AEC: true, ANS: true, AGC: true,
+      });
+      denoiserRef.current = await attachDenoiser(audioTrack);
+      await clientRef.current.publish([audioTrack]);
+      setLocalAudioTrack(audioTrack);
+      toast.success('Микрофон подключён — теперь вас слышно');
+      return true;
+    } catch (e) {
+      console.error('[CallContext] retryMic error:', e);
+      const errStr = String(e);
+      if (errStr.includes('NotAllowed') || errStr.includes('Permission denied') || e?.code === 'PERMISSION_DENIED') {
+        toast.error('Браузер блокирует микрофон. Нажмите на замочек в адресной строке → Микрофон → Разрешить, затем попробуйте снова.', { duration: 9000 });
+      } else if (errStr.includes('NotFound') || e?.code === 'DEVICE_NOT_FOUND') {
+        toast.error('Микрофон не найден — проверьте, что он подключён и выбран в системе.', { duration: 8000 });
+      } else if (errStr.includes('NotReadable') || errStr.includes('DEVICE_IN_USE')) {
+        toast.error('Микрофон занят другой программой (Zoom, WhatsApp, диктофон). Закройте её и нажмите ещё раз.', { duration: 9000 });
+      } else {
+        toast.error('Не удалось подключить микрофон: ' + (e?.message || 'неизвестная ошибка'));
+      }
+      return false;
+    }
+  };
+
   // ─── Leave ──────────────────────────────────────────────────────────────────
   const leaveCall = async () => {
     if (leavingRef.current) return; // двойной клик по «Завершить»
@@ -414,7 +464,7 @@ export const CallProvider = ({ children }) => {
     <CallContext.Provider value={{
       isInCall, isJoining, isScreenSharing, roomName, remoteUsers,
       localVideoTrack, localAudioTrack, screenTrack, roomCounts,
-      joinCall, leaveCall, toggleScreenShare,
+      joinCall, leaveCall, toggleScreenShare, retryMic,
     }}>
       {children}
     </CallContext.Provider>

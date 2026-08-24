@@ -24,14 +24,15 @@
     "react-indiana-drag-scroll": "^2.2.1",
     "react-router-dom": "^7.14.2",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "@whiskeysockets/baileys": "^7.0.0-rc13",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "autoprefixer": "^10.4.19",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",

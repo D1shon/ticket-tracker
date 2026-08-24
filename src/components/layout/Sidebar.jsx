@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { isMobileDevice } from '../../lib/isMobile';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Ticket, CheckSquare, Calendar,
+  LayoutDashboard, Ticket, CheckSquare, Calendar, CalendarDays,
   Archive, Phone, Settings, LogOut, Sun, Moon, Bell, MapPin,
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
-  ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target
+  ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
+  MonitorSmartphone, Home, Plus
 } from 'lucide-react';
+import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
 import { useTickets } from '../../store/TicketContext';
+import { showStaffNav } from '../../lib/access';
 import { db } from '../../lib/firebase';
 import { doc, collection, query, where, onSnapshot } from 'firebase/firestore';
 
@@ -58,26 +62,37 @@ const useNewsAlert = (role) => {
   }, []);
   useEffect(() => {
     return onSnapshot(collection(db, 'news_posts'), snap => {
-      let max = '';
+      // Свежесть считаем ПО ВКЛАДКАМ: общая / менеджерам / отделу продаж —
+      // точка горит, пока не открыта КАЖДАЯ вкладка с новым постом.
+      let general = '', managers = '', sales = '';
       snap.docs.forEach(d => {
         const data = d.data();
-        if (data.audience === 'managers' && !canSeeManagers) return;
-        if (data.audience === 'sales' && !canSeeSales) return;
         const t = data.postedAtISO || '';
-        if (t > max) max = t;
+        if (data.audience === 'managers') { if (canSeeManagers && t > managers) managers = t; }
+        else if (data.audience === 'sales') { if (canSeeSales && t > sales) sales = t; }
+        else if (t > general) general = t;
       });
-      setLatest(max || null);
+      setLatest({ general, managers, sales });
     }, () => setLatest(null));
   }, [canSeeManagers, canSeeSales]);
-  let seen = '';
-  try { seen = localStorage.getItem('hj_news_seen') || ''; } catch {}
   void seenTick;
-  return !!latest && latest > seen;
+  const seenOf = (key) => {
+    try {
+      const marker = localStorage.getItem(key) || '';
+      const legacy = localStorage.getItem('hj_news_seen') || ''; // старая общая отметка (миграция)
+      return marker > legacy ? marker : legacy;
+    } catch { return ''; }
+  };
+  if (!latest) return false;
+  return (!!latest.general && latest.general > seenOf('hj_news_seen_tab_all'))
+    || (!!latest.managers && latest.managers > seenOf('hj_news_seen_tab_managers'))
+    || (!!latest.sales && latest.sales > seenOf('hj_news_seen_tab_sales'));
 };
 
 /* ─── All nav items ──────────────────────────────────────────── */
 const ALL_NAV = [
   { icon: Newspaper,       label: 'Новости',      path: '/news',        primary: true  },
+  { icon: RefreshCw,       label: 'Доска задач',  path: '/shift-board', primary: true  },
   { icon: Ticket,          label: 'Заявки',     path: '/tickets',     primary: true  },
   { icon: Calendar,        label: 'График',      path: '/schedule',    primary: true  },
   { icon: CheckSquare,     label: 'Чек-листы',  path: '/checklists',  primary: true  },
@@ -89,7 +104,13 @@ const ALL_NAV = [
   { icon: Shirt,           label: 'Учет полотенец', path: '/towels',   primary: false },
   { icon: ShoppingBag,     label: 'Утерянные вещи', path: '/lost-items', primary: false },
   { icon: Star,            label: 'Отзывы',       path: '/reviews',     primary: false },
+  { icon: QrCode,          label: 'QR-отзывы',    path: '/qr-reviews',  primary: false },
   { icon: Target,          label: 'Лиды',         path: '/leads',       primary: false },
+  { icon: Sparkles,        label: 'Помощник',     path: '/assistant',   primary: false },
+  { icon: UserPlus,        label: 'Сотрудники',   path: '/staff',       primary: false },
+  { icon: CalendarDays,    label: 'Календарь',   path: '/calendar',    primary: false },
+  { icon: MonitorSmartphone, label: 'InStudio',  path: '/instudio',    primary: false },
+  { icon: BarChart2,       label: 'Посещения',   path: '/club-visits', primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
@@ -99,8 +120,8 @@ const ALL_NAV = [
 
 /* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
 const NAV_GROUPS = [
-  { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/archive', '/dashboard', '/merch'] },
-  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/towels', '/lost-items', '/attendance', '/guidebook', '/leads'] },
+  { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/archive', '/merch'] },
+  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/leads', '/assistant'] },
 ];
 const groupOf = (path) => NAV_GROUPS.find(g => g.paths.includes(path));
 
@@ -108,17 +129,19 @@ const useNavGroups = () => {
   const [openGroups, setOpenGroups] = useState(() => {
     try { return JSON.parse(localStorage.getItem('hj_nav_groups') || '{}'); } catch { return {}; }
   });
-  const toggleGroup = (id) => setOpenGroups(prev => {
-    const next = { ...prev, [id]: !prev[id] };
+  // Явно задаём состояние группы (открыть/закрыть). Выбор пользователя сохраняется
+  // и уважается даже когда открыта страница внутри группы — тогда её можно свернуть.
+  const setGroupOpen = (id, val) => setOpenGroups(prev => {
+    const next = { ...prev, [id]: val };
     try { localStorage.setItem('hj_nav_groups', JSON.stringify(next)); } catch {}
     return next;
   });
-  return [openGroups, toggleGroup];
+  return [openGroups, setGroupOpen];
 };
 
 /* ─── Desktop Sidebar ────────────────────────────────────────── */
 const DesktopSidebar = () => {
-  const { user, logout } = useTickets();
+  const { user, logout, switchClub } = useTickets();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(() => localStorage.getItem('hjtrack-theme') === 'dark');
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
@@ -151,26 +174,35 @@ const DesktopSidebar = () => {
   const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads']);
 
   const allowedNav = ALL_NAV.filter(item => {
+    if (item.path === '/staff') return showStaffNav(user); // только реальный РОП; у шефа — в Настройках
+    // Техник (tech): только Чек-листы и InStudio, по всем клубам
+    if (user?.role === 'tech') return item.path === '/checklists' || item.path === '/instudio';
+    // Наблюдатель «Утерянные вещи»: только эта вкладка, просмотр
+    if (user?.role === 'lostviewer') return item.path === '/lost-items';
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads';
+      // Чек-листы — только админам Europe City
+      if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
-      return item.path === '/merch' || item.path === '/policy';
+      return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'komdir' || user?.role === 'rop') {
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/leads' || item.path === '/lost-items';
+      // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
+      if (item.path === '/shift-board') return true;
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN.has(item.path);
     }
     // У менеджеров «Соглашение» живёт в Настройках
-    if (user?.role === 'manager' && item.path === '/policy') return false;
+    if (user?.role === 'manager' && (item.path === '/policy' || item.path === '/qr-reviews')) return false;
     return true;
   });
 
   // Группировка шторками — только у шефов и менеджеров
   const useGrouping = user?.role === 'chef' || user?.role === 'manager';
-  const [openGroups, toggleGroup] = useNavGroups();
+  const [openGroups, setGroupOpen] = useNavGroups();
   const location = useLocation();
 
   const renderItem = (item, indent = false) => {
@@ -178,23 +210,24 @@ const DesktopSidebar = () => {
     const isMonitorAlert = item.path === '/hr-monitors'  && monitorAlert;
     const isAlerted      = isTowelAlert || isMonitorAlert;
     const isNewsAlert    = item.path === '/news' && newsAlert;
+
     return (
       <NavLink
         key={item.path}
         to={item.path}
         className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
         style={{
-          ...(isAlerted ? { boxShadow: '0 0 0 1.5px #ef4444', borderRadius: 10, position: 'relative' } : {}),
+          ...(isAlerted ? { boxShadow: '0 0 0 1.5px #B06A6A', borderRadius: 10, position: 'relative' } : {}),
           ...(indent ? { paddingLeft: 34 } : {}),
         }}
       >
         <item.icon size={17} strokeWidth={1.8} />
         <span>{item.label}</span>
         {isAlerted && (
-          <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0, boxShadow: '0 0 6px #ef4444' }} />
+          <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#B06A6A', flexShrink: 0, boxShadow: '0 0 6px #B06A6A' }} />
         )}
         {isNewsAlert && (
-          <span style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, boxShadow: '0 0 6px #22c55e' }} />
+          <span style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#5F9C81', flexShrink: 0, boxShadow: '0 0 6px #5F9C81' }} />
         )}
       </NavLink>
     );
@@ -205,7 +238,9 @@ const DesktopSidebar = () => {
     : [];
   const ungrouped = useGrouping ? allowedNav.filter(i => !groupOf(i.path)) : allowedNav;
   const newsItem = ungrouped.find(i => i.path === '/news');
-  const restItems = ungrouped.filter(i => i.path !== '/news');
+  const boardItem = ungrouped.find(i => i.path === '/shift-board');
+  const dashItem = ungrouped.find(i => i.path === '/dashboard'); // Дашборд — сразу под «Доска задач»
+  const restItems = ungrouped.filter(i => i.path !== '/news' && i.path !== '/shift-board' && i.path !== '/dashboard');
 
   return (
     <aside className="sidebar">
@@ -213,25 +248,40 @@ const DesktopSidebar = () => {
         <div className="logo-text">HJTRACK</div>
       </div>
 
+      {/* Переключатель клуба для мультиклубного менеджера */}
+      {user?.clubs?.length > 1 && (
+        <div style={{ padding: '4px 12px 8px' }}>
+          <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6, paddingLeft: 2 }}>Клуб</div>
+          <div style={{ display: 'flex', gap: 4, background: 'var(--bg-hover)', borderRadius: 10, padding: 3 }}>
+            {user.clubs.map(c => (
+              <button key={c} onClick={() => switchClub(c)} style={{ flex: 1, padding: '7px 4px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap', background: user.club === c ? 'var(--accent-purple)' : 'transparent', color: user.club === c ? '#fff' : 'var(--text-muted)' }}>{c}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <nav style={{ flex: 1, paddingTop: 8 }}>
         {newsItem && renderItem(newsItem)}
+        {boardItem && renderItem(boardItem)}
+        {dashItem && renderItem(dashItem)}
 
         {groups.map(g => {
           const active = g.paths.includes(location.pathname);
-          const open = !!openGroups[g.id] || active;
+          // Явный выбор пользователя (если группу уже сворачивали/раскрывали) важнее авто-раскрытия
+          const open = (g.id in openGroups) ? !!openGroups[g.id] : active;
           const groupAlert = g.paths.includes('/towels') && towelAlert || g.paths.includes('/hr-monitors') && monitorAlert;
           const GIcon = g.icon;
           return (
             <div key={g.id}>
               <button
-                onClick={() => toggleGroup(g.id)}
+                onClick={() => setGroupOpen(g.id, !open)}
                 className="nav-item"
                 style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
               >
                 <GIcon size={17} strokeWidth={1.8} />
                 <span style={{ fontWeight: 700 }}>{g.label}</span>
                 {groupAlert && !open && (
-                  <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0, boxShadow: '0 0 6px #ef4444' }} />
+                  <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#B06A6A', flexShrink: 0, boxShadow: '0 0 6px #B06A6A' }} />
                 )}
                 <ChevronDownIcon size={14} style={{ marginLeft: groupAlert && !open ? 6 : 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0, opacity: 0.6 }} />
               </button>
@@ -244,54 +294,11 @@ const DesktopSidebar = () => {
       </nav>
 
       <div style={{ borderTop: '1px solid var(--sidebar-border)', paddingTop: 4, paddingBottom: 8, position: 'relative' }}>
-      {user?.role !== 'admin' && (
-        <button
-          className={`nav-item ${showNotifications ? 'active' : ''}`}
-          onClick={() => {
-            setShowNotifications(!showNotifications);
-            if (!showNotifications && unreadCount > 0) setTimeout(markAllRead, 800);
-          }}
-          style={{ width: '100%', justifyContent: 'flex-start' }}
-        >
-          <div style={{ position: 'relative' }}>
-            <Bell size={17} strokeWidth={1.8} />
-            {unreadCount > 0 && (
-              <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', fontSize: 9, width: 14, height: 14, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {unreadCount}
-              </span>
-            )}
-          </div>
-          <span>Уведомления</span>
-        </button>
-      )}
-
-        {user?.role !== 'admin' && showNotifications && (
-          <div style={{ position: 'absolute', left: 230, bottom: 40, width: 320, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.2)', zIndex: 100, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 'bold', fontSize: 13, color: 'var(--text-primary)' }}>Новые сообщения</div>
-            <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-              {notifications.slice(0, 10).map(n => {
-                const isUnread = !readIds?.has?.(n.id);
-                return (
-                  <div key={n.id} onClick={() => { markRead(n.id); if (n.ticketId) navigate(`/tickets/${n.ticketId}`); setShowNotifications(false); }}
-                    style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', cursor: n.ticketId ? 'pointer' : 'default', background: isUnread ? 'rgba(123,61,255,0.06)' : 'transparent' }}>
-                    <p style={{ fontSize: 12, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.4 }}>
-                      <span style={{ fontWeight: isUnread ? 700 : 500 }}>{n.title}</span><br />
-                      <span style={{ color: 'var(--text-secondary)' }}>{n.description}</span>
-                    </p>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{timeAgo(n.createdAt)}</span>
-                  </div>
-                );
-              })}
-              {notifications.length === 0 && (
-                <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Нет новых уведомлений</div>
-              )}
-            </div>
-          </div>
-        )}
+        <DailyReport />
 
         <button className="theme-toggle" onClick={() => setIsDark(d => !d)}>
           {isDark
-            ? <Moon size={17} strokeWidth={1.8} style={{ color: '#7B3DFF', flexShrink: 0 }} />
+            ? <Moon size={17} strokeWidth={1.8} style={{ color: '#7D6FB3', flexShrink: 0 }} />
             : <Sun  size={17} strokeWidth={1.8} style={{ color: '#FB8F41', flexShrink: 0 }} />
           }
           <span style={{ flex: 1 }}>{isDark ? 'Тёмная' : 'Светлая'}</span>
@@ -313,7 +320,7 @@ const DesktopSidebar = () => {
 
 /* ─── Mobile Layout ──────────────────────────────────────────── */
 const MobileNav = () => {
-  const { user, logout } = useTickets();
+  const { user, logout, switchClub } = useTickets();
   const navigate = useNavigate();
   const location = useLocation();
   const { notifications, readIds, unreadCount, markRead, markAllRead } = useNotifications();
@@ -322,8 +329,9 @@ const MobileNav = () => {
   const towelAlert   = useTowelAlert(_alertClubM);
   const monitorAlert = useMonitorAlert(_alertClubM);
   const newsAlert    = useNewsAlert(user?.role);
-  const [openGroupsM, toggleGroupM] = useNavGroups();
+  const [openGroupsM, setGroupOpenM] = useNavGroups();
   const [showMore, setShowMore] = useState(false);
+  const [showCreate, setShowCreate] = useState(false); // шторка «+» (быстрое создание)
   const [showNotifications, setShowNotifications] = useState(false);
   const [reloading, setReloading] = useState(false);
 
@@ -350,8 +358,8 @@ const MobileNav = () => {
     const checkStatus = () => {
       const now = new Date();
       const isFriday = now.getDay() === 5; // 5 is Friday
-      const isBeforeSevenPM = now.getHours() < 19; // Stay visible until 19:00
-      setIsDemoDayActive(isFriday && isBeforeSevenPM);
+      const isVisibleWindow = now.getHours() < 20; // Stay visible until 20:00
+      setIsDemoDayActive(isFriday && isVisibleWindow);
     };
     checkStatus();
     const interval = setInterval(checkStatus, 60000);
@@ -394,36 +402,61 @@ const MobileNav = () => {
   const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads']);
 
   const allowedNav = ALL_NAV.filter(item => {
+    if (item.path === '/staff') return showStaffNav(user); // только реальный РОП; у шефа — в Настройках
+    // Техник (tech): только Чек-листы и InStudio, по всем клубам
+    if (user?.role === 'tech') return item.path === '/checklists' || item.path === '/instudio';
+    // Наблюдатель «Утерянные вещи»: только эта вкладка, просмотр
+    if (user?.role === 'lostviewer') return item.path === '/lost-items';
     if (user?.role === 'admin') {
-      return item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads';
+      // Чек-листы — только админам Europe City
+      if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
-      return item.path === '/merch' || item.path === '/policy';
+      return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'komdir' || user?.role === 'rop') {
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/leads' || item.path === '/lost-items';
+      // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
+      if (item.path === '/shift-board') return true;
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN_M.has(item.path);
     }
     // У менеджеров «Соглашение» живёт в Настройках
-    if (user?.role === 'manager' && item.path === '/policy') return false;
+    if (user?.role === 'manager' && (item.path === '/policy' || item.path === '/qr-reviews')) return false;
     return true;
   });
 
-  // Bottom nav: 4 primary tabs + "More" button
-  const primaryTabs = allowedNav.filter(n => n.primary);
-  const secondaryItems = allowedNav.filter(n => !n.primary);
+  // ── Новый формат: Главная · [2 главных раздела роли] · (+) · Ещё ──
+  // Кандидаты в главные табы по приоритету; берём первые два доступных роли
+  const MAIN_TAB_CANDIDATES = ['/tickets', '/shift-board', '/checklists', '/instudio', '/merch', '/news'];
+  const allowedPaths = new Set(allowedNav.map(n => n.path));
+  const mainTabPaths = MAIN_TAB_CANDIDATES.filter(p => allowedPaths.has(p)).slice(0, 2);
+  const primaryTabs = mainTabPaths.map(p => allowedNav.find(n => n.path === p)).filter(Boolean);
+  // Всё остальное — в «Ещё»
+  const secondaryItems = allowedNav.filter(n => !mainTabPaths.includes(n.path));
 
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
   const handleTabClick = (path) => {
     setShowMore(false);
+    setShowCreate(false);
     setShowNotifications(false);
     navigate(path);
   };
 
   const isMoreActive = secondaryItems.some(i => isActive(i.path));
+
+  // Кнопка «+»: быстрые действия создания (фильтруются по доступам роли)
+  const todayKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const CREATE_ACTIONS = [
+    { path: '/tickets', to: '/tickets?create=1', icon: Ticket, color: '#5580A8', title: 'Заявку', sub: 'поломка, задача — в работу с таймером' },
+    { path: '/shift-board', to: '/shift-board?create=1', icon: RefreshCw, color: '#C08F4F', title: 'Запись на доску задач', sub: 'передача смены, поручение, неисправность' },
+    { path: '/instudio', to: '/instudio?create=1', icon: MonitorSmartphone, color: '#B06A6A', title: 'Заявку InStudio', sub: 'техника и софт — разработчикам' },
+    { path: '/checklists', to: '/checklists?view=report', icon: CheckSquare, color: '#5F9C81', title: 'Отчёт дня', sub: 'события смены или «всё хорошо»' },
+    { path: '/calendar', to: `/calendar/${todayKey}`, icon: CalendarDays, color: '#7D6FB3', title: 'Событие в календарь', sub: 'оплата, ТО, подрядчик' },
+  ].filter(a => allowedPaths.has(a.path));
 
   return (
     <>
@@ -446,12 +479,13 @@ const MobileNav = () => {
           {/* Notification bell */}
           {user?.role !== 'admin' && (
             <button
+              id="notification-bell-mobile"
               onClick={() => { setShowMore(false); setShowNotifications(v => !v); if (!showNotifications && unreadCount > 0) setTimeout(markAllRead, 800); }}
               style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: 'var(--text-secondary)' }}
             >
               <Bell size={20} strokeWidth={1.8} />
               {unreadCount > 0 && (
-                <span style={{ position: 'absolute', top: 4, right: 4, background: '#ef4444', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+                <span style={{ position: 'absolute', top: 4, right: 4, background: '#B06A6A', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -460,6 +494,16 @@ const MobileNav = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Переключатель клуба (мультиклубный менеджер) — тап переключает на другой клуб */}
+          {user?.clubs?.length > 1 && (
+            <button
+              onClick={() => { const i = user.clubs.indexOf(user.club); switchClub(user.clubs[(i + 1) % user.clubs.length]); }}
+              title="Переключить клуб"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 9, border: '1px solid var(--accent-purple)', background: 'rgba(125,111,179,0.12)', color: 'var(--accent-purple)', fontSize: 10, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              <RefreshCw size={11} /> {user.club}
+            </button>
+          )}
           {/* Demo Day Link in Header */}
           {isDemoDayActive && (
             <a
@@ -482,7 +526,7 @@ const MobileNav = () => {
                 animation: 'pulse-header-border 2s infinite',
               }}
             >
-              <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#a855f7', animation: 'pulse-header-dot 1.5s infinite' }}></span>
+              <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#8E7BB8', animation: 'pulse-header-dot 1.5s infinite' }}></span>
               DEMO DAY 18:00
             </a>
           )}
@@ -516,37 +560,53 @@ const MobileNav = () => {
         backdropFilter: 'blur(16px)',
         boxShadow: '0 -4px 24px rgba(0,0,0,0.12)',
       }}>
-        {primaryTabs.map(item => {
-          const active = isActive(item.path);
-          const isNewsTab = item.path === '/news' && newsAlert;
-          return (
+        {/* Главная */}
+        <button
+          onClick={() => handleTabClick('/home')}
+          style={{
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 3, border: 'none', background: 'transparent', cursor: 'pointer',
+            color: isActive('/home') ? 'var(--accent-purple)' : 'var(--text-muted)', transition: 'color 0.2s', position: 'relative',
+          }}
+        >
+          {isActive('/home') && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />}
+          <Home size={isActive('/home') ? 22 : 20} strokeWidth={isActive('/home') ? 2.2 : 1.8} />
+          <span style={{ fontSize: 9, fontWeight: isActive('/home') ? 800 : 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Главная</span>
+        </button>
+
+        {primaryTabs[0] && (() => { const item = primaryTabs[0]; const active = isActive(item.path); return (
+          <button key={item.path} onClick={() => handleTabClick(item.path)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, border: 'none', background: 'transparent', cursor: 'pointer', color: active ? 'var(--accent-purple)' : 'var(--text-muted)', transition: 'color 0.2s', position: 'relative' }}>
+            {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />}
+            <item.icon size={active ? 22 : 20} strokeWidth={active ? 2.2 : 1.8} />
+            <span style={{ fontSize: 9, fontWeight: active ? 800 : 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>{item.label}</span>
+          </button>
+        ); })()}
+
+        {/* Кнопка «+» — быстрое создание */}
+        {CREATE_ACTIONS.length > 0 && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
             <button
-              key={item.path}
-              onClick={() => handleTabClick(item.path)}
+              onClick={() => { setShowMore(false); setShowNotifications(false); setShowCreate(v => !v); }}
               style={{
-                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center',
-                gap: 3, border: 'none', background: 'transparent', cursor: 'pointer',
-                color: active ? 'var(--accent-purple)' : isNewsTab ? '#22c55e' : 'var(--text-muted)',
-                transition: 'color 0.2s',
-                position: 'relative',
+                width: 52, height: 52, borderRadius: '50%', marginTop: -20,
+                background: 'var(--accent-purple)', color: '#fff', border: '3px solid var(--bg-card)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                boxShadow: '0 8px 20px rgba(125,111,179,0.45)',
+                transform: showCreate ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s',
               }}
             >
-              {active && (
-                <div style={{
-                  position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
-                  width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px',
-                }} />
-              )}
-              {isNewsTab && (
-                <span style={{ position: 'absolute', top: 7, right: 'calc(50% - 16px)', width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' }} />
-              )}
-              <item.icon size={active ? 22 : 20} strokeWidth={active ? 2.2 : 1.8} />
-              <span style={{ fontSize: 9, fontWeight: active ? 800 : 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                {item.label}
-              </span>
+              <Plus size={26} strokeWidth={2.4} />
             </button>
-          );
-        })}
+          </div>
+        )}
+
+        {primaryTabs[1] && (() => { const item = primaryTabs[1]; const active = isActive(item.path); return (
+          <button key={item.path} onClick={() => handleTabClick(item.path)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, border: 'none', background: 'transparent', cursor: 'pointer', color: active ? 'var(--accent-purple)' : 'var(--text-muted)', transition: 'color 0.2s', position: 'relative' }}>
+            {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />}
+            <item.icon size={active ? 22 : 20} strokeWidth={active ? 2.2 : 1.8} />
+            <span style={{ fontSize: 9, fontWeight: active ? 800 : 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>{item.label}</span>
+          </button>
+        ); })()}
 
         {/* "More" tab */}
         {secondaryItems.length > 0 && (
@@ -563,16 +623,54 @@ const MobileNav = () => {
               <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 32, height: 3, background: 'var(--accent-purple)', borderRadius: '0 0 4px 4px' }} />
             )}
             {newsAlert && secondaryItems.some(i => i.path === '/news') && !(towelAlert || monitorAlert) && (
-              <span style={{ position: 'absolute', top: 6, right: 'calc(50% - 14px)', width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' }} />
+              <span style={{ position: 'absolute', top: 6, right: 'calc(50% - 14px)', width: 7, height: 7, borderRadius: '50%', background: '#5F9C81', boxShadow: '0 0 6px #5F9C81' }} />
             )}
             {(towelAlert && secondaryItems.some(i => i.path === '/towels') || monitorAlert && secondaryItems.some(i => i.path === '/hr-monitors')) && (
-              <span style={{ position: 'absolute', top: 6, right: 'calc(50% - 14px)', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />
+              <span style={{ position: 'absolute', top: 6, right: 'calc(50% - 14px)', width: 7, height: 7, borderRadius: '50%', background: '#B06A6A', boxShadow: '0 0 6px #B06A6A' }} />
             )}
             <MoreHorizontal size={20} strokeWidth={1.8} />
             <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Ещё</span>
           </button>
         )}
       </div>
+
+      {/* ── Шторка «+» — быстрое создание ── */}
+      {showCreate && (
+        <>
+          <div onClick={() => setShowCreate(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', zIndex: 300 }} />
+          <div style={{
+            position: 'fixed', bottom: 'calc(64px + env(safe-area-inset-bottom))', left: 0, right: 0,
+            background: 'var(--bg-card)', borderRadius: '20px 20px 0 0', border: '1px solid var(--border)', borderBottom: 'none',
+            zIndex: 301, padding: '12px 8px 10px', boxShadow: '0 -8px 40px rgba(0,0,0,0.25)',
+            animation: 'slideUp 0.22s cubic-bezier(0.4,0,0.2,1)',
+          }}>
+            <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 10px' }} />
+            <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', padding: '0 16px 10px' }}>Создать</div>
+            {CREATE_ACTIONS.map(a => {
+              const AIcon = a.icon;
+              return (
+                <button
+                  key={a.title}
+                  onClick={() => { setShowCreate(false); navigate(a.to); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 13, padding: '12px 16px',
+                    background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <span style={{ width: 38, height: 38, borderRadius: 12, background: `${a.color}1c`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <AIcon size={18} style={{ color: a.color }} />
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: 'var(--text-primary)' }}>{a.title}</span>
+                    <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1 }}>{a.sub}</span>
+                  </span>
+                  <ChevronRight size={16} style={{ marginLeft: 'auto', color: 'var(--text-muted)', flexShrink: 0 }} />
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* ── "More" Bottom Sheet ── */}
       {showMore && (
@@ -600,74 +698,82 @@ const MobileNav = () => {
             <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
 
             {(() => {
-              const useGrouping = user?.role === 'chef' || user?.role === 'manager';
-              const sheetGroups = useGrouping
-                ? NAV_GROUPS.map(g => ({ ...g, items: secondaryItems.filter(i => g.paths.includes(i.path)) })).filter(g => g.items.length)
-                : [];
-              const sheetRest = useGrouping ? secondaryItems.filter(i => !groupOf(i.path)) : secondaryItems;
+              // ── Новый визуал «Ещё»: плитки с подписями по секциям ──
+              const META = {
+                '/schedule':    { sub: 'смены и зарплата', sect: 1 },
+                '/checklists':  { sub: 'проверки и отчёт дня', sect: 1 },
+                '/news':        { sub: 'обновления и анонсы', sect: 1 },
+                '/attendance':  { sub: 'отметки прихода', sect: 1 },
+                '/shift-board': { sub: 'записи смены', sect: 1 },
+                '/tickets':     { sub: 'задачи с таймером', sect: 1 },
+                '/merch':       { sub: 'мерч: склад и учёт', sect: 2 },
+                '/sales':       { sub: 'продажа мерча', sect: 2 },
+                '/hr-monitors': { sub: 'проверка датчиков', sect: 2 },
+                '/towels':      { sub: 'учёт полотенец', sect: 2 },
+                '/lost-items':  { sub: 'находки и возвраты', sect: 2 },
+                '/calendar':    { sub: 'оплаты, ТО, подрядчики', sect: 2 },
+                '/instudio':    { sub: 'техника — разработчикам', sect: 2 },
+                '/club-visits': { sub: 'посещения атлетов', sect: 2 },
+                '/reviews':     { sub: '2ГИС и другие', sect: 2 },
+                '/qr-reviews':  { sub: 'QR-стойки в залах', sect: 2 },
+                '/leads':       { sub: 'лиды WhatsApp', sect: 2 },
+                '/dashboard':   { sub: 'сводка и метрики', sect: 2 },
+                '/archive':     { sub: 'закрытые заявки', sect: 2 },
+                '/calls':       { sub: 'видеосвязь', sect: 3 },
+                '/guidebook':   { sub: 'база знаний', sect: 3 },
+                '/policy':      { sub: 'правила платформы', sect: 3 },
+                '/assistant':   { sub: 'ИИ по гайдбуку', sect: 3 },
+                '/staff':       { sub: 'аккаунты МОП', sect: 3 },
+                '/settings':    { sub: 'профиль и push', sect: 3 },
+              };
+              const SECTIONS = [[1, 'Каждый день'], [2, 'Работа клуба'], [3, 'Прочее']];
 
-              const renderRow = (item, indent = false) => {
-                const active   = isActive(item.path);
-                const isAl     = (item.path === '/towels' && towelAlert) || (item.path === '/hr-monitors' && monitorAlert);
-                const isNews   = item.path === '/news' && newsAlert;
+              const Tile = ({ item }) => {
+                const active = isActive(item.path);
+                const isAl   = (item.path === '/towels' && towelAlert) || (item.path === '/hr-monitors' && monitorAlert);
+                const isNews = item.path === '/news' && newsAlert;
+                const accent = isAl ? '#B06A6A' : isNews ? '#5F9C81' : 'var(--accent-purple)';
                 return (
                   <button
-                    key={item.path}
                     onClick={() => handleTabClick(item.path)}
                     style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                      padding: indent ? '12px 24px 12px 44px' : '14px 24px',
-                      background: isAl ? 'rgba(239,68,68,0.04)' : isNews ? 'rgba(34,197,94,0.05)' : 'transparent', border: 'none',
-                      cursor: 'pointer', textAlign: 'left',
-                      color: active ? 'var(--accent-purple)' : isAl ? '#ef4444' : isNews ? '#22c55e' : 'var(--text-primary)',
-                      borderLeft: active ? '3px solid var(--accent-purple)' : isAl ? '3px solid #ef4444' : isNews ? '3px solid #22c55e' : '3px solid transparent',
-                      transition: 'all 0.15s',
+                      display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                      background: active ? 'rgba(125,111,179,0.08)' : 'var(--bg-hover)',
+                      border: `1px solid ${active ? 'rgba(125,111,179,0.4)' : 'var(--border)'}`,
+                      borderRadius: 14, padding: '11px 12px', cursor: 'pointer', position: 'relative', minWidth: 0,
                     }}
                   >
-                    <item.icon size={indent ? 18 : 20} strokeWidth={1.8} />
-                    <span style={{ flex: 1, fontSize: indent ? 14 : 15, fontWeight: active || isAl || isNews ? 700 : 500 }}>{item.label}</span>
-                    {isAl
-                      ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
-                      : isNews
-                        ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
-                        : <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
-                    }
+                    <span style={{ width: 34, height: 34, borderRadius: 11, background: isAl ? 'rgba(176,106,106,0.14)' : isNews ? 'rgba(95,156,129,0.14)' : 'rgba(125,111,179,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <item.icon size={17} strokeWidth={1.9} style={{ color: accent }} />
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
+                      <span style={{ display: 'block', fontSize: 9.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{META[item.path]?.sub || ''}</span>
+                    </span>
+                    {(isAl || isNews) && (
+                      <span style={{ position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: '50%', background: accent, boxShadow: `0 0 6px ${accent}` }} />
+                    )}
                   </button>
                 );
               };
 
-              return (
-                <>
-                  {sheetGroups.map(g => {
-                    const open = !!openGroupsM[g.id] || g.paths.includes(location.pathname);
-                    const groupAlert = (g.paths.includes('/towels') && towelAlert) || (g.paths.includes('/hr-monitors') && monitorAlert);
-                    const GIcon = g.icon;
-                    return (
-                      <div key={g.id}>
-                        <button
-                          onClick={() => toggleGroupM(g.id)}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                            padding: '14px 24px', background: 'var(--bg-hover)', border: 'none',
-                            cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)',
-                            borderLeft: '3px solid transparent',
-                          }}
-                        >
-                          <GIcon size={20} strokeWidth={1.8} style={{ color: 'var(--accent-purple)' }} />
-                          <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>{g.label}</span>
-                          {groupAlert && !open && (
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
-                          )}
-                          <ChevronDownIcon size={16} style={{ color: 'var(--text-muted)', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
-                        </button>
-                        {open && g.items.map(item => renderRow(item, true))}
-                      </div>
-                    );
-                  })}
-                  {sheetRest.map(item => renderRow(item))}
-                </>
-              );
+              return SECTIONS.map(([sect, label]) => {
+                const items = secondaryItems.filter(i => (META[i.path]?.sect ?? 3) === sect);
+                if (!items.length) return null;
+                return (
+                  <div key={sect} style={{ padding: '0 16px 12px' }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em', margin: '4px 2px 8px' }}>{label}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {items.map(item => <Tile key={item.path} item={item} />)}
+                    </div>
+                  </div>
+                );
+              });
             })()}
+
+            <div style={{ margin: '8px 24px 0' }}>
+              <DailyReport compact />
+            </div>
 
             <div style={{ margin: '8px 24px 0', paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>Тема</span>
@@ -681,7 +787,7 @@ const MobileNav = () => {
                 }}
               >
                 {isDark
-                  ? <><Moon size={15} style={{ color: '#7B3DFF' }} /> Тёмная</>
+                  ? <><Moon size={15} style={{ color: '#7D6FB3' }} /> Тёмная</>
                   : <><Sun size={15} style={{ color: '#FB8F41' }} /> Светлая</>
                 }
               </button>
@@ -724,7 +830,7 @@ const MobileNav = () => {
               <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)' }}>Уведомления</span>
-                {unreadCount > 0 && <span style={{ fontSize: 11, background: '#ef4444', color: '#fff', borderRadius: 20, padding: '2px 8px', fontWeight: 700 }}>{unreadCount} новых</span>}
+                {unreadCount > 0 && <span style={{ fontSize: 11, background: '#B06A6A', color: '#fff', borderRadius: 20, padding: '2px 8px', fontWeight: 700 }}>{unreadCount} новых</span>}
               </div>
             </div>
             <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 16 }}>
@@ -736,7 +842,7 @@ const MobileNav = () => {
                     onClick={() => { markRead(n.id); if (n.ticketId) { navigate(`/tickets/${n.ticketId}`); setShowNotifications(false); } }}
                     style={{
                       padding: '12px 20px', borderBottom: '1px solid var(--border)',
-                      background: isUnread ? 'rgba(123,61,255,0.05)' : 'transparent',
+                      background: isUnread ? 'rgba(125,111,179,0.05)' : 'transparent',
                       cursor: n.ticketId ? 'pointer' : 'default',
                       display: 'flex', gap: 12, alignItems: 'flex-start',
                     }}
@@ -783,10 +889,10 @@ const MobileNav = () => {
 
 /* ─── Main export: responsive ────────────────────────────────── */
 const Sidebar = () => {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
 
   useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth <= 768);
+    const handler = () => setIsMobile(isMobileDevice());
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);

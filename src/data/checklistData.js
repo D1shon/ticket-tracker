@@ -1,6 +1,6 @@
-import { Coffee, Sun, Moon, Activity, Sparkles, Wrench, ShieldCheck } from 'lucide-react';
+import { Coffee, Moon, Activity, Sparkles, Wrench, ShieldCheck } from 'lucide-react';
 
-export const CLUBS = ['ВСЕ КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+export const CLUBS = ['ВСЕ КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 
 export const CHECK_ITEMS = {
   'equipment': {
@@ -63,18 +63,8 @@ export const CHECK_ITEMS = {
       'Пересчитать пульсометры',
       'Пересчитать полотенца'
     ]
-  },
-  'closing': {
-    title: 'Закрытие смены',
-    icon: Moon,
-    items: [
-      'Проверка рабочего места',
-      'Отключение залов',
-      'Пересчитать пульсометры',
-      'Пересчитать полотенца',
-      'Контрольный обход на предмет закрытых окон/дверей'
-    ]
   }
+  // «Закрытие смены» заменено единым отчётом дня — вкладка «Отчёт дня» на странице чек-листов
 };
 
 export const SHIFTS_DATA = [
@@ -83,33 +73,17 @@ export const SHIFTS_DATA = [
     time: '6:30', 
     name: 'Утренняя смена', 
     icon: Coffee, 
-    color: '#f97316', 
+    color: '#BF8055', 
     cards: ['equipment', 'cleaning', 'tech', 'opening']
-  },
-  { 
-    id: 'day', 
-    time: '11:30', 
-    name: 'Дневная смена', 
-    icon: Sun, 
-    color: '#facc15', 
-    cards: ['equipment', 'cleaning', 'tech']
-  },
-  { 
-    id: 'evening', 
-    time: '16:30', 
-    name: 'Вечерняя смена', 
-    icon: Moon, 
-    color: '#6366f1', 
-    cards: ['equipment', 'cleaning', 'tech']
   },
   { 
     id: 'night', 
     time: '21:30', 
     name: 'Ночная смена', 
     icon: Moon, 
-    color: '#a855f7', 
+    color: '#8E7BB8', 
     isCurrent: true,
-    cards: ['equipment', 'cleaning', 'tech', 'closing']
+    cards: ['equipment', 'cleaning', 'tech']
   },
 ];
 
@@ -129,11 +103,10 @@ export const getShiftsForDate = (date) => {
     // morning: 9:00 (540 mins) to 14:00 (840 mins)
     // day: 14:00 (840 mins) to 19:00 (1140 mins)
     // evening: 19:00 (1140 mins) to 9:00 (540 mins next day)
+    // Дневная смена убрана: утро 9:00–14:00, дальше — вечерняя
     let activeShiftId = 'evening';
     if (totalMinutes >= 540 && totalMinutes < 840) {
       activeShiftId = 'morning';
-    } else if (totalMinutes >= 840 && totalMinutes < 1140) {
-      activeShiftId = 'day';
     }
 
     return [
@@ -142,27 +115,18 @@ export const getShiftsForDate = (date) => {
         time: '9:00',
         name: 'Утренняя смена',
         icon: Coffee,
-        color: '#f97316',
+        color: '#BF8055',
         isCurrent: isToday && activeShiftId === 'morning',
         cards: ['equipment', 'cleaning', 'tech', 'opening']
-      },
-      {
-        id: 'day',
-        time: '14:00',
-        name: 'Дневная смена',
-        icon: Sun,
-        color: '#facc15',
-        isCurrent: isToday && activeShiftId === 'day',
-        cards: ['equipment', 'cleaning', 'tech']
       },
       {
         id: 'evening',
         time: '19:00',
         name: 'Вечерняя смена',
         icon: Moon,
-        color: '#6366f1',
+        color: '#7578B0',
         isCurrent: isToday && activeShiftId === 'evening',
-        cards: ['equipment', 'cleaning', 'tech', 'closing']
+        cards: ['equipment', 'cleaning', 'tech']
       }
     ];
   }
@@ -172,13 +136,10 @@ export const getShiftsForDate = (date) => {
   // day: 11:30 (690 mins) to 16:30 (990 mins)
   // evening: 16:30 (990 mins) to 21:30 (1290 mins)
   // night: 21:30 (1290 mins) to 6:30 (390 mins next day)
+  // Дневная и вечерняя смены убраны: утро 6:30–21:30, дальше — ночная
   let activeShiftId = 'night';
-  if (totalMinutes >= 390 && totalMinutes < 690) {
+  if (totalMinutes >= 390 && totalMinutes < 1290) {
     activeShiftId = 'morning';
-  } else if (totalMinutes >= 690 && totalMinutes < 990) {
-    activeShiftId = 'day';
-  } else if (totalMinutes >= 990 && totalMinutes < 1290) {
-    activeShiftId = 'evening';
   }
 
   return [
@@ -187,36 +148,18 @@ export const getShiftsForDate = (date) => {
       time: '6:30',
       name: 'Утренняя смена',
       icon: Coffee,
-      color: '#f97316',
+      color: '#BF8055',
       isCurrent: isToday && activeShiftId === 'morning',
       cards: ['equipment', 'cleaning', 'tech', 'opening']
-    },
-    {
-      id: 'day',
-      time: '11:30',
-      name: 'Дневная смена',
-      icon: Sun,
-      color: '#facc15',
-      isCurrent: isToday && activeShiftId === 'day',
-      cards: ['equipment', 'cleaning', 'tech']
-    },
-    {
-      id: 'evening',
-      time: '16:30',
-      name: 'Вечерняя смена',
-      icon: Moon,
-      color: '#6366f1',
-      isCurrent: isToday && activeShiftId === 'evening',
-      cards: ['equipment', 'cleaning', 'tech']
     },
     {
       id: 'night',
       time: '21:30',
       name: 'Ночная смена',
       icon: Moon,
-      color: '#a855f7',
+      color: '#8E7BB8',
       isCurrent: isToday && activeShiftId === 'night',
-      cards: ['equipment', 'cleaning', 'tech', 'closing']
+      cards: ['equipment', 'cleaning', 'tech']
     },
   ];
 };

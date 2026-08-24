@@ -1,0 +1,14 @@
+{
+  "name": "hj-dwh-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ночной синк покрытия пульсометрами из DWH в Firestore для HJ Track",
+  "scripts": {
+    "start": "node hrm-sync.mjs"
+  },
+  "dependencies": {
+    "firebase": "^12.12.0",
+    "pg": "^8.13.1"
+  }
+}

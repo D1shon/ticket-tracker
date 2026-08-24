@@ -12,7 +12,7 @@ import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFirestore, doc, setDoc, updateDoc, collection, onSnapshot, getDoc, getDocs } from 'firebase/firestore';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 const authDir = (club) => path.join(ROOT, 'auth', club.replace(/\s+/g, '_'));
 
 const fb = initializeApp({
@@ -53,19 +53,35 @@ function realPhone(...jids) {
   return null;
 }
 
-async function maybeCreateLead(db, club, { jid, phoneJid, chatName, text, timestampISO }) {
+async function maybeCreateLead(db, club, { jid, phone, chatName, text, timestampISO, context }) {
   const matched = leadMatch(text);
   if (!matched) return;
   // одна заявка на чат в день — первое ценовое сообщение побеждает
   const leadId = `${club.replace(/\s+/g, '')}_${jid.replace(/[^\w]/g, '')}_${almatyDay(timestampISO)}`;
   const ref = doc(db, 'sales_leads', leadId);
   if ((await getDoc(ref)).exists()) return;
-  const phone = realPhone(jid, phoneJid); // null, если WhatsApp отдал только LID
+
+  // Умный фильтр по СМЫСЛУ: ключевые слова — лишь пред-фильтр. Спрашиваем ИИ, реально
+  // ли это запрос на покупку (новый клиент), а не мусор (жалоба/бытовуха/действующий
+  // участник/«парковка со скидкой»/«нужно 5 билетов»). Ошибка/недоступность → создаём
+  // лид как раньше (fail-open: лучше лишний лид, чем потерянный настоящий).
+  try {
+    const cr = await fetch('https://ticket-tracker-inky.vercel.app/api/assistant', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classifyLead: text, context: Array.isArray(context) ? context : [] }),
+    });
+    const cj = await cr.json().catch(() => ({ lead: true }));
+    if (cj && cj.lead === false) {
+      log(club, '🚫 не лид (по смыслу):', cj.reason ? `[${cj.reason}]` : '', text.slice(0, 60));
+      return;
+    }
+  } catch (e) { log(club, 'классиф. лида недоступна, создаю как обычно:', e.message); }
+
   await setDoc(ref, {
     club,
     chatJid: jid,
     chatName: chatName || '',
-    phone,                    // настоящий номер или null
+    phone: phone || null,     // настоящий номер (в т.ч. восстановленный из LID) или null
     hasPhone: !!phone,
     text: text.slice(0, 500),
     matched,
@@ -112,6 +128,7 @@ async function main() {
   }
   const db = getFirestore(fb);
   console.log('[bridge] Firestore подключён');
+
 
   const setStatus = (club, data) =>
     setDoc(doc(db, 'wa_bridge', club), { ...data, updatedAtISO: new Date().toISOString() }, { merge: true }).catch(() => {});
@@ -184,28 +201,66 @@ async function main() {
           const text = extractText(m);
           const hasMedia = !!(m.message?.imageMessage || m.message?.videoMessage || m.message?.audioMessage || m.message?.documentMessage || m.message?.stickerMessage);
           if (!text && !hasMedia) continue;
+
+          // ── Реальный номер: сначала прямой @s.whatsapp.net, иначе LID → номер ──
+          // Baileys 7 хранит соответствие LID↔номер и отдаёт его через lidMapping.
+          const altJid = m.key.remoteJidAlt || m.key.senderPnJid || m.key.participantAlt || null;
+          let phone = realPhone(jid, altJid);
+          if (!phone) {
+            const lid = [jid, altJid].find(j => typeof j === 'string' && j.endsWith('@lid'));
+            if (lid) {
+              sessions[club].pn = sessions[club].pn || {};
+              if (sessions[club].pn[lid]) {
+                phone = sessions[club].pn[lid];
+              } else {
+                try {
+                  const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(lid);
+                  const num = realPhone(pn);
+                  if (num) { phone = num; sessions[club].pn[lid] = num; }
+                } catch {}
+              }
+            }
+          }
+          // Канонический JID чата: номерной, если номер известен — тогда одна и та же
+          // переписка не дробится на «LID-чат» и «номерной чат».
+          const contactJid = phone ? `${phone}@s.whatsapp.net` : jid;
+          // Имя приходит только во входящих (pushName). Запоминаем его на сессию и
+          // подставляем в исходящие — иначе переписка выглядит безымянной.
+          sessions[club].names = sessions[club].names || {};
+          if (m.pushName) sessions[club].names[contactJid] = m.pushName;
+          const chatName = m.pushName || sessions[club].names[contactJid] || '';
+
           await setDoc(doc(db, 'wa_messages', `${club.replace(/\s+/g, '')}_${m.key.id}`), {
             club,
             direction: m.key.fromMe ? 'out' : 'in',
-            chatJid: jid,
-            isGroup: jid.endsWith('@g.us'),
-            chatName: m.pushName || '',
+            chatJid: contactJid,   // канонический — для корректной группировки диалога
+            rawJid: jid,           // исходный JID (для отладки/истории)
+            phone: phone || null,
+            isGroup: false,
+            chatName,
             text,
             hasMedia,
             timestampISO: new Date((Number(m.messageTimestamp) || 0) * 1000).toISOString(),
             source: 'bridge',
           }, { merge: true });
-          log(club, m.key.fromMe ? '➡' : '⬅', (m.pushName || jid.slice(0, 14)) + ':', text.slice(0, 50));
+          log(club, m.key.fromMe ? '➡' : '⬅', (chatName || (phone ? '+' + phone : jid.slice(0, 14))) + ':', text.slice(0, 50));
 
-          // входящее личное сообщение про цены/абонементы → лид для Ком-Дира
-          if (!m.key.fromMe && !jid.endsWith('@g.us') && text) {
+          // Буфер последних сообщений по чату (в памяти сессии) — контекст для ИИ-классификатора.
+          // Контекст берём ДО добавления текущего сообщения, затем дописываем текущее для будущих.
+          sessions[club].hist = sessions[club].hist || {};
+          const chatHist = sessions[club].hist;
+          const priorCtx = (chatHist[contactJid] || []).slice(-10);
+          if (text) chatHist[contactJid] = (chatHist[contactJid] || []).concat([{ dir: m.key.fromMe ? 'out' : 'in', text }]).slice(-12);
+
+          // входящее личное сообщение про цены/абонементы → лид для Ком-Дира/РОП
+          if (!m.key.fromMe && text) {
             await maybeCreateLead(db, club, {
-              jid,
-              // Baileys кладёт телефонный JID клиента в *Alt-поля при LID-чатах
-              phoneJid: m.key.remoteJidAlt || m.key.senderPnJid || m.key.participantAlt || null,
-              chatName: m.pushName || '',
+              jid: contactJid,
+              phone: phone || null,
+              chatName,
               text,
               timestampISO: new Date((Number(m.messageTimestamp) || 0) * 1000).toISOString(),
+              context: priorCtx,
             }).catch(e => log(club, 'лид не создан:', e.message));
           }
         } catch (e) {
@@ -244,8 +299,24 @@ async function main() {
   }
   function sessionsStatusInit() { return 'idle'; }
 
-  // Пульс моста — платформа показывает «мост офлайн», если пульса нет >10 мин
-  const beat = () => setDoc(doc(db, 'wa_bridge', '_bridge'), { aliveAtISO: new Date().toISOString() }, { merge: true }).catch(() => {});
+  // Пульс моста — платформа показывает «мост офлайн», если пульса нет >10 мин.
+  // + Сторожок от «зомби» (как в 2gis-bridge): при обрыве связи с Firestore записи
+  // не падают, а ВИСНУТ в очереди — процесс выглядит живым, но wa_messages тихо не
+  // пишутся. Если пульс реально не доставлен >15 минут — выходим, start-bridge.bat
+  // поднимает свежий процесс (переподключение без QR).
+  let lastBeatOkAt = Date.now();
+  const beat = async () => {
+    const ok = await Promise.race([
+      setDoc(doc(db, 'wa_bridge', '_bridge'), { aliveAtISO: new Date().toISOString() }, { merge: true })
+        .then(() => true).catch(() => false),
+      new Promise(r => setTimeout(() => r(false), 60 * 1000)), // висит >минуты = не доставлен
+    ]);
+    if (ok) lastBeatOkAt = Date.now();
+    if (Date.now() - lastBeatOkAt > 15 * 60 * 1000) {
+      console.log('🩺 сторожок: пульс не доставляется >15 мин (зомби-соединение) — перезапускаюсь');
+      process.exit(1);
+    }
+  };
   beat();
   setInterval(beat, 5 * 60 * 1000);
 }

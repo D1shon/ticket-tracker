@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useTickets } from '../../store/TicketContext';
 import { formatAuthor } from '../../utils/formatters';
+import { isMobileDevice } from '../../lib/isMobile';
 
 // Preset reasons per action
 const PRESETS = {
@@ -28,9 +29,9 @@ const PRESETS = {
 };
 
 const REASON_CONFIG = {
-  pause:  { title: 'ПОЧЕМУ РАБОТА ОСТАНОВЛЕНА?',  color: '#f59e0b', btnLabel: 'ПОДТВЕРДИТЬ ПАУЗУ',     bg: 'rgba(245,158,11,0.06)',  border: 'rgba(245,158,11,0.2)' },
+  pause:  { title: 'ПОЧЕМУ РАБОТА ОСТАНОВЛЕНА?',  color: '#C08F4F', btnLabel: 'ПОДТВЕРДИТЬ ПАУЗУ',     bg: 'rgba(192,143,79,0.06)',  border: 'rgba(192,143,79,0.2)' },
   wait:   { title: 'ПОЧЕМУ ОЖИДАНИЕ?',            color: '#9b5de5', btnLabel: 'ПОДТВЕРДИТЬ ОЖИДАНИЕ', bg: 'rgba(155,93,229,0.06)',  border: 'rgba(155,93,229,0.2)' },
-  finish: { title: 'ИТОГ ВЫПОЛНЕНИЯ ЗАДАЧИ',      color: '#22c55e', btnLabel: 'ПОДТВЕРДИТЬ ЗАВЕРШЕНИЕ', bg: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.2)'  },
+  finish: { title: 'ИТОГ ВЫПОЛНЕНИЯ ЗАДАЧИ',      color: '#5F9C81', btnLabel: 'ПОДТВЕРДИТЬ ЗАВЕРШЕНИЕ', bg: 'rgba(95,156,129,0.06)', border: 'rgba(95,156,129,0.2)'  },
 };
 
 // Helper to safely parse Firestore timestamp, Date object, or string into a Date object
@@ -79,47 +80,50 @@ function fmtSecs(s) {
 }
 
 // ─── Timer box ───────────────────────────────────────────────────────────────
-const TimerBox = ({ label, sinceISO, accumulatedSeconds = 0, color, active }) => {
+const TimerBox = ({ label, sinceISO, accumulatedSeconds = 0, color, active, compact = false }) => {
   const liveSecs = useLiveSeconds(sinceISO, active);
   const totalSecs = accumulatedSeconds + liveSecs;
   const parsedSince = parseSafeDate(sinceISO);
-  
+
+  // compact — мобильный режим: компактная строка таймеров
   return (
     <div style={{
-      flex: 1, padding: '18px 16px', borderRadius: 12, textAlign: 'center',
+      flex: 1, padding: compact ? '10px 6px' : '18px 16px', borderRadius: compact ? 10 : 12, textAlign: 'center',
       background: active ? `${color}12` : 'var(--bg-primary)',
       border: `1px solid ${active ? color + '60' : color + '25'}`,
-      transition: 'all 0.3s',
+      transition: 'all 0.3s', minWidth: 0,
     }}>
-      <div style={{ fontSize: 22, fontWeight: 800, color, marginBottom: 6, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>
+      <div style={{ fontSize: compact ? 14 : 22, fontWeight: 800, color, marginBottom: compact ? 3 : 6, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {(totalSecs > 0 || active) ? fmtSecs(totalSecs) : '—'}
       </div>
-      {active && parsedSince && (
+      {active && parsedSince && !compact && (
         <div style={{ fontSize: 10, color: `${color}99`, marginBottom: 4 }}>
           с {parsedSince.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
         </div>
       )}
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.03em' }}>{label}</div>
+      <div style={{ fontSize: compact ? 9 : 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
     </div>
   );
 };
 
 // ─── Action button ───
-const ActionBtn = ({ icon: Icon, label, color, bg, onClick, active }) => (
+// compact — мобильный режим: горизонтальная кнопка, высота ≥44px (для сетки 2×2)
+const ActionBtn = ({ icon: Icon, label, color, bg, onClick, active, compact = false }) => (
   <button onClick={onClick} style={{
-    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    gap: 10, padding: '18px 12px', borderRadius: 14, cursor: 'pointer',
+    flex: compact ? undefined : 1, display: 'flex', flexDirection: compact ? 'row' : 'column', alignItems: 'center', justifyContent: 'center',
+    gap: compact ? 8 : 10, padding: compact ? '12px 8px' : '18px 12px', minHeight: compact ? 46 : undefined,
+    borderRadius: compact ? 12 : 14, cursor: 'pointer',
     background: active ? bg : `${bg}60`,
     border: 'none', color, transition: 'all 0.15s',
     boxShadow: active ? `0 4px 20px ${color}30` : 'none',
   }}>
-    <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
-    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em' }}>{label}</span>
+    <Icon size={compact ? 16 : 22} strokeWidth={active ? 2.2 : 1.8} />
+    <span style={{ fontSize: compact ? 11 : 10, fontWeight: 800, letterSpacing: compact ? '0.05em' : '0.08em', whiteSpace: 'nowrap' }}>{label}</span>
   </button>
 );
 
 // ─── Inline reason panel ───
-const ReasonPanel = ({ action, onConfirm, onCancel }) => {
+const ReasonPanel = ({ action, onConfirm, onCancel, compact = false }) => {
   const [reason, setReason] = useState('');
   const [selected, setSelected] = useState('');
   const c = REASON_CONFIG[action];
@@ -134,7 +138,7 @@ const ReasonPanel = ({ action, onConfirm, onCancel }) => {
 
   return (
     <div style={{
-      margin: '4px 0', padding: '18px 20px', borderRadius: 14,
+      margin: '4px 0', padding: compact ? '14px 14px' : '18px 20px', borderRadius: 14,
       background: c.bg, border: `1px solid ${c.border}`,
       animation: 'fadeIn 0.2s ease',
     }}>
@@ -184,7 +188,7 @@ const ReasonPanel = ({ action, onConfirm, onCancel }) => {
           onClick={() => canConfirm && onConfirm(reason)}
           disabled={!canConfirm}
           style={{
-            padding: '10px 20px', borderRadius: 10, cursor: canConfirm ? 'pointer' : 'not-allowed',
+            padding: '10px 20px', minHeight: compact ? 44 : undefined, borderRadius: 10, cursor: canConfirm ? 'pointer' : 'not-allowed',
             background: canConfirm ? c.color : 'var(--bg-hover)',
             border: 'none', color: canConfirm ? '#000' : 'var(--text-muted)',
             fontSize: 11, fontWeight: 800, letterSpacing: '0.06em',
@@ -302,6 +306,14 @@ const TicketDetail = () => {
   const emojiPickerRef = useRef(null);
   const emojiButtonRef = useRef(null);
 
+  // Мобильный режим — только визуальные ветки, логика/таймеры не меняются
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+
   // Sync messages when Firebase ticket updates
   useEffect(() => {
     if (ticket?.comments) setMessages(ticket.comments);
@@ -312,14 +324,17 @@ const TicketDetail = () => {
   const handleWorkClick = useCallback(() => {
     setStatusReport(null);
     setPendingAction(null);
-    const next = localStatus === 'in_progress' ? 'new' : 'in_progress';
+    // Повторный клик по «В РАБОТУ» = стоп → ПАУЗА. Раньше писался мёртвый статус
+    // 'new': минутный цикл молча возвращал заявку в работу, и время простоя
+    // засчитывалось как рабочее.
+    const next = localStatus === 'in_progress' ? 'paused' : 'in_progress';
     changeStatus(next);
   }, [localStatus, changeStatus]);
 
   const handleReasonConfirm = useCallback((reason) => {
     const statusMap  = { pause: 'paused',  wait: 'waiting', finish: 'closed' };
     const labelMap   = { pause: '⏸ Пауза', wait: '⏳ Ожидание', finish: '✅ Завершено' };
-    const colorMap   = { pause: '#f59e0b', wait: '#9b5de5', finish: '#22c55e' };
+    const colorMap   = { pause: '#C08F4F', wait: '#9b5de5', finish: '#5F9C81' };
 
     const newStatus = statusMap[pendingAction];
     changeStatus(newStatus, reason);
@@ -392,18 +407,24 @@ const TicketDetail = () => {
 
   const COMMON_EMOJIS = ['😀', '😊', '😂', '👍', '🙏', '🔥', '✅', '❌', '⚠️', '🆘', '⏳', '⏸️', '💬', '📎', '🚀', '🏢'];
 
-  const sColor = { new: '#22c55e', in_progress: '#9b5de5', paused: '#f59e0b', waiting: '#f97316', closed: '#55556a' }[localStatus] || '#22c55e';
-  const sLabel = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто' }[localStatus] || localStatus;
+  const sColor = { new: '#5F9C81', in_progress: '#9b5de5', paused: '#C08F4F', waiting: '#BF8055', closed: '#55556a', scheduled: '#7A94B8' }[localStatus] || '#5F9C81';
+  const sLabel = { new: 'Новая', in_progress: 'В работе', paused: 'На паузе', waiting: 'Ожидание', closed: 'Закрыто', scheduled: 'Запланирована' }[localStatus] || localStatus;
 
   // ── Access Control and Loading Check ──
+  // Клубные роли (менеджер/админ/РОП/МОП) заперты на своих клубах; раньше
+  // проверялся только manager — админ мог открыть чужую заявку по прямой ссылке.
+  // user.clubs — мультиклубные аккаунты (например, Азиз): доступ к обоим клубам.
   const userClub = user?.club?.toUpperCase();
-  const isManager = user?.role === 'manager';
-  const hasAccess = !isManager || !userClub || !ticket?.club || ticket.club.toUpperCase() === userClub;
+  const CLUB_BOUND_ROLES = ['manager', 'admin', 'rop'];
+  const isClubBound = CLUB_BOUND_ROLES.includes(user?.role);
+  const myClubs = (Array.isArray(user?.clubs) && user.clubs.length > 0 ? user.clubs : [userClub])
+    .filter(Boolean).map(c => String(c).toUpperCase());
+  const hasAccess = !isClubBound || !ticket?.club || myClubs.includes(ticket.club.toUpperCase());
 
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-        <div style={{ width: 40, height: 40, border: '3px solid rgba(79,142,247,0.2)', borderTop: '3px solid #4f8ef7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+        <div style={{ width: 40, height: 40, border: '3px solid rgba(85,128,168,0.2)', borderTop: '3px solid #5580A8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
       </div>
     );
   }
@@ -437,12 +458,42 @@ const TicketDetail = () => {
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Breadcrumb */}
+      {/* Компактная мобильная шапка: статус-бейдж, заголовок, клуб */}
+      {isMobile ? (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, flexShrink: 0 }}><ArrowLeft size={18} /></button>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: sColor, background: `${sColor}18`, border: `1px solid ${sColor}40`, padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>● {sLabel}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: '#C08F4F', background: 'rgba(192,143,79,0.1)', border: '1px solid rgba(192,143,79,0.25)', padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>{ticket.priority}</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button onClick={() => setStarred(s => !s)} style={{ background: 'none', border: 'none', color: starred ? '#C08F4F' : 'var(--text-muted)', cursor: 'pointer', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Star size={16} fill={starred ? '#C08F4F' : 'none'} /></button>
+              <button
+                id="btn-delete-ticket"
+                onClick={() => setShowDeleteModal(true)}
+                title="Удалить заявку"
+                style={{ background: 'rgba(176,106,106,0.1)', border: '1px solid rgba(176,106,106,0.3)', borderRadius: 10, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B06A6A' }}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(85,128,168,0.15)', color: '#5580A8', border: '1px solid rgba(85,128,168,0.3)', padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap', flexShrink: 0, marginTop: 2 }}>{ticket.club}</span>
+            <h1 style={{ flex: 1, fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '0.01em', textTransform: 'uppercase', lineHeight: 1.3, margin: 0 }}>{ticket.title}</h1>
+            <button
+              onClick={() => { setEditTitle(ticket.title || ''); setEditDesc(ticket.description || ticket.subtitle || ''); setShowEditModal(true); }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <Edit2 size={14} />
+            </button>
+          </div>
+        </div>
+      ) : (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 6 }}><ArrowLeft size={18} /></button>
-        <button onClick={() => setStarred(s => !s)} style={{ background: 'none', border: 'none', color: starred ? '#f59e0b' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Star size={16} fill={starred ? '#f59e0b' : 'none'} /></button>
+        <button onClick={() => setStarred(s => !s)} style={{ background: 'none', border: 'none', color: starred ? '#C08F4F' : 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Star size={16} fill={starred ? '#C08F4F' : 'none'} /></button>
         <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Home size={15} /></button>
-        <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(79,142,247,0.15)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.3)', padding: '2px 7px', borderRadius: 4 }}>{ticket.club}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(85,128,168,0.15)', color: '#5580A8', border: '1px solid rgba(85,128,168,0.3)', padding: '2px 7px', borderRadius: 4 }}>{ticket.club}</span>
         <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>{ticket.title}</span>
         <Edit2
           size={13} color="var(--text-muted)"
@@ -451,52 +502,53 @@ const TicketDetail = () => {
         />
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: sColor, background: `${sColor}18`, border: `1px solid ${sColor}40`, padding: '3px 10px', borderRadius: 6 }}>● {sLabel}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', padding: '3px 10px', borderRadius: 6 }}>{ticket.priority}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#C08F4F', background: 'rgba(192,143,79,0.1)', border: '1px solid rgba(192,143,79,0.25)', padding: '3px 10px', borderRadius: 6 }}>{ticket.priority}</span>
           <button
             id="btn-delete-ticket"
             onClick={() => setShowDeleteModal(true)}
             title="Удалить заявку"
             style={{
-              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+              background: 'rgba(176,106,106,0.1)', border: '1px solid rgba(176,106,106,0.3)',
               borderRadius: 8, padding: '4px 10px', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 6,
-              color: '#ef4444', fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+              color: '#B06A6A', fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
               transition: 'all 0.2s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; e.currentTarget.style.borderColor = '#ef4444'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(176,106,106,0.2)'; e.currentTarget.style.borderColor = '#B06A6A'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(176,106,106,0.1)'; e.currentTarget.style.borderColor = 'rgba(176,106,106,0.3)'; }}
           >
             <Trash2 size={13} />
             УДАЛИТЬ
           </button>
         </div>
       </div>
+      )}
 
-      {/* 2-col layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16, flex: 1 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* 2-col layout; на мобильном — одна колонка, инфо-блок уходит вниз */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 340px', gap: isMobile ? 10 : 16, flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 14 }}>
 
           {/* Description */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <BookOpen size={13} color="#4f8ef7" />
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Описание задачи</span>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: isMobile ? 14 : 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isMobile ? 8 : 12 }}>
+              <BookOpen size={13} color="#5580A8" />
+              <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: isMobile ? 900 : 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Описание задачи</span>
             </div>
-            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.6 }}>{ticket.description || ticket.subtitle}</p>
+            <p style={{ fontSize: isMobile ? 13 : 15, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.6, margin: 0 }}>{ticket.description || ticket.subtitle}</p>
           </div>
 
           {/* ──── TIMER CARD ──── */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
-              <Clock size={13} color="#4f8ef7" />
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Операционный таймер</span>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: isMobile ? 14 : 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isMobile ? 10 : 18 }}>
+              <Clock size={13} color="#5580A8" />
+              <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: isMobile ? 900 : 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Операционный таймер</span>
             </div>
 
-            {/* Timer boxes */}
-            <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-              <TimerBox label="Активная работа" sinceISO={workSince}  accumulatedSeconds={accumulatedTime.work}  color="#22c55e" active={timerState === 'work'} />
-              <TimerBox label="Пауза"            sinceISO={pauseSince} accumulatedSeconds={accumulatedTime.pause} color="#f59e0b" active={timerState === 'pause'} />
-              <TimerBox label="Ожидание"         sinceISO={waitSince}  accumulatedSeconds={accumulatedTime.wait}  color="#9b5de5" active={timerState === 'wait'} />
+            {/* Timer boxes — на мобильном компактная строка */}
+            <div style={{ display: 'flex', gap: isMobile ? 6 : 10, marginBottom: isMobile ? 10 : 14 }}>
+              <TimerBox label="Активная работа" sinceISO={workSince}  accumulatedSeconds={accumulatedTime.work}  color="#5F9C81" active={timerState === 'work'} compact={isMobile} />
+              <TimerBox label="Пауза"            sinceISO={pauseSince} accumulatedSeconds={accumulatedTime.pause} color="#C08F4F" active={timerState === 'pause'} compact={isMobile} />
+              <TimerBox label="Ожидание"         sinceISO={waitSince}  accumulatedSeconds={accumulatedTime.wait}  color="#9b5de5" active={timerState === 'wait'} compact={isMobile} />
             </div>
 
             {/* ── STATUS REPORT (shown after confirming reason) ── */}
@@ -525,32 +577,37 @@ const TicketDetail = () => {
                 action={pendingAction}
                 onConfirm={handleReasonConfirm}
                 onCancel={() => setPendingAction(null)}
+                compact={isMobile}
               />
             )}
 
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              <ActionBtn icon={Play}        label="В РАБОТУ"  color="#22c55e" bg="rgba(34,197,94,0.18)"   active={timerState === 'work'}  onClick={handleWorkClick} />
-              <ActionBtn icon={Pause}       label="ПАУЗА"     color="#f59e0b" bg="rgba(245,158,11,0.18)"  active={timerState === 'pause' || pendingAction === 'pause'} onClick={() => setPendingAction(p => p === 'pause' ? null : 'pause')} />
-              <ActionBtn icon={Package}     label="ОЖИДАНИЕ"  color="#9b5de5" bg="rgba(155,93,229,0.18)"  active={timerState === 'wait'  || pendingAction === 'wait'}  onClick={() => setPendingAction(p => p === 'wait'  ? null : 'wait')} />
-              <ActionBtn icon={CheckCircle} label="ЗАВЕРШИТЬ" color="#8888a0" bg="rgba(136,136,160,0.12)" active={pendingAction === 'finish'} onClick={() => setPendingAction(p => p === 'finish' ? null : 'finish')} />
+            {/* Action buttons — на мобильном сетка 2×2, высота ≥44px */}
+            <div style={isMobile
+              ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }
+              : { display: 'flex', gap: 10, marginTop: 4 }}>
+              <ActionBtn icon={Play}        label="В РАБОТУ"  color="#5F9C81" bg="rgba(95,156,129,0.18)"   active={timerState === 'work'}  onClick={handleWorkClick} compact={isMobile} />
+              <ActionBtn icon={Pause}       label="ПАУЗА"     color="#C08F4F" bg="rgba(192,143,79,0.18)"  active={timerState === 'pause' || pendingAction === 'pause'} onClick={() => setPendingAction(p => p === 'pause' ? null : 'pause')} compact={isMobile} />
+              <ActionBtn icon={Package}     label="ОЖИДАНИЕ"  color="#9b5de5" bg="rgba(155,93,229,0.18)"  active={timerState === 'wait'  || pendingAction === 'wait'}  onClick={() => setPendingAction(p => p === 'wait'  ? null : 'wait')} compact={isMobile} />
+              <ActionBtn icon={CheckCircle} label="ЗАВЕРШИТЬ" color="#8888a0" bg="rgba(136,136,160,0.12)" active={pendingAction === 'finish'} onClick={() => setPendingAction(p => p === 'finish' ? null : 'finish')} compact={isMobile} />
             </div>
           </div>
 
-          {/* Chat */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 260 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-              <MessageSquare size={13} color="#4f8ef7" />
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Чат / Обсуждение задачи</span>
+          {/* Chat — на мобильном занимает максимум высоты, внутренний скролл сообщений */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 260, height: isMobile ? '55dvh' : undefined }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '12px 14px' : '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <MessageSquare size={13} color="#5580A8" />
+              <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: isMobile ? 900 : 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Чат / Обсуждение задачи</span>
             </div>
-            <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 14px' : '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {messages.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', gap: 8 }}>
                   <MessageSquare size={32} strokeWidth={1.2} />
                   <span style={{ fontSize: 13 }}>Здесь пока пусто. Оставьте первый комментарий.</span>
                 </div>
               ) : messages.map(m => {
-                const canDelete = !!user;
+                // Удалять можно только свои сообщения (шеф — любые)
+                const canDelete = !!user && (user.role === 'chef' ||
+                  (m.authorEmail || '').toLowerCase() === (user.email || '').toLowerCase());
                 return (
                 <div
                   key={m.id}
@@ -558,27 +615,27 @@ const TicketDetail = () => {
                   onMouseLeave={() => setHoveredMsg(null)}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, position: 'relative' }}
                 >
-                  {/* delete button */}
-                  {canDelete && hoveredMsg === m.id && (
+                  {/* delete button — на тач-экране hover нет, показываем всегда */}
+                  {canDelete && (hoveredMsg === m.id || isMobile) && (
                     <button
                       onClick={() => deleteComment && deleteComment(ticket.id, m.id)}
                       title="Удалить сообщение"
                       style={{
                         position: 'absolute', top: 0, right: 0, transform: 'translate(8px, -8px)',
                         width: 22, height: 22,
-                        background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+                        background: 'rgba(176,106,106,0.15)', border: '1px solid rgba(176,106,106,0.4)',
                         borderRadius: 6, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#ef4444', zIndex: 10,
+                        color: '#B06A6A', zIndex: 10,
                         transition: 'background 0.15s',
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.3)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(176,106,106,0.3)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(176,106,106,0.15)'}
                     >
                       <Trash2 size={11} />
                     </button>
                   )}
-                  <div style={{ background: 'rgba(79,142,247,0.12)', border: '1px solid rgba(79,142,247,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }}>
+                  <div style={{ background: 'rgba(85,128,168,0.12)', border: '1px solid rgba(85,128,168,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }}>
                     {m.text && <div style={{ fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{m.text}</div>}
                     {m.attachment && (
                       <div style={{ marginTop: m.text ? 8 : 0 }}>
@@ -591,8 +648,8 @@ const TicketDetail = () => {
                           </button>
                         ) : (
                           <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.1)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Paperclip size={14} color="#4f8ef7" />
-                            <a href={m.attachment.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#4f8ef7', textDecoration: 'none', wordBreak: 'break-all' }}>
+                            <Paperclip size={14} color="#5580A8" />
+                            <a href={m.attachment.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#5580A8', textDecoration: 'none', wordBreak: 'break-all' }}>
                               {m.attachment.name}
                             </a>
                           </div>
@@ -610,7 +667,7 @@ const TicketDetail = () => {
             {attachment && (
               <div style={{ padding: '8px 16px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Paperclip size={14} color="#4f8ef7" />
+                  <Paperclip size={14} color="#5580A8" />
                   <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{attachment.name}</span>
                 </div>
                 <button onClick={() => setAttachment(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
@@ -619,7 +676,8 @@ const TicketDetail = () => {
               </div>
             )}
             
-            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+            {/* Поле ввода прижато к низу; на мобильном учитываем safe-area */}
+            <div style={{ padding: isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, position: 'relative' }}>
               <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
               
               {/* Emoji Picker Panel */}
@@ -660,9 +718,9 @@ const TicketDetail = () => {
               </button>
               <button onClick={() => !uploading && fileInputRef.current?.click()} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: uploading ? 'default' : 'pointer', padding: 6 }}>
                 {uploading ? (
-                  <RefreshCw size={18} color="#4f8ef7" className="animate-spin" />
+                  <RefreshCw size={18} color="#5580A8" className="animate-spin" />
                 ) : (
-                  <Paperclip size={18} color={attachment ? '#4f8ef7' : 'currentColor'} />
+                  <Paperclip size={18} color={attachment ? '#5580A8' : 'currentColor'} />
                 )}
               </button>
               <input value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Ваше сообщение..."
@@ -674,15 +732,15 @@ const TicketDetail = () => {
           </div>
         </div>
 
-        {/* RIGHT INFO */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 16 }}>История и ресурсы</div>
+        {/* RIGHT INFO — на мобильном уходит под чат одной колонкой */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 14 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: isMobile ? 14 : 20 }}>
+            <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: isMobile ? 900 : 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: isMobile ? 12 : 16 }}>История и ресурсы</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <User size={14} color="var(--text-muted)" />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 90 }}>Исполнитель</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#4f8ef7' }}>{ticket.assignee}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#5580A8' }}>{ticket.assignee}</span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -706,7 +764,7 @@ const TicketDetail = () => {
                 {ticket.journal && ticket.journal.length > 0 ? (
                   ticket.journal.map((j, i) => (
                     <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
-                      <span style={{ color: '#4f8ef7', fontWeight: 600 }}>{j.date}</span> — {j.text}
+                      <span style={{ color: '#5580A8', fontWeight: 600 }}>{j.date}</span> — {j.text}
                     </div>
                   ))
                 ) : (
@@ -727,22 +785,25 @@ const TicketDetail = () => {
           style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(0,0,0,0.75)', zIndex: 99999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            // На мобильном — нижняя шторка
+            display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center',
             animation: 'fadeIn 0.15s ease',
           }}
         >
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'var(--bg-card)', border: '1px solid rgba(239,68,68,0.4)',
-              borderRadius: 20, padding: 32, maxWidth: 400, width: '90%',
+              background: 'var(--bg-card)', border: '1px solid rgba(176,106,106,0.4)',
+              borderRadius: isMobile ? '20px 20px 0 0' : 20,
+              padding: isMobile ? '24px 20px calc(28px + env(safe-area-inset-bottom))' : 32,
+              maxWidth: isMobile ? '100%' : 400, width: isMobile ? '100%' : '90%',
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
               animation: 'slideUp 0.2s ease',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Trash2 size={20} color="#ef4444" />
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(176,106,106,0.15)', border: '1px solid rgba(176,106,106,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Trash2 size={20} color="#B06A6A" />
               </div>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Удалить заявку?</div>
@@ -752,7 +813,7 @@ const TicketDetail = () => {
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24, padding: '12px 16px', background: 'var(--bg-hover)', borderRadius: 12, border: '1px solid var(--border)' }}>
               <strong style={{ color: 'var(--text-primary)' }}>{ticket.title}</strong>
               <br />
-              <span style={{ color: '#4f8ef7', fontSize: 11, fontWeight: 700 }}>{ticket.club}</span>
+              <span style={{ color: '#5580A8', fontSize: 11, fontWeight: 700 }}>{ticket.club}</span>
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <button
@@ -774,10 +835,10 @@ const TicketDetail = () => {
                 }}
                 style={{
                   flex: 1, padding: '12px', borderRadius: 12,
-                  background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+                  background: 'linear-gradient(135deg, #dc2626, #B06A6A)',
                   border: 'none', color: '#fff',
                   fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em',
-                  boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
+                  boxShadow: '0 4px 16px rgba(176,106,106,0.4)',
                 }}
               >
                 ДА, УДАЛИТЬ
@@ -790,15 +851,16 @@ const TicketDetail = () => {
       {showEditModal && (
         <div
           onClick={() => setShowEditModal(false)}
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.15s ease' }}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', zIndex: 99999, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', animation: 'fadeIn 0.15s ease' }}
         >
+          {/* На мобильном — нижняя шторка */}
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: 32, maxWidth: 520, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', animation: 'slideUp 0.2s ease', display: 'flex', flexDirection: 'column', gap: 16 }}
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 20, padding: isMobile ? '24px 20px calc(28px + env(safe-area-inset-bottom))' : 32, maxWidth: isMobile ? '100%' : 520, width: isMobile ? '100%' : '90%', maxHeight: isMobile ? '92dvh' : undefined, overflowY: isMobile ? 'auto' : undefined, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', animation: 'slideUp 0.2s ease', display: 'flex', flexDirection: 'column', gap: 16 }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(79,142,247,0.15)', border: '1px solid rgba(79,142,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Edit2 size={18} color="#4f8ef7" />
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(85,128,168,0.15)', border: '1px solid rgba(85,128,168,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Edit2 size={18} color="#5580A8" />
               </div>
               <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Редактировать заявку</div>
             </div>
@@ -810,7 +872,7 @@ const TicketDetail = () => {
                 value={editTitle}
                 onChange={e => setEditTitle(e.target.value)}
                 style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', outline: 'none', transition: 'border-color 0.15s' }}
-                onFocus={e => e.target.style.borderColor = '#4f8ef7'}
+                onFocus={e => e.target.style.borderColor = '#5580A8'}
                 onBlur={e => e.target.style.borderColor = 'var(--border)'}
               />
             </div>
@@ -822,7 +884,7 @@ const TicketDetail = () => {
                 onChange={e => setEditDesc(e.target.value)}
                 rows={4}
                 style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--text-primary)', outline: 'none', resize: 'vertical', lineHeight: 1.6, fontFamily: 'Inter, sans-serif', transition: 'border-color 0.15s' }}
-                onFocus={e => e.target.style.borderColor = '#4f8ef7'}
+                onFocus={e => e.target.style.borderColor = '#5580A8'}
                 onBlur={e => e.target.style.borderColor = 'var(--border)'}
               />
             </div>
@@ -842,7 +904,7 @@ const TicketDetail = () => {
                   }
                   setShowEditModal(false);
                 }}
-                style={{ flex: 1, padding: 12, borderRadius: 12, background: 'linear-gradient(135deg, #2563eb, #4f8ef7)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', boxShadow: '0 4px 16px rgba(79,142,247,0.4)' }}
+                style={{ flex: 1, padding: 12, borderRadius: 12, background: 'linear-gradient(135deg, #2563eb, #5580A8)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', boxShadow: '0 4px 16px rgba(85,128,168,0.4)' }}
               >СОХРАНИТЬ</button>
             </div>
           </div>

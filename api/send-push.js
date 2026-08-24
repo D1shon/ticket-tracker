@@ -1,5 +1,9 @@
 import admin from 'firebase-admin'
 
+// Роли, легитимно видящие все клубы (token.club=null по задумке). Только им клубный
+// пуш уходит без совпадения клуба; всем остальным — строго по своему клубу.
+const GLOBAL_ROLES = new Set(['chef', 'komdir', 'viewer']) // синхронно с pushNotify.js и колокольчиком
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -42,6 +46,12 @@ export default async function handler(req, res) {
   const { title, body, club, excludeEmail, url, tag, tokens: clientTokens } = req.body ?? {}
   if (!title) return res.status(400).json({ error: 'title required' })
 
+  // Временно: НЕ рассылаем push-итоги WhatsApp (по запросу). Анализ в ленте
+  // продолжает работать. Чтобы вернуть WhatsApp-уведомления — удалить этот блок.
+  if (/whatsapp/i.test(String(title))) {
+    return res.json({ sent: 0, reason: 'whatsapp push disabled' })
+  }
+
   try {
     let tokens = []
     if (Array.isArray(clientTokens) && clientTokens.length > 0) {
@@ -51,12 +61,30 @@ export default async function handler(req, res) {
     } else {
       const allTokens = await getAllTokens()
       const exclude = (excludeEmail || '').toLowerCase()
+      const clubNorm = (club || '').toUpperCase()
       allTokens.forEach(t => {
         if (exclude && (t.email || '').toLowerCase() === exclude) return
-        // Chefs (club=null) get everything; others only their club's events
-        if (club && t.club && (t.club || '').toUpperCase() !== (club || '').toUpperCase()) return
+        // Клубный пуш → только точный клуб ИЛИ глобальная роль (шеф/Ком-Дир).
+        // Пустой/чужой клуб у обычной роли НЕ получает (фикс межклубной утечки).
+        if (club) {
+          const tClub = (t.club || '').toUpperCase()
+          const inClubs = Array.isArray(t.clubs) && t.clubs.some(c => (c || '').toUpperCase() === clubNorm)
+          if (!GLOBAL_ROLES.has(t.role || '') && tClub !== clubNorm && !inClubs) return
+        }
         tokens.push(t.token)
       })
+    }
+
+    // РОП получают ТОЛЬКО Demo Day и «Новый лид» — больше ничего вообще.
+    // Централизованно вырезаем токены роли 'rop' из любого другого пуша,
+    // кем бы он ни был инициирован (клиент, мост, облачная рутина).
+    const ropAllowed = /demo day|demo-day|лид|lead/i.test(String(title)) || tag === 'demo-day' || /^lead/i.test(String(tag || '')) || tag === 'shift-board'
+    if (!ropAllowed) {
+      try {
+        const all = await getAllTokens()
+        const ropSet = new Set(all.filter(t => (t.role || '') === 'rop').map(t => t.token))
+        if (ropSet.size) tokens = tokens.filter(tk => !ropSet.has(tk))
+      } catch {}
     }
 
     if (tokens.length === 0) return res.json({ sent: 0, reason: 'no matching tokens' })

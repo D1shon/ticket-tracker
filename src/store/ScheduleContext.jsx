@@ -10,6 +10,7 @@ import {
   updateDoc,
   where,
   getDocs,
+  getDocsFromServer,
   getDoc,
   deleteField
 } from 'firebase/firestore';
@@ -34,6 +35,7 @@ export const ScheduleProvider = ({ children }) => {
   const [employeesLoading, setEmployeesLoading] = useState(true);
   const clonedMonthsRef = useRef(new Set());
   const clonedSettingsMonthsRef = useRef(new Set());
+  const employeesServerConfirmedRef = useRef(false); // снапшот сотрудников подтверждён сервером (не из кеша)
   const settingsMonthKeyRef = useRef(monthKey);
 
   const [scheduleData, setScheduleData] = useState(() => {
@@ -203,6 +205,10 @@ export const ScheduleProvider = ({ children }) => {
         );
         unsubEmployees = onSnapshot(q, (snapshot) => {
           const remoteEmployees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          // Клонирование месяца можно запускать ТОЛЬКО по данным, подтверждённым
+          // сервером: холодный кеш даёт пустой первый снапшот, и клон затирал
+          // текущий месяц данными предыдущего (ставки/нормы/оклады).
+          employeesServerConfirmedRef.current = !snapshot.metadata.fromCache;
           setEmployees(remoteEmployees.sort((a, b) => (a.order || 0) - (b.order || 0)));
           setEmployeesLoading(false);
         }, (error) => {
@@ -238,6 +244,9 @@ export const ScheduleProvider = ({ children }) => {
             const remote = snapshot.data();
             const defaultVisibleCols = { totalHours: true, salary: true, salesCommission: true, razvozka: true, advance: true, correction: true, toPay: true };
             const merged = {
+              // Сначала ВСЕ поля документа (ecSalesPlan/ecSalesFact и будущие) —
+              // иначе снапшот затирал локально всё, что не в белом списке ниже.
+              ...remote,
               shift1: remote.shift1 || '8:30-14:30',
               shift2: remote.shift2 || '14:30-21:30',
               hourlyRate: remote.hourlyRate !== undefined ? remote.hourlyRate : 1500,
@@ -250,6 +259,10 @@ export const ScheduleProvider = ({ children }) => {
             settingsMonthKeyRef.current = monthKey;
           } else {
             // Document does not exist. Let's inherit or initialize it.
+            // ТОЛЬКО по подтверждению сервера: холодный кеш даёт exists=false для
+            // реально существующего документа — раньше это перезаписывало настройки
+            // месяца (смены/ставку) значениями предыдущего месяца.
+            if (snapshot.metadata.fromCache) return;
             if (clonedSettingsMonthsRef.current.has(monthKey)) return;
             clonedSettingsMonthsRef.current.add(monthKey);
             
@@ -305,9 +318,13 @@ export const ScheduleProvider = ({ children }) => {
   // ─── Auto-inherit (clone) employees from previous month if empty ───────
   useEffect(() => {
     if (employeesLoading || loading) return;
+    // ЗАЩИТА ОТ ПЕРЕЗАПИСИ: пустота из холодного кеша — не повод клонировать.
+    // Раньше клон срабатывал на пустом кеш-снапшоте и заливал текущий месяц
+    // данными предыдущего (ID детерминированы → setDoc перезаписывал правки).
+    if (!employeesServerConfirmedRef.current) return;
 
-    const clubs = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE'];
-    
+    const clubs = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+
     // Find clubs that have no employees in the current month
     const emptyClubs = clubs.filter(club => {
       const hasEmployees = employees.some(e => (e.club || '4YOU') === club);
@@ -325,9 +342,21 @@ export const ScheduleProvider = ({ children }) => {
     const cloneFromPrevious = async () => {
       try {
         setIsSaving(true);
+
+        // Контрольная сверка С СЕРВЕРА: клонируем только клубы, реально пустые
+        // в базе (а не в локальном кеше/состоянии) — исключает любую перезапись.
+        const curSnap = await getDocsFromServer(query(collection(db, 'employees'), where('monthKey', '==', monthKey)));
+        const clubsOnServer = new Set(curSnap.docs.map(d => (d.data().club || '4YOU')));
+        const trulyEmpty = emptyClubs.filter(club => !clubsOnServer.has(club));
+        if (trulyEmpty.length === 0) {
+          console.log('Клонирование отменено: на сервере клубы уже заполнены', emptyClubs);
+          return;
+        }
+        emptyClubs.length = 0; emptyClubs.push(...trulyEmpty);
+
         const prevMonth = subMonths(currentMonth, 1);
         const prevMonthKey = format(prevMonth, 'yyyy-MM');
-        
+
         // Fetch previous month's employees
         const q = query(collection(db, 'employees'), where('monthKey', '==', prevMonthKey));
         const snapshot = await getDocs(q);
@@ -452,6 +481,22 @@ export const ScheduleProvider = ({ children }) => {
     } finally { setIsSaving(false); }
   };
 
+  // ─── updateSalesBonus ─────────────────────────────────────────────────────
+  // Europe City: ручная ячейка «План продаж» у сотрудника (бонус/вычет, ₸).
+  const updateSalesBonus = async (monthKey, employeeId, val) => {
+    const docId = getScheduleDocId(monthKey, employeeId);
+    setScheduleData(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], employeeId, monthKey, salesBonus: val }
+    }));
+    try {
+      setIsSaving(true);
+      await setDoc(doc(db, 'schedules', docId), {
+        employeeId, monthKey, salesBonus: val
+      }, { merge: true });
+    } finally { setIsSaving(false); }
+  };
+
   // ─── updateSalaryOverride ─────────────────────────────────────────────────
   const updateSalaryOverride = async (monthKey, employeeId, val) => {
     const docId = getScheduleDocId(monthKey, employeeId);
@@ -482,14 +527,30 @@ export const ScheduleProvider = ({ children }) => {
     } finally { setIsSaving(false); }
   };
 
+  // ─── updateRazvozkaReceipt (чек об оплате развозки — для сервисников) ──────
+  const updateRazvozkaReceipt = async (monthKey, employeeId, url) => {
+    const docId = getScheduleDocId(monthKey, employeeId);
+    setScheduleData(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], employeeId, monthKey, razvozkaReceipt: url || null }
+    }));
+    try {
+      setIsSaving(true);
+      await setDoc(doc(db, 'schedules', docId), {
+        employeeId, monthKey, razvozkaReceipt: url || null
+      }, { merge: true });
+    } finally { setIsSaving(false); }
+  };
+
   // ─── updateDailyRazvozka ──────────────────────────────────────────────────
   const updateDailyRazvozka = async (monthKey, club, day, value) => {
     const docId = `${monthKey}_${club}`;
     const cleanVal = value === '' ? null : value;
 
     let updatedDays = {};
+    let currentReceipts = {};
     setDailyRazvozka(prev => {
-      const currentDoc = prev[docId] || { monthKey, club, days: {} };
+      const currentDoc = prev[docId] || { monthKey, club, days: {}, receipts: {} };
       const newDays = { ...currentDoc.days };
       if (cleanVal === null) {
         delete newDays[day];
@@ -497,6 +558,7 @@ export const ScheduleProvider = ({ children }) => {
         newDays[day] = cleanVal;
       }
       updatedDays = newDays;
+      currentReceipts = currentDoc.receipts || {};
       return {
         ...prev,
         [docId]: {
@@ -509,15 +571,54 @@ export const ScheduleProvider = ({ children }) => {
     try {
       setIsSaving(true);
       const docRef = doc(db, 'daily_razvozka', docId);
-      await setDoc(docRef, {
-        monthKey,
-        club,
-        days: updatedDays,
-        updatedAt: serverTimestamp()
-      });
+      // merge + точечный ключ дня: раньше документ перезаписывался ЦЕЛИКОМ из
+      // локального состояния — два человека, заполняющие развозку одновременно,
+      // затирали дни и чеки друг друга.
+      if (cleanVal === null) {
+        await setDoc(docRef, {
+          monthKey, club,
+          days: { [day]: deleteField() },
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
+        await setDoc(docRef, {
+          monthKey, club,
+          days: { [day]: cleanVal },
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
     } catch (e) {
       console.error('Error updating daily razvozka:', e);
       toast.error('Ошибка сохранения развозки');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ─── updateDailyRazvozkaReceipt (чек развозки по конкретному дню — Promenade) ─
+  const updateDailyRazvozkaReceipt = async (monthKey, club, day, url) => {
+    const docId = `${monthKey}_${club}`;
+    let updatedReceipts = {};
+    let currentDays = {};
+    setDailyRazvozka(prev => {
+      const currentDoc = prev[docId] || { monthKey, club, days: {}, receipts: {} };
+      const newReceipts = { ...(currentDoc.receipts || {}) };
+      if (!url) delete newReceipts[day]; else newReceipts[day] = url;
+      updatedReceipts = newReceipts;
+      currentDays = currentDoc.days || {};
+      return { ...prev, [docId]: { ...currentDoc, receipts: newReceipts } };
+    });
+    try {
+      setIsSaving(true);
+      // merge + точечный ключ дня (см. updateDailyRazvozka)
+      await setDoc(doc(db, 'daily_razvozka', docId), {
+        monthKey, club,
+        receipts: { [day]: url ? url : deleteField() },
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.error('Error saving razvozka receipt:', e);
+      toast.error('Ошибка сохранения чека');
     } finally {
       setIsSaving(false);
     }
@@ -562,14 +663,14 @@ export const ScheduleProvider = ({ children }) => {
 
   // ─── updateEmployeeHourlyRate ─────────────────────────────────────────────
   const updateEmployeeHourlyRate = async (id, val) => {
-    const parsed = val === '' ? null : parseFloat(val) || null;
+    const parsed = (() => { const n = parseFloat(val); return val === '' || !Number.isFinite(n) ? null : n; })(); // 0 — валидное значение
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, hourlyRate: parsed } : e));
     try { await updateDoc(doc(db, 'employees', id), { hourlyRate: parsed }); } catch {}
   };
 
   // ─── updateEmployeeFixedSalary ────────────────────────────────────────────
   const updateEmployeeFixedSalary = async (id, val) => {
-    const parsed = val === '' ? null : parseFloat(val) || null;
+    const parsed = (() => { const n = parseFloat(val); return val === '' || !Number.isFinite(n) ? null : n; })(); // 0 — валидное значение
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, fixedSalary: parsed } : e));
     try { await updateDoc(doc(db, 'employees', id), { fixedSalary: parsed }); } catch {}
   };
@@ -577,7 +678,7 @@ export const ScheduleProvider = ({ children }) => {
   // ─── updateNormHours ──────────────────────────────────────────────────────
   const updateNormHours = async (mKey, employeeId, val) => {
     const docId = getScheduleDocId(mKey, employeeId);
-    const parsed = val === '' ? null : parseFloat(val) || null;
+    const parsed = (() => { const n = parseFloat(val); return val === '' || !Number.isFinite(n) ? null : n; })(); // 0 — валидное значение
     setScheduleData(prev => ({
       ...prev,
       [docId]: { ...prev[docId], employeeId, monthKey: mKey, normHours: parsed }
@@ -616,13 +717,21 @@ export const ScheduleProvider = ({ children }) => {
   };
 
   // ─── moveEmployee ─────────────────────────────────────────────────────────
+  // Сосед ищется ВНУТРИ клуба: раньше стрелки меняли местами с сотрудником
+  // другого клуба — визуально «кнопки не работали», а orders перетасовывались.
   const moveEmployee = async (id, direction) => {
     try {
-      const idx = employees.findIndex(e => e.id === id);
+      const me = employees.find(e => e.id === id);
+      if (!me) return;
+      const clubName = me.club || '4YOU';
+      const clubEmps = employees.filter(e => (e.club || '4YOU') === clubName);
+      const idx = clubEmps.findIndex(e => e.id === id);
       const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= employees.length) return;
-      const newEmployees = [...employees];
-      [newEmployees[idx], newEmployees[targetIdx]] = [newEmployees[targetIdx], newEmployees[idx]];
+      if (targetIdx < 0 || targetIdx >= clubEmps.length) return;
+      const reordered = [...clubEmps];
+      [reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]];
+      const otherClubsEmps = employees.filter(e => (e.club || '4YOU') !== clubName);
+      const newEmployees = [...otherClubsEmps, ...reordered];
       setEmployees(newEmployees);
       await Promise.all(newEmployees.map((emp, i) => updateDoc(doc(db, 'employees', emp.id), { order: i })));
     } catch {}
@@ -667,7 +776,7 @@ export const ScheduleProvider = ({ children }) => {
       scheduleData, employees, loading, isSaving,
       currentMonth, setCurrentMonth, monthKey, employeesLoading,
       updateCell, addEmployee, removeEmployee, updateEmployee, updateEmployeeHourlyRate, updateEmployeeFixedSalary, updateNormHours, setEmployeeService,
-      updateAdvance, updateCorrection, updateSalaryOverride, updateRazvozkaOverride, moveEmployee, reorderEmployees,
+      updateAdvance, updateCorrection, updateSalesBonus, updateSalaryOverride, updateRazvozkaOverride, updateRazvozkaReceipt, updateDailyRazvozkaReceipt, moveEmployee, reorderEmployees,
       settings, updateSettings,
       dailyRazvozka, updateDailyRazvozka
     }}>

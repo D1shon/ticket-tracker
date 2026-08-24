@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { getFirestore, doc, setDoc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, updateDoc, collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PROFILE_DIR = path.join(ROOT, 'profile');
@@ -186,7 +186,24 @@ async function main() {
   await setBridge({ auth: authed ? 'ok' : 'need_login', heartbeatISO: new Date().toISOString() });
   if (!authed) log('⚠️ Нет входа в кабинет. Выполните: node bridge.mjs login');
 
-  setInterval(() => setBridge({ heartbeatISO: new Date().toISOString() }), 5 * 60 * 1000);
+  // Пульс + сторожок от «зомби»: при обрыве связи с Firestore запись не падает,
+  // а ВИСНЕТ в очереди (так мост 31.07 три дня «работал», не слыша очередь ответов).
+  // Если пульс реально не доставлен >15 минут — выходим; start-bridge.bat поднимет
+  // свежий процесс через 15 секунд с новым соединением.
+  let lastBeatOkAt = Date.now();
+  const beat = async () => {
+    const ok = await Promise.race([
+      setDoc(doc(db, 'gis_bridge', '_bridge'), { heartbeatISO: new Date().toISOString(), updatedAtISO: new Date().toISOString() }, { merge: true })
+        .then(() => true).catch(() => false),
+      new Promise(r => setTimeout(() => r(false), 60 * 1000)), // запись висит >минуты = не доставлена
+    ]);
+    if (ok) lastBeatOkAt = Date.now();
+    if (Date.now() - lastBeatOkAt > 15 * 60 * 1000) {
+      log('🩺 сторожок: пульс не доставляется >15 мин (зомби-соединение) — перезапускаюсь');
+      process.exit(1);
+    }
+  };
+  setInterval(beat, 5 * 60 * 1000);
 
   // Очередь: обрабатываем pending-ответы по одному
   let busy = false;
@@ -206,12 +223,35 @@ async function main() {
       log(`✓ отправлен ${id}`);
     } catch (e) {
       log(`✗ ошибка ${id}:`, e.message);
-      await updateDoc(doc(db, 'review_replies', id), { status: 'error', errorNote: e.message }).catch(() => {});
+      // «Отзыв не найден» — штатное запаздывание кабинета за публичной картой
+      // (часы, иногда сутки). Не хороним ответ: ставим error, но retry-свип
+      // ниже вернёт его в pending. До 96 попыток (~2 суток по 30 мин).
+      const retries = (data.retryCount || 0) + 1;
+      await updateDoc(doc(db, 'review_replies', id), { status: 'error', errorNote: e.message, retryCount: retries }).catch(() => {});
     } finally {
       busy = false;
       setTimeout(process1, 2000);
     }
   };
+
+  // Retry-свип: каждые 30 минут возвращаем в очередь ответы, упавшие из-за
+  // отставания кабинета («не найден») или разово истёкшей сессии — пока вход
+  // снова в порядке. Прочие ошибки (нет кнопки/поля) не трогаем: они требуют
+  // взгляда человека.
+  const RETRYABLE = /не найден в кабинете|Сессия кабинета истекла/i;
+  setInterval(async () => {
+    try {
+      if (!(await isLoggedIn(page))) return;
+      const snap = await getDocs(query(collection(db, 'review_replies'), where('status', '==', 'error')));
+      for (const d of snap.docs) {
+        const r = d.data();
+        if ((r.retryCount || 0) >= 96) continue;
+        if (!RETRYABLE.test(r.errorNote || '')) continue;
+        await updateDoc(doc(db, 'review_replies', d.id), { status: 'pending', errorNote: null });
+        log(`↻ повтор ${d.id} (попытка ${(r.retryCount || 0) + 1})`);
+      }
+    } catch {}
+  }, 30 * 60 * 1000);
 
   onSnapshot(query(collection(db, 'review_replies'), where('status', '==', 'pending')), snap => {
     snap.docChanges().forEach(ch => {

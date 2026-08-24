@@ -71,6 +71,17 @@ function dueReminders(alm) {
     })
   }
 
+  // 4. Отчёт дня (Чек-листы → «Отчёт дня»): будни 21:30, выходные 20:00
+  const opsMin = weekend ? 1200 : 1290
+  if (inWin(opsMin)) {
+    due.push({
+      id: `${dateStr}_ops_report`,
+      title: '📝 Отчёт дня',
+      body: 'Заполните отчёт дня: события за смену или отметка «всё хорошо» в календаре',
+      club: null, url: '/checklists', roles: ['manager', 'admin'],
+    })
+  }
+
   return due
 }
 
@@ -141,7 +152,8 @@ export default async function handler(req, res) {
         webpush: {
           headers: { Urgency: 'high', TTL: '1800' },
           notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: r.id },
-          fcmOptions: { link: `https://track.hj.fit${r.url}` },
+          // track.hj.fit не в DNS — ссылки только на рабочий домен
+          fcmOptions: { link: `https://ticket-tracker-inky.vercel.app${r.url}` },
         },
       })
       results.push({ id: r.id, sent: out.successCount, failed: out.failureCount })

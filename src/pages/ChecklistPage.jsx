@@ -6,6 +6,8 @@ import { format, addDays, subDays, startOfToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useChecklist } from '../store/ChecklistContext';
 import { useTickets } from '../store/TicketContext';
+import DailyOpsReport from '../components/checklists/DailyOpsReport';
+import { isMobileDevice } from '../lib/isMobile';
 
 const getFormattedTime = (updatedAt) => {
   if (!updatedAt) return '';
@@ -26,6 +28,17 @@ const ChecklistPage = () => {
   const user = context?.user;
   const userClub = user?.club?.toUpperCase();
   const isManager = user?.role === 'manager';
+  // Менеджер и админ заперты на свой клуб (у Europe City чек-листы доступны админам)
+  const isClubLocked = (isManager || user?.role === 'admin') && !!userClub;
+
+  // Мобильный режим — компактные карточки в 2 колонки, вкладки на всю ширину
+  // (хук вызывается ДО раннего return ниже, чтобы порядок хуков не менялся)
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   // Defensive check to prevent white screen if context is glitchy
   if (!context || !user) {
@@ -37,7 +50,7 @@ const ChecklistPage = () => {
   }
 
   // Strictly filter clubs for managers, and exclude 'ВСЕ КЛУБЫ' for checklists
-  const availableClubs = (isManager && userClub) ? [userClub] : CLUBS.filter(c => c !== 'ВСЕ КЛУБЫ');
+  const availableClubs = isClubLocked ? [userClub] : CLUBS.filter(c => c !== 'ВСЕ КЛУБЫ');
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -57,6 +70,8 @@ const ChecklistPage = () => {
 
   const [activeClub, setActiveClub] = useState(initialClub);
   const [activeDate, setActiveDate] = useState(getInitialDate);
+  // ?view=report (кнопка «+» в мобильной навигации) → сразу вкладка «Отчёт дня»
+  const [view, setView] = useState(() => searchParams.get('view') === 'report' ? 'report' : 'shifts'); // 'shifts' | 'report'
   const { checklistData } = useChecklist();
   const navigate = useNavigate();
 
@@ -70,10 +85,10 @@ const ChecklistPage = () => {
 
   // Force active club and prevent seeing others
   useEffect(() => {
-    if (userClub && isManager) {
+    if (isClubLocked) {
       setActiveClub(userClub);
     }
-  }, [userClub, isManager]);
+  }, [userClub, isClubLocked]);
 
   const dateKey = format(activeDate, 'yyyy-MM-dd');
 
@@ -105,7 +120,7 @@ const ChecklistPage = () => {
       <div className="flex items-start justify-between mb-8 gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <ShieldCheck style={{ color: '#a855f7' }} size={24} strokeWidth={2.5} />
+            <ShieldCheck style={{ color: '#8E7BB8' }} size={24} strokeWidth={2.5} />
             <h1 className="text-xl font-bold tracking-tight uppercase" style={{ letterSpacing: '0.02em' }}>Мониторинг клуба</h1>
           </div>
           <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
@@ -114,9 +129,27 @@ const ChecklistPage = () => {
         </div>
       </div>
 
+      {/* Вкладки: проверки смен / единый отчёт дня. На мобильном — на всю ширину */}
+      <div className={`flex gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] mb-6 ${isMobile ? 'w-full' : 'w-fit'}`}>
+        <button
+          onClick={() => setView('shifts')}
+          style={isMobile ? { flex: 1, minHeight: 40 } : undefined}
+          className={`px-5 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${view === 'shifts' ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+        >
+          Проверки смен
+        </button>
+        <button
+          onClick={() => setView('report')}
+          style={isMobile ? { flex: 1, minHeight: 40 } : undefined}
+          className={`px-5 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${view === 'report' ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+        >
+          📝 Отчёт дня
+        </button>
+      </div>
+
       {/* Filters Row */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-        {!isManager && (
+        {!isClubLocked && (
           <div className="flex flex-col gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Клуб</span>
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] overflow-x-auto max-w-full no-scrollbar flex-nowrap">
@@ -137,6 +170,7 @@ const ChecklistPage = () => {
           </div>
         )}
 
+        {view === 'shifts' && (
         <div className="flex flex-col gap-2 items-start md:items-end">
           <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Дата смен</span>
           <div className="flex flex-wrap items-center gap-3">
@@ -181,16 +215,21 @@ const ChecklistPage = () => {
             </div>
           </div>
         </div>
+        )}
       </div>
 
+      {view === 'report' ? (
+        <DailyOpsReport club={activeClub} />
+      ) : (
+      <>
       {/* Status Label */}
       <div className="flex items-center gap-2 mb-6 text-[10px] font-bold tracking-widest text-[var(--text-muted)] uppercase">
         <Clock size={12} className="text-[var(--accent-purple)]" />
         Статус смен: {activeClub}
       </div>
 
-      {/* Shifts List */}
-      <div className="flex flex-col gap-6">
+      {/* Shifts List — на мобильном плотнее */}
+      <div className={`flex flex-col ${isMobile ? 'gap-3' : 'gap-6'}`}>
         {getShiftsForDate(activeDate).map(shift => (
           <div 
             key={shift.id} 
@@ -198,19 +237,19 @@ const ChecklistPage = () => {
               shift.isCurrent ? 'bg-[var(--bg-card)]' : 'bg-transparent'
             }`}
             style={{ 
-              border: shift.isCurrent ? '1px solid rgba(123,61,255,0.3)' : '1px solid transparent',
+              border: shift.isCurrent ? '1px solid rgba(125,111,179,0.3)' : '1px solid transparent',
               boxShadow: shift.isCurrent ? '0 10px 40px rgba(0,0,0,0.4)' : 'none'
             }}
           >
-            {/* Shift Header */}
-            <div className="flex items-center justify-between p-5 pb-4">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--bg-hover)] border border-[var(--border)] shadow-inner">
-                  <shift.icon size={18} style={{ color: shift.color }} />
+            {/* Shift Header — на мобильном плотнее (меньше паддинги/иконка) */}
+            <div className={`flex items-center justify-between ${isMobile ? 'p-3 pb-2' : 'p-5 pb-4'}`}>
+              <div className={`flex items-center ${isMobile ? 'gap-2.5' : 'gap-4'}`}>
+                <div className={`${isMobile ? 'w-8 h-8' : 'w-10 h-10'} rounded-xl flex items-center justify-center bg-[var(--bg-hover)] border border-[var(--border)] shadow-inner flex-shrink-0`}>
+                  <shift.icon size={isMobile ? 15 : 18} style={{ color: shift.color }} />
                 </div>
                 <div>
                   <div className="flex items-center gap-3">
-                    <h3 className="text-base font-bold flex items-center gap-2">
+                    <h3 className={`${isMobile ? 'text-sm' : 'text-base'} font-bold flex items-center gap-2`}>
                       <span style={{ color: shift.color }}>{shift.time}</span>
                       <span className="text-[var(--text-primary)]">{shift.name}</span>
                     </h3>
@@ -231,8 +270,8 @@ const ChecklistPage = () => {
               </div>
             </div>
 
-            {/* Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-5 pt-0">
+            {/* Cards Grid — на мобильном 2 колонки компактно */}
+            <div className={isMobile ? 'grid grid-cols-2 gap-2 p-3 pt-0' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-5 pt-0'}>
               {shift.cards.map(cardId => {
                 const card = CHECK_ITEMS[cardId];
                 const docId = `${dateKey}_${activeClub}_${shift.id}_${cardId}`;
@@ -249,14 +288,14 @@ const ChecklistPage = () => {
                   <div 
                     key={cardId}
                     onClick={() => navigate(`/checklists/${shift.id}/${cardId}?date=${dateKey}&club=${activeClub}`)}
-                    className={`group bg-[var(--bg-card)] border rounded-2xl p-6 flex flex-col items-center justify-center gap-4 hover:bg-[var(--bg-hover)] transition-all cursor-pointer shadow-sm ${
+                    className={`group bg-[var(--bg-card)] border rounded-2xl ${isMobile ? 'p-3 gap-2' : 'p-6 gap-4'} flex flex-col items-center justify-center hover:bg-[var(--bg-hover)] transition-all cursor-pointer shadow-sm ${
                       complete ? 'border-green-500/30' : 'border-[var(--border)] hover:border-[var(--accent-purple)]/30'
                     }`}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[var(--accent-purple)] group-hover:scale-110 transition-transform shadow-lg ${
+                    <div className={`${isMobile ? 'w-8 h-8' : 'w-10 h-10'} rounded-full flex items-center justify-center text-[var(--accent-purple)] group-hover:scale-110 transition-transform shadow-lg ${
                       complete ? 'bg-green-500/10 text-green-500' : 'bg-[var(--bg-hover)]'
                     }`}>
-                      {complete ? <ShieldCheck size={20} /> : <card.icon size={20} strokeWidth={2} />}
+                      {complete ? <ShieldCheck size={isMobile ? 16 : 20} /> : <card.icon size={isMobile ? 16 : 20} strokeWidth={2} />}
                     </div>
                     <div className="text-center w-full">
                       <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1 group-hover:text-[var(--accent-purple)] transition-colors">{card.title}</h4>
@@ -273,7 +312,7 @@ const ChecklistPage = () => {
                         </div>
                         {/* Status update stamp verifying who checked and when */}
                         {checkedBy && (
-                          <div className={`mt-2 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${
+                          <div style={isMobile ? { maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : undefined} className={`${isMobile ? 'mt-1 text-[8px] px-1.5 py-0.5 tracking-wider' : 'mt-2 text-[9px] px-2.5 py-1 tracking-widest'} font-black uppercase rounded-md border ${
                             complete ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                           }`}>
                             👤 {checkedBy} {checkedTime ? `в ${checkedTime}` : ''}
@@ -288,6 +327,8 @@ const ChecklistPage = () => {
           </div>
         ))}
       </div>
+      </>
+      )}
 
     </div>
   );

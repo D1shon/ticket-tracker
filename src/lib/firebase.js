@@ -25,6 +25,28 @@ try {
   _db = getFirestore(app);
 }
 export const db = _db;
+
+// iOS/Safari в фоне рвёт соединение вкладки с IndexedDB — после возврата
+// Firestore не может писать («Connection to Indexed Database server lost»),
+// лечится только перезагрузкой. Проверяем кэш пробным чтением при каждом
+// возврате в приложение и перезагружаемся сами, пока форма ещё пустая.
+if (typeof document !== 'undefined') {
+  let probing = false;
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || probing) return;
+    probing = true;
+    try {
+      const { doc, getDocFromCache } = await import('firebase/firestore');
+      await getDocFromCache(doc(db, '_health', 'probe'));
+    } catch (e) {
+      // «not found in cache» — норма (кэш жив); перезагружаемся только
+      // на реальной смерти IndexedDB
+      if (/Indexed/i.test(String(e?.message || e))) window.location.reload();
+    } finally {
+      probing = false;
+    }
+  });
+}
 // Storage SDK загружается лениво — нужен только при загрузке файлов
 export const getStorageLazy = async () => {
   const { getStorage } = await import("firebase/storage");

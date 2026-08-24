@@ -8,12 +8,15 @@ import { CHECK_ITEMS, SHIFTS_DATA, getShiftsForDate } from '../data/checklistDat
 import { format, startOfToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { db } from '../lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { isMobileDevice } from '../lib/isMobile';
 
 const ChecklistDetail = () => {
   const { shiftId, cardId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { addTicket, user } = useTickets();
+  const { addTicket, user, tickets } = useTickets();
   const { checklistData, updateCheckState, saveSessionInspector } = useChecklist();
   
   const dateKey = searchParams.get('date') || format(startOfToday(), 'yyyy-MM-dd');
@@ -37,6 +40,14 @@ const ChecklistDetail = () => {
   const [itemIssues, setItemIssues] = useState({});
   const [itemTimestamps, setItemTimestamps] = useState({});
   const [itemRepeats, setItemRepeats] = useState({});
+
+  // Мобильный режим — пункты карточками, крупные кнопки «✓ / проблема»
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   const isMorningSession = shiftId === 'morning' || shiftId === 'day';
   const sessionGroupId = isMorningSession ? 'morning_day' : 'evening_night';
@@ -96,11 +107,33 @@ const ChecklistDetail = () => {
     
     if (!cardData.noTicket) {
       let createdCount = 0;
+      let skippedCount = 0;
+
+      // Авто-дедупликация: если по этому пункту уже есть НЕзакрытая заявка в этом
+      // клубе — новую не создаём (иначе каждая смена плодит дубль, пока не починят).
+      // Заголовки заявок чек-листа имеют вид «Пункт (ЧЧ:ММ)» — сравниваем без времени.
+      // Сверяемся с СЕРВЕРНЫМ списком заявок клуба: локальный кеш при холодном
+      // старте пуст, и дубли проскакивали. Плюс не пересоздаём заявку, закрытую
+      // менее 3 дней назад — «уже закрывали, а она появилась снова».
+      const baseTitle = (s) => String(s || '').replace(/\s*\(\d{1,2}:\d{2}\)\s*$/, '').trim().toLowerCase();
+      let clubTickets = tickets || [];
+      try {
+        const snap = await getDocs(query(collection(db, 'tickets'), where('club', '==', club)));
+        clubTickets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) { console.warn('[checklist] dedup fallback to local tickets:', e); }
+      const recentCutoffISO = new Date(Date.now() - 3 * 86400_000).toISOString();
+      const hasOpenDuplicate = (itemTitle) => clubTickets.some(t =>
+        baseTitle(t.title) === baseTitle(itemTitle) &&
+        (t.status !== 'closed' || (t.closedAt || t.statusChangedAt || '') >= recentCutoffISO)
+      );
+
       for (const idx of issueIndices) {
         if (itemRepeats[idx] === true) continue;
 
         const problemDescription = itemIssues[idx] || '';
         const itemTitle = effectiveItems[idx];
+
+        if (hasOpenDuplicate(itemTitle)) { skippedCount++; continue; }
         
         const descText = problemDescription.trim()
           ? (inspectorName.trim() ? `${problemDescription.trim()} (Проверил: ${inspectorName.trim()})` : problemDescription.trim())
@@ -126,6 +159,9 @@ const ChecklistDetail = () => {
       }
       if (createdCount > 0) {
         toast.success(`${createdCount} заявок создано автоматически`);
+      }
+      if (skippedCount > 0) {
+        toast.info(`${skippedCount} дубл. не создано — заявка уже в работе`);
       }
     }
     
@@ -154,18 +190,37 @@ const ChecklistDetail = () => {
   };
   const formattedDate = getFormattedDate();
 
+  // Устаревшая/битая ссылка (карточка или смена больше не существуют) — не роняем
+  // страницу в белый экран, а мягко возвращаем к списку.
+  if (!cardData || !shift) {
+    return (
+      <div className="animate-fade min-h-full flex flex-col items-center justify-center gap-4 text-center" style={{ color: 'var(--text-primary)', minHeight: '60vh' }}>
+        <ShieldCheck size={40} style={{ color: 'var(--accent-purple)' }} />
+        <div style={{ fontSize: 15, fontWeight: 800 }}>Проверка не найдена</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 300 }}>Похоже, ссылка устарела. Вернитесь к списку и откройте нужную проверку заново.</div>
+        <button
+          onClick={() => navigate(`/checklists?club=${club}&date=${dateKey}`)}
+          className="px-8 py-3 rounded-2xl text-white text-sm font-bold"
+          style={{ background: 'var(--accent-purple)' }}
+        >
+          К списку проверок
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade min-h-full" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-primary)' }}>
       {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <button 
+      <div className={`flex items-center ${isMobile ? 'gap-3 mb-5' : 'gap-4 mb-8'}`}>
+        <button
           onClick={() => navigate(`/checklists?club=${club}&date=${dateKey}`)}
-          className="w-10 h-10 rounded-full bg-[var(--bg-hover)] hover:bg-[var(--bg-hover)]/80 flex items-center justify-center text-[var(--text-secondary)] transition-all"
+          className="w-10 h-10 rounded-full bg-[var(--bg-hover)] hover:bg-[var(--bg-hover)]/80 flex items-center justify-center text-[var(--text-secondary)] transition-all flex-shrink-0"
         >
           <ChevronLeft size={20} />
         </button>
         <div>
-          <h1 className="text-xl font-bold text-[var(--text-primary)]">{cardData.title}</h1>
+          <h1 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-[var(--text-primary)]`}>{cardData.title}</h1>
           <p className="text-xs text-[var(--text-muted)] font-medium uppercase tracking-wider mt-0.5">
             {shift.time} {shift.name} · Клуб <span style={{ color: 'var(--accent-purple)', fontWeight: 900 }}>{club}</span> · Дата: <span className="text-[var(--text-secondary)] font-bold">{formattedDate}</span>
           </p>
@@ -173,8 +228,8 @@ const ChecklistDetail = () => {
       </div>
 
       <div className="max-w-4xl">
-        {/* Items List */}
-        <div className="flex flex-col gap-6 mb-12">
+        {/* Items List — на мобильном плотнее */}
+        <div className={`flex flex-col ${isMobile ? 'gap-3 mb-6' : 'gap-6 mb-12'}`}>
           {effectiveItems.map((item, i) => {
             if (item.startsWith('§')) {
               return (
@@ -193,15 +248,16 @@ const ChecklistDetail = () => {
 
             return (
               <div key={i} className="flex flex-col gap-3">
+                {/* На мобильном пункт — вертикальная карточка: текст сверху, две крупные кнопки (≥44px) снизу */}
                 <div
-                  className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
-                    state === 'ok' ? 'bg-green-500/5 border-green-500/20' : 
-                    state === 'issue' ? 'bg-red-500/5 border-red-500/20' : 
+                  className={`${isMobile ? 'flex flex-col gap-3 p-4' : 'flex items-center justify-between p-5'} rounded-2xl border transition-all ${
+                    state === 'ok' ? 'bg-green-500/5 border-green-500/20' :
+                    state === 'issue' ? 'bg-red-500/5 border-red-500/20' :
                     'bg-[var(--bg-card)] border-[var(--border)]'
                   }`}
                 >
                   <div className="flex flex-col gap-1">
-                    <span className={`text-sm font-bold ${state ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+                    <span className={`${isMobile ? 'text-[13px]' : 'text-sm'} font-bold ${state ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
                       {item}
                     </span>
                     {/* Timestamp badge */}
@@ -214,23 +270,25 @@ const ChecklistDetail = () => {
                       </span>
                     )}
                   </div>
-                  
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button 
+
+                  <div className={`flex items-center gap-2 flex-shrink-0 ${isMobile ? 'w-full' : ''}`}>
+                    <button
                       onClick={() => handleStateChange(i, 'ok')}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${
-                        state === 'ok' 
-                          ? 'bg-green-500 border-green-500 text-white' 
+                      style={isMobile ? { flex: 1, minHeight: 44 } : undefined}
+                      className={`${isMobile ? 'text-[11px]' : 'px-4 py-2 text-[10px]'} rounded-xl font-black uppercase tracking-tighter transition-all border ${
+                        state === 'ok'
+                          ? 'bg-green-500 border-green-500 text-white'
                           : 'bg-[var(--bg-hover)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                       }`}
                     >
-                      Все хорошо
+                      {isMobile ? '✓ Все хорошо' : 'Все хорошо'}
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleStateChange(i, 'issue')}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${
-                        state === 'issue' 
-                          ? 'bg-red-500 border-red-500 text-white' 
+                      style={isMobile ? { flex: 1, minHeight: 44 } : undefined}
+                      className={`${isMobile ? 'text-[11px]' : 'px-4 py-2 text-[10px]'} rounded-xl font-black uppercase tracking-tighter transition-all border ${
+                        state === 'issue'
+                          ? 'bg-red-500 border-red-500 text-white'
                           : 'bg-[var(--bg-hover)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                       }`}
                     >
@@ -242,14 +300,16 @@ const ChecklistDetail = () => {
                 {/* Conditional Issue Input */}
                 {state === 'issue' && (
                   <div className="animate-slide-down px-2 flex flex-col gap-2.5">
-                    <textarea 
+                    {/* Поле описания проблемы — на мобильном крупнее шрифт (не зумит iOS) и выше */}
+                    <textarea
                       value={itemIssues[i] || ''}
                       onChange={(e) => handleIssueChange(i, e.target.value)}
                       placeholder="Опишите проблему подробно..."
+                      style={isMobile ? { fontSize: 16, minHeight: 110 } : undefined}
                       className="w-full bg-[var(--bg-card)] border border-red-500/20 rounded-2xl p-4 text-sm text-[var(--text-primary)] focus:border-red-500/40 outline-none transition-all resize-none h-24"
                     />
-                    
-                    <div className="flex items-center justify-between p-3.5 bg-red-500/5 border border-red-500/10 rounded-2xl">
+
+                    <div className={`${isMobile ? 'flex flex-col items-stretch gap-3' : 'flex items-center justify-between'} p-3.5 bg-red-500/5 border border-red-500/10 rounded-2xl`}>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-xs font-bold text-[var(--text-secondary)]">Это повторная проблема?</span>
                         <span className="text-[10px] text-[var(--text-muted)] font-medium">Если да, автоматическая заявка не будет создана</span>
@@ -258,6 +318,7 @@ const ChecklistDetail = () => {
                         <button
                           type="button"
                           onClick={() => handleRepeatChange(i, true)}
+                          style={isMobile ? { flex: 1, minHeight: 44 } : undefined}
                           className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
                             itemRepeats[i] === true
                               ? 'bg-red-500 border-red-500 text-white shadow-md shadow-red-500/20'
@@ -269,6 +330,7 @@ const ChecklistDetail = () => {
                         <button
                           type="button"
                           onClick={() => handleRepeatChange(i, false)}
+                          style={isMobile ? { flex: 1, minHeight: 44 } : undefined}
                           className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
                             itemRepeats[i] !== true
                               ? 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-primary)] shadow-sm'
@@ -319,25 +381,30 @@ const ChecklistDetail = () => {
           </div>
         )}
 
-        {/* Action Button */}
-        <div className="flex items-center gap-4 pt-8 border-t border-[var(--border)]">
-          <button 
+        {/* Action Button — на мобильном панель прилипает к низу экрана, кнопка крупная */}
+        <div
+          className={`flex items-center ${isMobile ? 'gap-2 pt-3 pb-3' : 'gap-4 pt-8'} border-t border-[var(--border)]`}
+          style={isMobile ? { position: 'sticky', bottom: 0, background: 'var(--bg-primary)', zIndex: 20 } : undefined}
+        >
+          <button
             onClick={() => navigate(`/checklists?club=${club}&date=${dateKey}`)}
-            className="px-8 py-4 rounded-2xl bg-[var(--bg-hover)] text-[var(--text-secondary)] text-sm font-bold hover:bg-[var(--bg-hover)]/80 transition-all"
+            style={isMobile ? { minHeight: 48 } : undefined}
+            className={`${isMobile ? 'px-5' : 'px-8 py-4'} rounded-2xl bg-[var(--bg-hover)] text-[var(--text-secondary)] text-sm font-bold hover:bg-[var(--bg-hover)]/80 transition-all`}
           >
             Отмена
           </button>
-          <button 
+          <button
             onClick={handleComplete}
             disabled={isSubmitDisabled}
-            className={`flex-1 py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-              !isSubmitDisabled 
-                ? 'bg-[var(--accent-purple)] text-white shadow-xl shadow-purple-500/20 hover:-translate-y-0.5' 
+            style={isMobile ? { minHeight: 48 } : undefined}
+            className={`flex-1 ${isMobile ? '' : 'py-4'} rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+              !isSubmitDisabled
+                ? 'bg-[var(--accent-purple)] text-white shadow-xl shadow-purple-500/20 hover:-translate-y-0.5'
                 : 'bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-not-allowed'
             }`}
           >
             <CheckCircle2 size={18} />
-            Подтвердить и завершить
+            {isMobile ? 'Завершить проверку' : 'Подтвердить и завершить'}
           </button>
         </div>
       </div>

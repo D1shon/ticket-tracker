@@ -25,6 +25,7 @@ dist-ssr
 
 .vercel
 .env*
+!.env.example
 
 # Local scratch scripts (contain service-account keys) — never commit
 scratch/

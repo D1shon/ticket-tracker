@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, onSnapshot, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { REVIEW_BRANCHES, fetchReviews } from '../lib/reviews2gis';
 import { pushNotify } from '../lib/pushNotify';
@@ -15,24 +15,27 @@ const READ_KEY = 'app_notifications_read_v1';
 
 import { USER_ROLES } from './TicketContext';
 
-/** Returns the club of the currently logged-in session user, or null for chefs/unknown. */
-function getSessionUserClub() {
-  try {
-    const raw = localStorage.getItem('app_session_user');
-    if (!raw) return null;
-    const { email } = JSON.parse(raw);
-    const profile = USER_ROLES[(email || '').toLowerCase().trim()];
-    return profile?.club ?? null; // null means chef → sees everything
-  } catch {
-    return null;
-  }
+// ── Доступ к клубным уведомлениям ──
+// ВАЖНО: раньше клуб брался из легаси-ключа localStorage 'app_session_user',
+// который удаляется при старте → клуб всегда null → «шеф, видит всё» У ВСЕХ.
+// Это и была межклубная утечка уведомлений. Теперь доступ считается по email
+// живой Firebase-сессии + роли: глобальные роли видят все клубы, остальные —
+// строго свой (или свои — мультиклуб); неизвестный профиль клубного не видит.
+const GLOBAL_NOTIF_ROLES = new Set(['chef', 'komdir', 'viewer']);
+
+function clubAccessFor(email) {
+  const p = USER_ROLES[(email || '').toLowerCase().trim()];
+  if (!p) return { all: false, clubs: [] }; // неизвестен → ничего клубного
+  if (GLOBAL_NOTIF_ROLES.has(p.role)) return { all: true, clubs: [] };
+  const clubs = Array.isArray(p.clubs) && p.clubs.length ? p.clubs : (p.club ? [p.club] : []);
+  return { all: false, clubs: clubs.map(c => (c || '').toUpperCase()) };
 }
 
-/** Returns true if the current user is allowed to see a ticket with the given club. */
-function canSeeTicket(ticketClub) {
-  const userClub = getSessionUserClub();
-  if (userClub === null) return true; // chef — unrestricted
-  return (ticketClub || '').toUpperCase() === userClub.toUpperCase();
+/** Может ли пользователь с этим email видеть уведомление клуба ticketClub */
+function emailCanSeeClub(email, ticketClub) {
+  const acc = clubAccessFor(email);
+  if (acc.all) return true;
+  return acc.clubs.includes((ticketClub || '').toUpperCase());
 }
 
 const STATUS_LABELS = {
@@ -40,7 +43,7 @@ const STATUS_LABELS = {
   in_progress: { label: 'Принята в работу',  icon: '⚡', color: '#70B11D' },
   paused:      { label: 'Поставлена на паузу', icon: '⏸️', color: '#FB8F41' },
   waiting:     { label: 'Перенесена в ожидание', icon: '⏳', color: '#FFCA43' },
-  closed:      { label: 'Заявка закрыта',    icon: '✅', color: '#7B3DFF' },
+  closed:      { label: 'Заявка закрыта',    icon: '✅', color: '#7D6FB3' },
 };
 
 const EVENT_TYPES = {
@@ -98,47 +101,12 @@ function loadReadSet() {
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export const NotificationProvider = ({ children }) => {
-  const [currentUserEmail, setCurrentUserEmail] = useState(() => {
-    try {
-      const raw = localStorage.getItem('app_session_user');
-      return raw ? JSON.parse(raw).email : null;
-    } catch {
-      return null;
-    }
-  });
+  // Email живой сессии (заполняется из Firebase Auth ниже; легаси app_session_user мёртв)
+  const [currentUserEmail, setCurrentUserEmail] = useState(null);
+  const currentEmailRef = useRef(null); // для слушателя тикетов (живёт дольше колбэка авторизации)
 
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const raw = localStorage.getItem('app_session_user');
-      if (!raw) return [];
-      const { email } = JSON.parse(raw);
-      const emailKey = email.toLowerCase().trim();
-      const stored = localStorage.getItem(`app_notifications_v1_${emailKey}`);
-      const loaded = stored ? JSON.parse(stored) : [];
-      const userClub = getSessionUserClub();
-      if (userClub === null) return loaded;
-      return loaded.filter(n => {
-        if (!n.ticketId) return true;
-        if (n.club) return (n.club || '').toUpperCase() === userClub.toUpperCase();
-        return true;
-      });
-    } catch {
-      return [];
-    }
-  });
-
-  const [readIds, setReadIds] = useState(() => {
-    try {
-      const raw = localStorage.getItem('app_session_user');
-      if (!raw) return new Set();
-      const { email } = JSON.parse(raw);
-      const emailKey = email.toLowerCase().trim();
-      const stored = localStorage.getItem(`app_notifications_read_v1_${emailKey}`);
-      return new Set(stored ? JSON.parse(stored) : []);
-    } catch {
-      return new Set();
-    }
-  });
+  const [notifications, setNotifications] = useState([]);
+  const [readIds, setReadIds] = useState(new Set());
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [popupNotif, setPopupNotif] = useState(null);
@@ -148,37 +116,28 @@ export const NotificationProvider = ({ children }) => {
 
   // Persist notifications
   useEffect(() => {
-    let email = null;
+    if (!currentUserEmail) return;
     try {
-      const raw = localStorage.getItem('app_session_user');
-      if (raw) email = JSON.parse(raw).email;
-    } catch {}
-    
-    if (!email) return;
-    try {
-      const emailKey = email.toLowerCase().trim();
+      const emailKey = currentUserEmail.toLowerCase().trim();
       const trimmed = notifications.slice(0, 100);
       localStorage.setItem(`app_notifications_v1_${emailKey}`, JSON.stringify(trimmed));
     } catch {}
-  }, [notifications]);
+  }, [notifications, currentUserEmail]);
 
   // Persist read ids
   useEffect(() => {
-    let email = null;
+    if (!currentUserEmail) return;
     try {
-      const raw = localStorage.getItem('app_session_user');
-      if (raw) email = JSON.parse(raw).email;
-    } catch {}
-    
-    if (!email) return;
-    try {
-      const emailKey = email.toLowerCase().trim();
+      const emailKey = currentUserEmail.toLowerCase().trim();
       localStorage.setItem(`app_notifications_read_v1_${emailKey}`, JSON.stringify([...readIds]));
     } catch {}
-  }, [readIds]);
+  }, [readIds, currentUserEmail]);
 
   // ─── Push a notification ─────────────────────────────────────────────────
   const pushNotification = useCallback((type, title, description, meta = {}) => {
+    // Клубный фильтр — ВСЕГДА (даже если email ещё не определился): чужой клуб не показываем
+    if (meta.club && !emailCanSeeClub(currentUserEmail, meta.club)) return;
+
     if (currentUserEmail) {
       const emailKey = currentUserEmail.toLowerCase().trim();
 
@@ -190,12 +149,6 @@ export const NotificationProvider = ({ children }) => {
       } else if (meta.author) {
         const myFormatted = formatAuthor(emailKey).toLowerCase();
         if (myFormatted && meta.author.toLowerCase() === myFormatted) return;
-      }
-
-      // Club filter: only show notifications for the user's own club (chefs see all)
-      if (meta.club) {
-        const myClub = USER_ROLES[emailKey]?.club;
-        if (myClub && (meta.club || '').toUpperCase() !== myClub.toUpperCase()) return;
       }
     }
 
@@ -232,23 +185,9 @@ export const NotificationProvider = ({ children }) => {
       }
     }, 2000);
 
-    // Show toast popup in top-right corner
-    const statusMeta = STATUS_LABELS[meta.status];
-    const toastColor = statusMeta?.color || '#7B3DFF';
-
-    toast(title, {
-      description,
-      duration: 6000,
-      style: {
-        background: 'var(--bg-card)',
-        border: `1px solid ${toastColor}55`,
-        borderLeft: `3px solid ${toastColor}`,
-        borderRadius: '12px',
-        color: 'var(--text-primary)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-      },
-      icon: statusMeta?.icon || (type === EVENT_TYPES.NEW_MESSAGE ? '💬' : type === EVENT_TYPES.FILE_ATTACHED ? '📎' : '🔔'),
-    });
+    // Тост-шторку о событии больше НЕ показываем — теперь есть выезжающая плашка
+    // «Новое сообщение» из колокольчика (NotificationPopup). Обычные тосты-
+    // подтверждения действий (toast.success/error по кнопкам) не затронуты.
   }, [currentUserEmail]);
 
   // ─── Watch Firestore tickets ──────────────────────────────────────────────
@@ -257,12 +196,9 @@ export const NotificationProvider = ({ children }) => {
 
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        // Read current email from localStorage
-        let email = null;
-        try {
-          const raw = localStorage.getItem('app_session_user');
-          if (raw) email = JSON.parse(raw).email;
-        } catch {}
+        // Email — из живой Firebase-сессии (анонимные служебные сессии не считаются)
+        const email = (!firebaseUser.isAnonymous && firebaseUser.email) ? firebaseUser.email : null;
+        currentEmailRef.current = email ? email.toLowerCase().trim() : null;
 
         if (email) {
           const emailKey = email.toLowerCase().trim();
@@ -290,14 +226,7 @@ export const NotificationProvider = ({ children }) => {
           } catch {}
 
           // Filter loaded notifications to ensure they belong to user's club (extra safety)
-          const userClub = getSessionUserClub();
-          if (userClub !== null) {
-            loadedNotifs = loadedNotifs.filter(n => {
-              if (!n.ticketId) return true;
-              if (n.club) return (n.club || '').toUpperCase() === userClub.toUpperCase();
-              return true;
-            });
-          }
+          loadedNotifs = loadedNotifs.filter(n => (n.club ? emailCanSeeClub(email, n.club) : true));
           setNotifications(loadedNotifs);
 
           let loadedRead = new Set();
@@ -331,7 +260,7 @@ export const NotificationProvider = ({ children }) => {
             // ── New ticket created ──
             if (change.type === 'added' && !oldTicket) {
               // Only notify if this ticket belongs to the user's club
-              if (!canSeeTicket(ticket.club)) return;
+              if (!emailCanSeeClub(currentEmailRef.current, ticket.club)) return;
               pushNotification(
                 EVENT_TYPES.NEW_TICKET,
                 '🆕 Новая заявка',
@@ -343,11 +272,11 @@ export const NotificationProvider = ({ children }) => {
 
             if (change.type === 'modified' && oldTicket) {
               // Skip notifications for tickets outside the user's club
-              if (!canSeeTicket(ticket.club)) return;
+              if (!emailCanSeeClub(currentEmailRef.current, ticket.club)) return;
 
               // ── Status changed ──
               if (oldTicket.status !== ticket.status && ticket.status) {
-                const statusInfo = STATUS_LABELS[ticket.status] || { label: ticket.status, icon: '🔔', color: '#7B3DFF' };
+                const statusInfo = STATUS_LABELS[ticket.status] || { label: ticket.status, icon: '🔔', color: '#7D6FB3' };
                 pushNotification(
                   EVENT_TYPES.STATUS_CHANGE,
                   `${statusInfo.icon} ${statusInfo.label}`,
@@ -435,8 +364,10 @@ export const NotificationProvider = ({ children }) => {
         windows.push([390, 396]);                                  // чекин 6:30
         if (!isWeekend) {
           windows.push([1320, 1326]);                              // будни 22:00 — пульсометры/полотенца
+          windows.push([1290, 1296]);                              // будни 21:30 — отчёт дня
         } else {
           windows.push([1140, 1146], [1260, 1266], [1290, 1296]);  // выходные по клубам
+          windows.push([1200, 1206]);                              // выходные 20:00 — отчёт дня
         }
 
         const inWindow = windows.some(([a, b]) => nowMin >= a && nowMin < b);
@@ -462,7 +393,12 @@ export const NotificationProvider = ({ children }) => {
     if (!currentUserEmail) return;
     const check = async () => {
       try {
-        const snap = await getDocs(collection(db, 'scheduled_calls'));
+        // Только предстоящие созвоны (раньше каждый клиент ежеминутно читал ВСЮ
+        // историю созвонов — это выжигало дневную квоту чтения Firestore)
+        const snap = await getDocs(query(
+          collection(db, 'scheduled_calls'),
+          where('startISO', '>=', new Date(Date.now() - 3600_000).toISOString())
+        ));
         const now = Date.now();
         for (const d of snap.docs) {
           const c = d.data();
@@ -488,7 +424,7 @@ export const NotificationProvider = ({ children }) => {
       } catch {}
     };
     check();
-    const iv = setInterval(check, 60_000);
+    const iv = setInterval(check, 120_000); // окно 6 мин → 2-минутный опрос не промахнётся
     return () => clearInterval(iv);
   }, [currentUserEmail]);
 

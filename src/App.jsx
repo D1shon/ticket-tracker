@@ -1,6 +1,8 @@
 import React from 'react';
+import { isMobileDevice } from './lib/isMobile';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { TicketProvider, useTickets } from './store/TicketContext';
+import { SERVICE_REPORT_EMAILS } from './lib/access';
 import { ScheduleProvider } from './store/ScheduleContext';
 import { NotificationProvider } from './store/NotificationContext';
 import { CallProvider } from './store/CallContext';
@@ -56,9 +58,19 @@ const IMPORTERS = {
   TowelsPage:      () => import('./pages/TowelsPage'),
   LostItemsPage:   () => import('./pages/LostItemsPage'),
   ReviewsPage:     () => import('./pages/ReviewsPage'),
+  QrReviewsPage:   () => import('./pages/QrReviewsPage'),
+  ShiftBoardPage:  () => import('./pages/ShiftBoardPage'),
+  ClubVisitsPage:  () => import('./pages/ClubVisitsPage'),
+  CalendarPage:    () => import('./pages/CalendarPage'),
+  CalendarDayPage: () => import('./pages/CalendarDayPage'),
+  InStudioPage:    () => import('./pages/InStudioPage'),
+  HomePage:        () => import('./pages/HomePage'),
   NewsPage:        () => import('./pages/NewsPage'),
   WaDemoPage:      () => import('./pages/WaDemoPage'),
   LeadsPage:       () => import('./pages/LeadsPage'),
+  FeedbackPage:    () => import('./pages/FeedbackPage'),
+  AssistantPage:   () => import('./pages/AssistantPage'),
+  StaffCreatePage: () => import('./pages/StaffCreatePage'),
 };
 
 const Dashboard       = lazyPage(IMPORTERS.Dashboard);
@@ -80,9 +92,19 @@ const HRMonitorsPage  = lazyPage(IMPORTERS.HRMonitorsPage);
 const TowelsPage      = lazyPage(IMPORTERS.TowelsPage);
 const LostItemsPage   = lazyPage(IMPORTERS.LostItemsPage);
 const ReviewsPage     = lazyPage(IMPORTERS.ReviewsPage);
+const QrReviewsPage   = lazyPage(IMPORTERS.QrReviewsPage);
+const ShiftBoardPage  = lazyPage(IMPORTERS.ShiftBoardPage);
+const ClubVisitsPage  = lazyPage(IMPORTERS.ClubVisitsPage);
+const CalendarPage    = lazyPage(IMPORTERS.CalendarPage);
+const CalendarDayPage = lazyPage(IMPORTERS.CalendarDayPage);
+const InStudioPage    = lazyPage(IMPORTERS.InStudioPage);
+const HomePage        = lazyPage(IMPORTERS.HomePage);
 const NewsPage        = lazyPage(IMPORTERS.NewsPage);
 const WaDemoPage      = lazyPage(IMPORTERS.WaDemoPage);
 const LeadsPage       = lazyPage(IMPORTERS.LeadsPage);
+const FeedbackPage    = lazyPage(IMPORTERS.FeedbackPage);
+const AssistantPage   = lazyPage(IMPORTERS.AssistantPage);
+const StaffCreatePage = lazyPage(IMPORTERS.StaffCreatePage);
 
 // Last-resort screen instead of a black page if a chunk still fails
 class PageErrorBoundary extends React.Component {
@@ -115,7 +137,7 @@ class PageErrorBoundary extends React.Component {
 
 const PageLoader = () => (
   <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-    <div style={{ width: 36, height: 36, border: '3px solid rgba(79,142,247,0.2)', borderTop: '3px solid #4f8ef7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+    <div style={{ width: 36, height: 36, border: '3px solid rgba(85,128,168,0.2)', borderTop: '3px solid #5580A8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
   </div>
 );
 
@@ -126,12 +148,12 @@ const NotificationCorner = () => (
   </div>
 );
 
-const ProtectedLayout = ({ children, allowedRoles }) => {
+const ProtectedLayout = ({ children, allowedRoles, allowedEmails, allowClubAdmin }) => {
   const { user, loading } = useTickets();
-  const [isMobile, setIsMobile] = React.useState(() => window.innerWidth <= 768);
+  const [isMobile, setIsMobile] = React.useState(() => isMobileDevice());
 
   React.useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth <= 768);
+    const handler = () => setIsMobile(isMobileDevice());
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
@@ -139,7 +161,7 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-        <div style={{ width: 40, height: 40, border: '3px solid rgba(79,142,247,0.2)', borderTop: '3px solid #4f8ef7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+        <div style={{ width: 40, height: 40, border: '3px solid rgba(85,128,168,0.2)', borderTop: '3px solid #5580A8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
       </div>
     );
   }
@@ -148,11 +170,17 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  // Персональный список почт (например, «Пуш клиентам») имеет приоритет над ролью
+  const emailOk = !allowedEmails || allowedEmails.map(e => e.toLowerCase()).includes((user.email || '').toLowerCase());
+  // Доступ для админов конкретного клуба (напр. чек-листы у админов Europe City)
+  const clubAdminOk = allowClubAdmin && user.role === 'admin' && (user.club || '').toUpperCase() === allowClubAdmin.toUpperCase();
+  const roleOk = clubAdminOk || !allowedRoles || allowedRoles.includes(user.role);
+  if (!roleOk || !emailOk) {
     const fallback = user.role === 'admin' ? '/schedule'
       : user.role === 'marketing' ? '/merch'
       : (user.role === 'komdir' || user.role === 'rop') ? '/news'
-      : user.role === 'viewer'    ? '/checklists'
+      : (user.role === 'viewer' || user.role === 'tech') ? '/checklists'
+      : user.role === 'lostviewer' ? '/lost-items'
       : '/tickets';
     return <Navigate to={fallback} replace />;
   }
@@ -188,24 +216,35 @@ const ProtectedLayout = ({ children, allowedRoles }) => {
 };
 
 
-const AppContent = () => {
-  const { user } = useTickets();
+// Сплэш на время восстановления сессии Firebase — чтобы форма входа не мигала
+const AuthSplash = () => (
+  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+    <div style={{ width: 40, height: 40, border: '3px solid rgba(85,128,168,0.2)', borderTop: '3px solid #5580A8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+  </div>
+);
 
-  // Prefetch all pages shortly after start: navigation then never hits the
-  // network, so a fresh deploy mid-session can't break it (or drop a call)
+const AppContent = () => {
+  const { user, loading } = useTickets();
+
+  // Prefetch all pages after start: navigation then never hits the network,
+  // so a fresh deploy mid-session can't break it (or drop a call).
+  // 15s (не 2.5s): на медленном канале ранний прогрев ~1.3МБ чанков душил
+  // первоначальную загрузку данных — приложение казалось «тормозным».
   React.useEffect(() => {
     const t = setTimeout(() => {
       Object.values(IMPORTERS).forEach(imp => { imp().catch(() => {}); });
-    }, 2500);
+    }, 15000);
     return () => clearTimeout(t);
   }, []);
 
   const RootRedirect = () => {
+    if (loading) return <AuthSplash />; // сессия ещё восстанавливается — не кидаем на /login
     if (!user) return <Navigate to="/login" replace />;
     const home = user.role === 'admin' ? '/schedule'
       : user.role === 'marketing' ? '/merch'
       : (user.role === 'komdir' || user.role === 'rop') ? '/news'
-      : user.role === 'viewer'    ? '/checklists'
+      : (user.role === 'viewer' || user.role === 'tech') ? '/checklists'
+      : user.role === 'lostviewer' ? '/lost-items'
       : '/tickets';
     return <Navigate to={home} replace />;
   };
@@ -231,8 +270,11 @@ const AppContent = () => {
       <PageErrorBoundary>
       <React.Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to={
-          user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : (user.role === 'komdir' || user.role === 'rop') ? '/news' : user.role === 'viewer' ? '/checklists' : '/tickets'
+        {/* Публичная страница отзыва для клиентов (QR из шкафчиков) — без входа */}
+        <Route path="/feedback" element={<FeedbackPage />} />
+
+        <Route path="/login" element={loading ? <AuthSplash /> : user ? <Navigate to={
+          user.role === 'admin' ? '/schedule' : user.role === 'marketing' ? '/merch' : (user.role === 'komdir' || user.role === 'rop') ? '/news' : (user.role === 'viewer' || user.role === 'tech') ? '/checklists' : user.role === 'lostviewer' ? '/lost-items' : '/tickets'
         } replace /> : <Login />} />
         
         <Route path="/scan" element={
@@ -260,17 +302,17 @@ const AppContent = () => {
         } />
 
         <Route path="/checklist" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'tech']}>
             <ChecklistPage />
           </ProtectedLayout>
         } />
         <Route path="/checklists" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'tech']} allowClubAdmin="EUROPE CITY">
             <ChecklistPage />
           </ProtectedLayout>
         } />
         <Route path="/checklists/:shiftId/:cardId" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'tech']} allowClubAdmin="EUROPE CITY">
             <ChecklistDetail />
           </ProtectedLayout>
         } />
@@ -304,7 +346,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/attendance" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'admin']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'admin', 'rop', 'komdir']}>
             <AttendancePage />
           </ProtectedLayout>
         } />
@@ -334,13 +376,48 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/lost-items" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'komdir', 'rop']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'komdir', 'rop', 'lostviewer']}>
             <LostItemsPage />
           </ProtectedLayout>
         } />
         <Route path="/reviews" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'komdir', 'rop']}>
             <ReviewsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/qr-reviews" element={
+          <ProtectedLayout allowedRoles={['chef', 'komdir', 'rop']}>
+            <QrReviewsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/calendar" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer', 'komdir', 'rop', 'marketing']}>
+            <CalendarPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/calendar/:date" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer', 'komdir', 'rop', 'marketing']}>
+            <CalendarDayPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/home" element={
+          <ProtectedLayout>
+            <HomePage />
+          </ProtectedLayout>
+        } />
+        <Route path="/instudio" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer', 'komdir', 'rop', 'marketing', 'tech']}>
+            <InStudioPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/club-visits" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'admin', 'komdir', 'rop']}>
+            <ClubVisitsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/shift-board" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer', 'komdir', 'marketing', 'rop']}>
+            <ShiftBoardPage />
           </ProtectedLayout>
         } />
         <Route path="/news" element={
@@ -356,6 +433,16 @@ const AppContent = () => {
         <Route path="/leads" element={
           <ProtectedLayout allowedRoles={['chef', 'komdir', 'rop', 'manager', 'admin']}>
             <LeadsPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/assistant" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'komdir', 'rop']}>
+            <AssistantPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/staff" element={
+          <ProtectedLayout allowedRoles={['chef', 'rop', 'manager']}>
+            <StaffCreatePage />
           </ProtectedLayout>
         } />
         <Route path="/settings" element={
@@ -379,6 +466,16 @@ const AppContent = () => {
 import { ChecklistProvider } from './store/ChecklistContext';
 
 function App() {
+  // Публичная страница отзыва (QR из шкафчиков) — полностью изолирована:
+  // рендерим ТОЛЬКО форму, без провайдеров, уведомлений, созвонов и баннеров,
+  // чтобы клиенту не «протекали» служебные попапы сотрудников. Страница чистая.
+  if (typeof window !== 'undefined' && window.location.pathname === '/feedback') {
+    return (
+      <React.Suspense fallback={<PageLoader />}>
+        <FeedbackPage />
+      </React.Suspense>
+    );
+  }
   return (
     <TicketProvider>
       <NotificationProvider>

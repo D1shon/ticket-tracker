@@ -1,0 +1,4 @@
+config.json
+node_modules/
+hrm-sync.log
+visits-fast.log

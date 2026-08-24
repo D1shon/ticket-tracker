@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users, FileText } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
+import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { toast } from 'sonner';
 import { enablePush, disablePush, isPushEnabled, getPushToken } from '../lib/push';
+import { isMobileDevice } from '../lib/isMobile';
 
 const DEFAULT_POLICY_URLS = {
   '4YOU': 'https://herosjourney.kz/policy/4you',
@@ -12,15 +14,25 @@ const DEFAULT_POLICY_URLS = {
   'VILLA': 'https://herosjourney.kz/policy/villa',
   'NURLY ORDA': 'https://herosjourney.kz/policy/nurlyorda',
   'PROMENADE': 'https://herosjourney.kz/policy/promenade',
+  'EUROPE CITY': 'https://herosjourney.kz/policy/europecity',
 };
 
 const SettingsPage = () => {
   const { user, logout, updateDisplayName } = useTickets();
+  const navigate = useNavigate();
   const isChef = user?.role === 'chef';
   const userClubUpper = user?.club?.toUpperCase();
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+
+  // Мобильный режим — только визуальные изменения
+  const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  useEffect(() => {
+    const h = () => setIsMobile(isMobileDevice());
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   const [pushEnabled, setPushEnabled] = useState(() => isPushEnabled());
   const [pushBusy, setPushBusy] = useState(false);
@@ -111,9 +123,9 @@ const SettingsPage = () => {
     return (
       <span style={{
         fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap',
-        background: ok ? 'rgba(16,185,129,0.12)' : 'rgba(148,163,184,0.12)',
-        color: ok ? '#10b981' : 'var(--text-muted)',
-        border: `1px solid ${ok ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+        background: ok ? 'rgba(95,156,129,0.12)' : 'rgba(148,163,184,0.12)',
+        color: ok ? '#5F9C81' : 'var(--text-muted)',
+        border: `1px solid ${ok ? 'rgba(95,156,129,0.3)' : 'var(--border)'}`,
       }}>
         {ok ? '🔔 Push вкл' : '🔕 Push выкл'}
       </span>
@@ -245,28 +257,30 @@ const SettingsPage = () => {
   // User details from context
   const userName = user?.displayName || "Пользователь";
   const userEmail = user?.email || "—";
-  const userRole = user?.role === 'komdir' ? 'КОМ-ДИР' : user?.role === 'rop' ? 'РОП' : (user?.role?.toUpperCase() || "ADMIN");
+  const userRole = user?.role === 'komdir' ? 'КОМ-ДИР' : user?.mop ? 'МОП' : user?.role === 'rop' ? 'РОП' : (user?.role?.toUpperCase() || "ADMIN");
   const userClub = user?.club || "Все Клубы";
 
   const CLUBS = [
-    { name: '4YOU', color: '#4f8ef7' },
+    { name: '4YOU', color: '#5580A8' },
     { name: 'COLIBRI', color: '#9b5de5' },
-    { name: 'VILLA', color: '#f59e0b' },
-    { name: 'NURLY ORDA', color: '#22c55e' },
-    { name: 'PROMENADE', color: '#14b8a6' },
+    { name: 'VILLA', color: '#C08F4F' },
+    { name: 'NURLY ORDA', color: '#5F9C81' },
+    { name: 'PROMENADE', color: '#5F9C96' },
+    { name: 'EUROPE CITY', color: '#B0688D' },
   ];
 
+  // мобайл: переключатели крупнее (удобно пальцем)
   const Toggle = ({ enabled, setEnabled }) => (
-    <button 
+    <button
       onClick={() => setEnabled(!enabled)}
       style={{
-        width: 44, height: 24, borderRadius: 12, background: enabled ? 'var(--accent-purple)' : 'var(--bg-hover)',
-        position: 'relative', border: enabled ? 'none' : '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+        width: isMobile ? 56 : 44, height: isMobile ? 32 : 24, borderRadius: isMobile ? 16 : 12, background: enabled ? 'var(--accent-purple)' : 'var(--bg-hover)',
+        position: 'relative', border: enabled ? 'none' : '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', flexShrink: 0
       }}
     >
       <div style={{
-        position: 'absolute', top: 3, left: enabled ? 23 : 3,
-        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+        position: 'absolute', top: isMobile ? 3 : 3, left: enabled ? (isMobile ? 27 : 23) : 3,
+        width: isMobile ? 26 : 18, height: isMobile ? 26 : 18, borderRadius: '50%', background: '#fff',
         boxShadow: '0 2px 4px rgba(0,0,0,0.2)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
       }} />
     </button>
@@ -274,11 +288,11 @@ const SettingsPage = () => {
 
   return (
     <div className="animate-fade" style={{ maxWidth: 1000, margin: '0 auto', padding: '10px 0 40px 0' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 40 }}>
+      {/* Header — мобайл: компактнее */}
+      <div style={{ marginBottom: isMobile ? 20 : 40 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <Sliders size={24} color="var(--accent-purple)" />
-          <h1 style={{ fontSize: 28, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
+          <Sliders size={isMobile ? 20 : 24} color="var(--accent-purple)" />
+          <h1 style={{ fontSize: isMobile ? 19 : 28, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
             Настройки
           </h1>
         </div>
@@ -287,9 +301,26 @@ const SettingsPage = () => {
         </p>
       </div>
 
-      <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 24, marginBottom: 40 }}>
+      {/* Создание аккаунтов МОП — шеф и менеджеры (у РОПов — в левом меню) */}
+      {(isChef || user?.role === 'manager') && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '18px 20px', marginBottom: 24 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 13, background: 'rgba(14,165,233,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <UserPlus size={22} style={{ color: '#0ea5e9' }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>Сотрудники (МОП)</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Создать аккаунты МОП по клубам</div>
+          </div>
+          <button onClick={() => navigate('/staff')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 12, border: 'none', background: '#0ea5e9', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
+            <UserPlus size={15} /> Создать
+          </button>
+        </div>
+      )}
+
+      {/* мобайл: всё в одну колонку, секции — компактные карточки */}
+      <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1.2fr', gap: isMobile ? 12 : 24, marginBottom: isMobile ? 20 : 40 }}>
         {/* Profile Card */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 32, display: 'flex', flexDirection: 'column', gap: 32 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 28, padding: isMobile ? 16 : 32, display: 'flex', flexDirection: 'column', gap: isMobile ? 18 : 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <div style={{ width: 64, height: 64, borderRadius: 20, background: 'var(--accent-purple-bg)', border: '1px solid var(--accent-purple-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <User size={32} color="var(--accent-purple)" />
@@ -366,10 +397,10 @@ const SettingsPage = () => {
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 24 }}>
           {/* Notifications Card */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 28, padding: 32 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 28, padding: isMobile ? 16 : 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: isMobile ? 18 : 28 }}>
               <Bell size={16} color="var(--accent-purple)" />
               <h3 style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Уведомления</h3>
             </div>
@@ -378,7 +409,7 @@ const SettingsPage = () => {
               <div style={{ display: 'flex', itemsCenter: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Push-уведомления</h4>
-                  <p style={{ fontSize: 11, color: pushEnabled ? '#22c55e' : 'var(--text-muted)', fontWeight: 600 }}>
+                  <p style={{ fontSize: 11, color: pushEnabled ? '#5F9C81' : 'var(--text-muted)', fontWeight: 600 }}>
                     {pushBusy ? '⏳ Подключение…' : pushEnabled ? '✓ Включены на этом устройстве' : '× Отключены'}
                   </p>
                 </div>
@@ -421,7 +452,7 @@ const SettingsPage = () => {
           </div>
 
           {/* Security Card */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(123,61,255,0.1), rgba(0,0,0,0))', border: '1px solid var(--border)', borderRadius: 28, padding: 32, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ background: 'linear-gradient(135deg, rgba(125,111,179,0.1), rgba(0,0,0,0))', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 28, padding: isMobile ? 16 : 32, position: 'relative', overflow: 'hidden' }}>
             <Shield size={80} style={{ position: 'absolute', right: -10, bottom: -10, opacity: 0.05, color: 'var(--accent-purple)' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-purple)' }} />
@@ -435,22 +466,23 @@ const SettingsPage = () => {
       </div>
 
       {/* Network Management — chef/manager only */}
-      {user?.role !== 'admin' && <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40 }}>
-        <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', marginBottom: 8, textTransform: 'uppercase' }}>
+      {user?.role !== 'admin' && <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 32, padding: isMobile ? 16 : 40 }}>
+        <h2 style={{ fontSize: isMobile ? 16 : 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', marginBottom: 8, textTransform: 'uppercase' }}>
           Управление сетью
         </h2>
-        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 32 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: isMobile ? 18 : 32 }}>
           Конфигурация объектов мониторинга
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+        {/* мобайл: клубные карточки в одну колонку */}
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(220px, 1fr))', gap: isMobile ? 10 : 20 }}>
           {CLUBS.map(club => {
             const currentUrl = clubsConfig[club.name]?.userAgreementUrl || DEFAULT_POLICY_URLS[club.name] || '';
             const isEditing = editingClub === club.name;
             const canEdit = isChef || (user?.role === 'manager' && userClubUpper === club.name);
 
             return (
-              <div key={club.name} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 20, padding: 24, transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div key={club.name} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: isMobile ? 14 : 20, padding: isMobile ? 14 : 24, transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <h4 style={{ fontSize: 15, fontWeight: 900, fontStyle: 'italic', color: club.color }}>{club.name}</h4>
                   <div style={{ width: 20, height: 20, borderRadius: 6, background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
@@ -494,7 +526,7 @@ const SettingsPage = () => {
                           }
                         }}
                         disabled={savingUrl}
-                        style={{ background: 'none', border: 'none', color: '#22c55e', cursor: 'pointer', padding: 4 }}
+                        style={{ background: 'none', border: 'none', color: '#5F9C81', cursor: 'pointer', padding: 4 }}
                       >
                         <Check size={14} />
                       </button>
@@ -545,14 +577,14 @@ const SettingsPage = () => {
 
       {/* ── IP Checkin Map (chef only) ── */}
       {isChef && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40, marginTop: 24 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 32, padding: isMobile ? 16 : 40, marginTop: isMobile ? 12 : 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <MapPin size={22} color="var(--accent-purple)" />
-            <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+            <MapPin size={isMobile ? 18 : 22} color="var(--accent-purple)" />
+            <h2 style={{ fontSize: isMobile ? 16 : 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
               IP-адреса чекина
             </h2>
           </div>
-          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 32 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: isMobile ? 18 : 32 }}>
             Внешние IP-адреса клубов для проверки присутствия
           </p>
 
@@ -571,7 +603,7 @@ const SettingsPage = () => {
                     </span>
                     <button
                       onClick={() => handleRemoveIp(ip)}
-                      style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+                      style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: isMobile ? 10 : 4, display: 'flex', alignItems: 'center' }}
                       title="Удалить"
                     >
                       <Trash2 size={14} />
@@ -613,10 +645,10 @@ const SettingsPage = () => {
 
       {/* ── Gateway IP Map (chef only) ── */}
       {isChef && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40, marginTop: 24 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 32, padding: isMobile ? 16 : 40, marginTop: isMobile ? 12 : 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <MapPin size={22} color="#22c55e" />
-            <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+            <MapPin size={isMobile ? 18 : 22} color="#5F9C81" />
+            <h2 style={{ fontSize: isMobile ? 16 : 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
               IP роутера (локальный)
             </h2>
           </div>
@@ -643,7 +675,7 @@ const SettingsPage = () => {
                     <span style={{ fontSize: 11, fontWeight: 800, color: club?.color ?? 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', minWidth: 90, textAlign: 'right' }}>
                       {clubId}
                     </span>
-                    <button onClick={() => handleRemoveGateway(gw)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4, display: 'flex' }}>
+                    <button onClick={() => handleRemoveGateway(gw)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: isMobile ? 10 : 4, display: 'flex' }}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -671,7 +703,7 @@ const SettingsPage = () => {
             <button
               onClick={handleAddGateway}
               disabled={savingGw || !newGw.trim()}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 12, background: '#22c55e', color: '#000', fontSize: 13, fontWeight: 700, border: 'none', cursor: savingGw ? 'wait' : 'pointer', opacity: !newGw.trim() ? 0.5 : 1 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 12, background: '#5F9C81', color: '#000', fontSize: 13, fontWeight: 700, border: 'none', cursor: savingGw ? 'wait' : 'pointer', opacity: !newGw.trim() ? 0.5 : 1 }}
             >
               <Plus size={16} />
               Добавить
@@ -682,26 +714,27 @@ const SettingsPage = () => {
 
       {/* ── Команда ── */}
       {userRole !== 'ADMIN' && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40, marginTop: 24 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 32, padding: isMobile ? 16 : 40, marginTop: isMobile ? 12 : 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <Shield size={22} color="var(--accent-purple)" />
-            <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+            <Shield size={isMobile ? 18 : 22} color="var(--accent-purple)" />
+            <h2 style={{ fontSize: isMobile ? 16 : 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
               Команда
             </h2>
           </div>
-          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 32 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: isMobile ? 18 : 32 }}>
             Зарегистрированные пользователи и их права доступа
           </p>
 
-          {/* Chefs */}
+          {/* Chefs — видны только шефам */}
+          {isChef && (
           <div style={{ marginBottom: 28 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} />
-              <span style={{ fontSize: 10, fontWeight: 900, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#C08F4F' }} />
+              <span style={{ fontSize: 10, fontWeight: 900, color: '#C08F4F', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 Шеф · Полный доступ
               </span>
             </div>
-            <div style={{ background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 16, padding: '12px 16px', marginBottom: 8, fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.6 }}>
+            <div style={{ background: 'rgba(192,143,79,0.05)', border: '1px solid rgba(192,143,79,0.15)', borderRadius: 16, padding: '12px 16px', marginBottom: 8, fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.6 }}>
               Видит все клубы · Все заявки · График и финансы всех · Управление командой · Архив
             </div>
             {Object.entries(USER_ROLES)
@@ -709,19 +742,20 @@ const SettingsPage = () => {
               .map(([email, u]) => ({ name: u.displayName, email }))
               .map(u => (
               <div key={u.email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(245,158,11,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: '#f59e0b', flexShrink: 0 }}>{u.name[0]}</div>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(192,143,79,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: '#C08F4F', flexShrink: 0 }}>{u.name[0]}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{u.name}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{u.email}</div>
                 </div>
                 <PushBadge email={u.email} />
-                <span style={{ fontSize: 9, fontWeight: 900, background: '#f59e0b', color: '#000', padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>ШЕФ</span>
+                <span style={{ fontSize: 9, fontWeight: 900, background: '#C08F4F', color: '#000', padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>ШЕФ</span>
               </div>
             ))}
           </div>
+          )}
 
-          {/* Clubs with managers — derived from the real account list */}
-          {CLUBS.map(c => ({
+          {/* Clubs with managers — шеф видит все клубы, остальные только свой */}
+          {CLUBS.filter(c => isChef || c.name.toUpperCase() === userClubUpper).map(c => ({
             club: c.name, color: c.color,
             desc: 'Видит заявки своего клуба · График · Чекин · Чек-листы',
             members: Object.entries(USER_ROLES)
@@ -781,42 +815,81 @@ const SettingsPage = () => {
             </div>
           ))}
 
-          {/* Other roles: marketing, viewer */}
-          {(() => {
+          {/* Other roles: marketing, viewer, komdir, rop — только для шефа (кросс-клубные) */}
+          {isChef && (() => {
             const ROLE_META = {
               komdir:    { label: 'Ком-Дир', badge: 'КД', color: '#0ea5e9', desc: 'Коммерческий директор · Новости, отзывы, лиды, склад, утерянные вещи, соглашения' },
-              rop:       { label: 'РОП', badge: 'РОП', color: '#8b5cf6', desc: 'Руководитель отдела продаж · Права как у Ком-Дира' },
-              marketing: { label: 'Маркетинг', badge: 'МАРК.', color: '#ec4899', desc: 'Доступ к складу и мерчу всех клубов' },
+              rop:       { label: 'РОП', badge: 'РОП', color: '#7D6FB3', desc: 'Руководитель отдела продаж · Права как у Ком-Дира' },
+              marketing: { label: 'Маркетинг', badge: 'МАРК.', color: '#B0688D', desc: 'Доступ к складу и мерчу всех клубов' },
               viewer:    { label: 'Наблюдатель', badge: 'VIEW', color: '#64748b', desc: 'Просмотр чек-листов, склада, продаж и посещений без редактирования' },
             };
+            // Реальные РОП/Ком-Дир/маркетинг/наблюдатели (БЕЗ флага mop)
             const others = Object.entries(USER_ROLES)
-              .filter(([, u]) => u.role === 'komdir' || u.role === 'rop' || u.role === 'marketing' || u.role === 'viewer');
-            if (others.length === 0) return null;
+              .filter(([, u]) => (u.role === 'komdir' || u.role === 'rop' || u.role === 'marketing' || u.role === 'viewer') && !u.mop);
+            // Команда МОП (rop + mop) — относятся к клубу РОПа, который их создал
+            const mops = Object.entries(USER_ROLES)
+              .filter(([, u]) => u.role === 'rop' && u.mop)
+              .sort((a, b) => (a[1].club || '').localeCompare(b[1].club || ''));
+            if (others.length === 0 && mops.length === 0) return null;
             return (
-              <div style={{ marginBottom: 28 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#64748b' }} />
-                  <span style={{ fontSize: 10, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                    Другие роли
-                  </span>
-                </div>
-                {others.map(([email, u]) => {
-                  const meta = ROLE_META[u.role];
-                  return (
-                    <div key={email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 10, background: `${meta.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: meta.color, flexShrink: 0 }}>{(u.displayName || '?')[0]}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          {u.displayName}
-                          <span style={{ fontSize: 9, fontWeight: 900, background: `${meta.color}20`, color: meta.color, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>{meta.badge}</span>
-                          <PushBadge email={email} />
-                        </div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{email} · {meta.desc}</div>
-                      </div>
+              <>
+                {others.length > 0 && (
+                  <div style={{ marginBottom: 28 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#64748b' }} />
+                      <span style={{ fontSize: 10, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        Другие роли
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
+                    {others.map(([email, u]) => {
+                      const meta = ROLE_META[u.role];
+                      return (
+                        <div key={email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 10, background: `${meta.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: meta.color, flexShrink: 0 }}>{(u.displayName || '?')[0]}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              {u.displayName}
+                              <span style={{ fontSize: 9, fontWeight: 900, background: `${meta.color}20`, color: meta.color, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>{meta.badge}</span>
+                              <PushBadge email={email} />
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{email} · {meta.desc}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {mops.length > 0 && (
+                  <div style={{ marginBottom: 28 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#5F9C96' }} />
+                      <span style={{ fontSize: 10, fontWeight: 900, color: '#5F9C96', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        Команда МОП ({mops.length})
+                      </span>
+                    </div>
+                    {mops.map(([email, u]) => {
+                      const color = '#5F9C96';
+                      const club = u.club || '—';
+                      const creator = appUsers?.[email]?.createdBy;
+                      return (
+                        <div key={email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 10, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color, flexShrink: 0 }}>{(u.displayName || '?')[0]}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              {u.displayName}
+                              <span style={{ fontSize: 9, fontWeight: 900, background: `${color}20`, color, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>МОП</span>
+                              <span style={{ fontSize: 9, fontWeight: 900, background: 'var(--bg-card)', color: 'var(--text-secondary)', padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase', border: '1px solid var(--border)' }}>{club}</span>
+                              <PushBadge email={email} />
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{email} · Команда МОП · {club}{creator ? ` · создал(а): ${creator}` : ''}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             );
           })()}
         </div>
@@ -824,14 +897,14 @@ const SettingsPage = () => {
 
       {/* ── Admin Accounts — chef/manager can create admin access ── */}
       {canManageAdmins && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 32, padding: 40, marginTop: 24 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 32, padding: isMobile ? 16 : 40, marginTop: isMobile ? 12 : 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <Users size={22} color="var(--accent-purple)" />
-            <h2 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', margin: 0 }}>
+            <Users size={isMobile ? 18 : 22} color="var(--accent-purple)" />
+            <h2 style={{ fontSize: isMobile ? 16 : 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', margin: 0 }}>
               Админы
             </h2>
           </div>
-          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 32 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: isMobile ? 18 : 32 }}>
             Аккаунты с доступом к платформе · роль ADMIN
           </p>
 
@@ -867,7 +940,7 @@ const SettingsPage = () => {
                         {a.name}
                         <span style={{ fontSize: 9, fontWeight: 900, background: `${clubColor}20`, color: clubColor, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>ADMIN</span>
                         {a.dynamic && (
-                          <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '3px 8px', borderRadius: 6 }}>
+                          <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(95,156,129,0.15)', color: '#5F9C81', padding: '3px 8px', borderRadius: 6 }}>
                             добавлен вручную
                           </span>
                         )}
@@ -889,7 +962,7 @@ const SettingsPage = () => {
           })}
 
           {/* Add new admin */}
-          <div style={{ background: 'rgba(123,61,255,0.05)', border: '1px solid rgba(123,61,255,0.2)', borderRadius: 20, padding: '20px 24px', marginTop: 8 }}>
+          <div style={{ background: 'rgba(125,111,179,0.05)', border: '1px solid rgba(125,111,179,0.2)', borderRadius: isMobile ? 14 : 20, padding: isMobile ? 14 : '20px 24px', marginTop: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
               <UserPlus size={15} color="var(--accent-purple)" />
               <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -933,7 +1006,8 @@ const SettingsPage = () => {
                 onClick={handleAddAdmin}
                 disabled={savingAdmin || !newAdminName.trim() || !newAdminEmail.trim()}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '11px 20px', borderRadius: 12,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: isMobile ? '13px 20px' : '11px 20px', borderRadius: 12,
+                  minHeight: isMobile ? 44 : undefined, width: isMobile ? '100%' : undefined,
                   border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 13, fontWeight: 800,
                   cursor: 'pointer', whiteSpace: 'nowrap',
                   opacity: savingAdmin || !newAdminName.trim() || !newAdminEmail.trim() ? 0.5 : 1,
