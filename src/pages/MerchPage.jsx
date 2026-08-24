@@ -43,7 +43,11 @@ const MerchPage = () => {
   const managerClub = useMemo(() => (user?.role === 'manager' ? user?.club || null : null), [user]);
   // РОП заперт на своём клубе; Ком-Дир видит все
   const lockedClub = useMemo(() => managerClub || (user?.role === 'rop' ? user?.club || null : null), [user, managerClub]);
-  const canSelectAllClubs = useMemo(() => isChef || isMarketing || user?.role === 'komdir', [isChef, isMarketing, user]);
+  const canSelectAllClubs = useMemo(() => isChef || isMarketing || user?.role === 'komdir' || user?.role === 'lostviewer', [isChef, isMarketing, user]);
+  // Наблюдатель (Луиза): полные права менеджера склада, но сразу по всем клубам
+  // (без себестоимости — как у обычного менеджера). isLostviewerFull подставляется
+  // везде, где обычно проверяют «шеф или менеджер СВОЕГО клуба».
+  const isLostviewerFull = user?.role === 'lostviewer';
 
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'resort'
   const [selectedClub, setSelectedClub] = useState(() => (!canSelectAllClubs && lockedClub) ? lockedClub : 'ALL');
@@ -69,7 +73,7 @@ const MerchPage = () => {
   const [mismatchQty, setMismatchQty] = useState('');
   // Клуб, чью приёмку я обрабатываю (у менеджера — свой; шеф/Ком-Дир видят все)
   const myTransferClub = managerClub || (user?.role === 'rop' ? user?.club : null) || null;
-  const canManageTransfers = isChef || !!managerClub; // создавать/принимать может шеф и менеджер
+  const canManageTransfers = isChef || !!managerClub || isLostviewerFull; // создавать/принимать может шеф и менеджер
 
   // Load employees and schedules for the selected club
   useEffect(() => {
@@ -374,7 +378,7 @@ const MerchPage = () => {
   };
 
   const handleDeletePhoto = async (product) => {
-    const canManage = isChef || (managerClub && product.club === managerClub);
+    const canManage = isChef || (managerClub && product.club === managerClub) || isLostviewerFull;
     if (!canManage) return toast.error('Доступ запрещен');
     if (!window.confirm('Удалить фото товара?')) return;
     try {
@@ -389,7 +393,7 @@ const MerchPage = () => {
   // ─── CRUD Actions ──────────────────────────────────────────────────────────
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    const canManage = isChef || (managerClub && productForm.club === managerClub);
+    const canManage = isChef || (managerClub && productForm.club === managerClub) || isLostviewerFull;
     if (!canManage) return toast.error('Доступ запрещен');
     if (!productForm.name.trim()) return toast.error('Введите название товара');
     
@@ -472,7 +476,7 @@ const MerchPage = () => {
   const handleDeleteProduct = async (id) => {
     const product = products.find(p => p.id === id);
     if (!product) return;
-    const canDelete = isChef || (managerClub && product.club === managerClub);
+    const canDelete = isChef || (managerClub && product.club === managerClub) || isLostviewerFull;
     if (!canDelete) return toast.error('Доступ запрещен');
     if (!window.confirm('Вы уверены, что хотите удалить этот товар из базы?')) return;
     try {
@@ -652,10 +656,10 @@ const MerchPage = () => {
 
   // Входящие ожидающие приёмки (для меня): менеджер — свой клуб; шеф/Ком-Дир — все
   const incomingPending = merchTransfers.filter(t => t.status === 'pending'
-    && (isChef || isKomdir ? true : t.toClub === myTransferClub));
-  const canAcceptTransfer = (t) => isChef || (managerClub && t.toClub === managerClub);
+    && (isChef || isKomdir || isLostviewerFull ? true : t.toClub === myTransferClub));
+  const canAcceptTransfer = (t) => isChef || (managerClub && t.toClub === managerClub) || isLostviewerFull;
   // Перемещения для вкладки истории: шеф/Ком-Дир — все; менеджер — где участвует его клуб
-  const myTransfersList = (isChef || isKomdir || marketingExtra) ? merchTransfers
+  const myTransfersList = (isChef || isKomdir || marketingExtra || isLostviewerFull) ? merchTransfers
     : merchTransfers.filter(t => t.fromClub === myTransferClub || t.toClub === myTransferClub);
 
   const handleCreateSale = async (e) => {
@@ -743,7 +747,7 @@ const MerchPage = () => {
   };
 
   const handleDeleteSale = async (sale) => {
-    const canManage = isChef || (managerClub && sale.club === managerClub);
+    const canManage = isChef || (managerClub && sale.club === managerClub) || isLostviewerFull;
     if (!canManage) return toast.error('Доступ запрещен');
     if (sale.returned) return toast.error('Эта продажа уже возвращена');
     // Запись пересорта — НЕ продажа: остаток уже скорректирован при инвентаризации.
@@ -807,7 +811,7 @@ const MerchPage = () => {
     e.preventDefault();
     const product = selectedProductForSupply;
     if (!product) return;
-    const canSupply = isChef || (managerClub && product.club === managerClub);
+    const canSupply = isChef || (managerClub && product.club === managerClub) || isLostviewerFull;
     if (!canSupply) return toast.error('Доступ запрещен');
     const qty = parseInt(supplyForm.qty) || 0;
     if (qty <= 0) return toast.error('Укажите корректное количество');
@@ -872,7 +876,7 @@ const MerchPage = () => {
   const handleSaveResort = async () => {
     const changed = Object.entries(resortValues).filter(([id, val]) => {
       const prod = products.find(p => p.id === id);
-      const canResort = isChef || (managerClub && prod?.club === managerClub);
+      const canResort = isChef || (managerClub && prod?.club === managerClub) || isLostviewerFull;
       return prod && canResort && val !== '' && parseInt(val) !== prod.stock;
     });
     if (changed.length === 0) return toast.error('Нет изменений для сохранения');
@@ -1341,7 +1345,7 @@ const MerchPage = () => {
           )}
 
           {/* Add Product Button */}
-          {(isChef || !!managerClub) && !isMarketing && (
+          {(isChef || !!managerClub || isLostviewerFull) && !isMarketing && (
             <button
               onClick={() => {
                 setEditingProduct(null);
@@ -1715,7 +1719,7 @@ const MerchPage = () => {
                 <RotateCcw size={14} /> Возвраты
               </button>
               )}
-              {(isChef || !!managerClub) && (
+              {(isChef || !!managerClub || isLostviewerFull) && (
                 <button
                   onClick={() => { setActiveTab('resort'); setResortValues({}); }}
                   className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'resort' ? 'bg-orange-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
@@ -2427,7 +2431,7 @@ const MerchPage = () => {
                 const isOut = p.stock === 0;
                 const stockColor = isOut ? '#B06A6A' : isLow ? '#C08F4F' : '#5F9C81';
                 const canSell = !isMarketing && !isKomdir;
-                const canManage = !isMarketing && (isChef || (managerClub && p.club === managerClub));
+                const canManage = !isMarketing && (isChef || (managerClub && p.club === managerClub) || isLostviewerFull);
                 return (
                   <div key={p.id} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 14, padding: 12 }}>
                     {/* Фото + название + цена/остаток */}
@@ -2679,7 +2683,7 @@ const MerchPage = () => {
                               </button>
                             )}
 
-                            {!isMarketing && (isChef || (managerClub && p.club === managerClub)) && (
+                            {!isMarketing && (isChef || (managerClub && p.club === managerClub) || isLostviewerFull) && (
                               <>
                                 {/* Restock Button */}
                                 <button
@@ -2948,7 +2952,7 @@ const MerchPage = () => {
       )}
 
       {/* ─── MODAL: ADD / EDIT PRODUCT ─── */}
-      {showProductModal && (isChef || !!managerClub) && ReactDOM.createPortal(
+      {showProductModal && (isChef || !!managerClub || isLostviewerFull) && ReactDOM.createPortal(
         /* Мобильный: модалка прижата к низу шторкой */
         <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-md relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
@@ -3595,7 +3599,7 @@ const MerchPage = () => {
         document.body
       )}
 
-      {showSupplyModal && selectedProductForSupply && (isChef || (managerClub && selectedProductForSupply.club === managerClub)) && ReactDOM.createPortal(
+      {showSupplyModal && selectedProductForSupply && (isChef || (managerClub && selectedProductForSupply.club === managerClub) || isLostviewerFull) && ReactDOM.createPortal(
         /* Мобильный: модалка прижата к низу шторкой */
         <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
           <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>

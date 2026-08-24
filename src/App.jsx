@@ -324,7 +324,7 @@ const AppContent = () => {
         } />
 
         <Route path="/merch" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'marketing', 'viewer', 'komdir', 'rop']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'marketing', 'viewer', 'komdir', 'rop', 'lostviewer']}>
             <MerchPage />
           </ProtectedLayout>
         } />

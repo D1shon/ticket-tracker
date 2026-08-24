@@ -79,6 +79,28 @@ async function publishReply(page, reply) {
     await page.goto(REVIEWS_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForTimeout(6000);
 
+    // Промо-плашка «+20% к вниманию — добавьте видео» (bottom-sheet, класс
+    // ECHVcS1o) невидимо перехватывает клики поверх всей страницы, из-за чего
+    // click по «Ответить» падает по таймауту 30с. Закрываем её при появлении.
+    const promoClose = page.locator('[data-n="wat-bottom-sheet-cancel-icon"]').first();
+    if (await promoClose.count()) {
+      await promoClose.click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(1000);
+    }
+
+    // По умолчанию кабинет показывает ВСЕ отзывы по 6 площадкам (1800+ штук) —
+    // новый отзыв, ждущий ответа, может быть погребён под сотнями старых, и
+    // «Загрузить ещё» не долистает до него за разумное число кликов. Фильтр
+    // «Без ответа» сразу сужает список до того, что нам нужно.
+    const unansweredFilter = page.getByRole('button', { name: /^Без ответа$/ }).first();
+    if (await unansweredFilter.count()) {
+      const isActive = await unansweredFilter.evaluate(el => el.className.includes('isActive') || el.getAttribute('aria-pressed') === 'true').catch(() => false);
+      if (!isActive) {
+        await unansweredFilter.click().catch(() => {});
+        await page.waitForTimeout(3000);
+      }
+    }
+
     // Ищем карточку: по началу текста отзыва, затем по автору.
     // Список подгружается кнопкой «Загрузить ещё».
     const needle = (reviewSnippet || '').slice(0, 60).trim();
@@ -104,6 +126,10 @@ async function publishReply(page, reply) {
     }
     await anchor.scrollIntoViewIfNeeded().catch(() => {});
 
+    // Промо-плашка может всплыть повторно после скролла/подгрузки — на всякий
+    // случай закрываем её и здесь, перед самым кликом по «Ответить».
+    if (await promoClose.count()) await promoClose.click({ timeout: 3000 }).catch(() => {});
+
     // Кнопка «Ответить» в той же карточке: ближайший ancestor, содержащий её
     const container = anchor.locator('xpath=ancestor::*[.//button[contains(., "Ответить")]][1]');
     if (!(await container.count())) {
@@ -111,7 +137,7 @@ async function publishReply(page, reply) {
       throw new Error('Кнопка «Ответить» не найдена (возможно, уже отвечено)');
     }
     const replyBtn = container.getByRole('button', { name: /^Ответить$/ }).first();
-    await replyBtn.click();
+    await replyBtn.click({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Поле ответа: textarea или contenteditable, появившееся после клика
@@ -238,7 +264,7 @@ async function main() {
   // отставания кабинета («не найден») или разово истёкшей сессии — пока вход
   // снова в порядке. Прочие ошибки (нет кнопки/поля) не трогаем: они требуют
   // взгляда человека.
-  const RETRYABLE = /не найден в кабинете|Сессия кабинета истекла/i;
+  const RETRYABLE = /не найден в кабинете|Сессия кабинета истекла|Timeout.*exceeded/i;
   setInterval(async () => {
     try {
       if (!(await isLoggedIn(page))) return;

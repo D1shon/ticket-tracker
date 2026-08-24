@@ -178,7 +178,7 @@ const DesktopSidebar = () => {
     // Техник (tech): только Чек-листы и InStudio, по всем клубам
     if (user?.role === 'tech') return item.path === '/checklists' || item.path === '/instudio';
     // Наблюдатель «Утерянные вещи»: только эта вкладка, просмотр
-    if (user?.role === 'lostviewer') return item.path === '/lost-items';
+    if (user?.role === 'lostviewer') return item.path === '/lost-items' || item.path === '/merch';
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
@@ -406,7 +406,7 @@ const MobileNav = () => {
     // Техник (tech): только Чек-листы и InStudio, по всем клубам
     if (user?.role === 'tech') return item.path === '/checklists' || item.path === '/instudio';
     // Наблюдатель «Утерянные вещи»: только эта вкладка, просмотр
-    if (user?.role === 'lostviewer') return item.path === '/lost-items';
+    if (user?.role === 'lostviewer') return item.path === '/lost-items' || item.path === '/merch';
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
