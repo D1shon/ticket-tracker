@@ -177,7 +177,8 @@ import {
   getDocs,
   serverTimestamp,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  runTransaction
 } from 'firebase/firestore';
 import { auth, db, getStorageLazy } from '../lib/firebase';
 import { formatAuthor } from '../utils/formatters';
@@ -685,10 +686,16 @@ export const TicketProvider = ({ children }) => {
         if (activationAttemptedRef.current.has(t.id)) return; // уже пытались в этой сессии
         // Легаси-статус «new» тихо переводим «в работу» (колонки «Новые» больше нет).
         // statusChangedAt обязателен — иначе заявка висит «в работе» без таймера.
+        // Транзакция (чтение с СЕРВЕРА): локальный кеш может быть стейл —
+        // слепой updateDoc от такого клиента сбрасывал таймер уже активной заявки.
         if (t.status === 'new') {
           activationAttemptedRef.current.add(t.id);
-          updateDoc(doc(db, 'tickets', String(t.id)), { status: 'in_progress', statusChangedAt: new Date().toISOString() })
-            .catch(() => { activationAttemptedRef.current.delete(t.id); });
+          runTransaction(db, async (tx) => {
+            const ref = doc(db, 'tickets', String(t.id));
+            const snap = await tx.get(ref);
+            if (!snap.exists() || snap.data().status !== 'new') return;
+            tx.update(ref, { status: 'in_progress', statusChangedAt: new Date().toISOString() });
+          }).catch(() => { activationAttemptedRef.current.delete(t.id); });
           return;
         }
         if (t.status !== 'scheduled' || !t.scheduledFor) return;
@@ -696,9 +703,19 @@ export const TicketProvider = ({ children }) => {
           || (t.scheduledFor === today && (!t.scheduledTime || t.scheduledTime <= nowHM));
         if (!due) return;
         activationAttemptedRef.current.add(t.id);
-        updateDoc(doc(db, 'tickets', String(t.id)), { status: 'in_progress', activatedAtISO: new Date().toISOString(), statusChangedAt: new Date().toISOString() })
-          .then(() => {
-            sendPush('📅 Запланированная заявка — в работе', `«${t.title || 'Без названия'}»${t.scheduledTime ? ` · на ${t.scheduledTime}` : ''}`, t.club, `/tickets/${t.id}`, `sched-${t.id}`, TICKET_PUSH_ROLES);
+        // Транзакция гарантирует ОДИН push на заявку: активирует (и пушит) только
+        // клиент, реально переведший scheduled→in_progress на сервере. Раньше слепой
+        // updateDoc + push выполнял КАЖДЫЙ открытый клиент (гонка устройств) и каждый
+        // клиент со стейл-кешем при открытии приложения → шквал одинаковых пушей.
+        runTransaction(db, async (tx) => {
+          const ref = doc(db, 'tickets', String(t.id));
+          const snap = await tx.get(ref);
+          if (!snap.exists() || snap.data().status !== 'scheduled') return false;
+          tx.update(ref, { status: 'in_progress', activatedAtISO: new Date().toISOString(), statusChangedAt: new Date().toISOString() });
+          return true;
+        })
+          .then((won) => {
+            if (won) sendPush('📅 Запланированная заявка — в работе', `«${t.title || 'Без названия'}»${t.scheduledTime ? ` · на ${t.scheduledTime}` : ''}`, t.club, `/tickets/${t.id}`, `sched-${t.id}`, TICKET_PUSH_ROLES);
           })
           // Ошибка записи (сеть/квота) → снимаем метку, чтобы цикл повторил попытку
           .catch(() => { activationAttemptedRef.current.delete(t.id); });
