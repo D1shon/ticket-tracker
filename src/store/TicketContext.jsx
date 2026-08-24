@@ -688,12 +688,19 @@ export const TicketProvider = ({ children }) => {
         // statusChangedAt обязателен — иначе заявка висит «в работе» без таймера.
         // Транзакция (чтение с СЕРВЕРА): локальный кеш может быть стейл —
         // слепой updateDoc от такого клиента сбрасывал таймер уже активной заявки.
+        // closedAt пишется ТОЛЬКО при реальном закрытии заявки человеком и никогда
+        // не очищается — надёжный «эта заявка уже была закрыта» маркер. Раньше его
+        // не проверяли: у клиента с давно открытой (часто мобильной, фоновой) вкладкой
+        // локальный кеш иногда сообщал устаревший status:'new'/'scheduled' для уже
+        // закрытой заявки, транзакция читала это же самое и реактивировала её —
+        // закрытые заявки «сами» оживали как «В работе».
+        if (t.closedAt) return;
         if (t.status === 'new') {
           activationAttemptedRef.current.add(t.id);
           runTransaction(db, async (tx) => {
             const ref = doc(db, 'tickets', String(t.id));
             const snap = await tx.get(ref);
-            if (!snap.exists() || snap.data().status !== 'new') return;
+            if (!snap.exists() || snap.data().status !== 'new' || snap.data().closedAt) return;
             tx.update(ref, { status: 'in_progress', statusChangedAt: new Date().toISOString() });
           }).catch(() => { activationAttemptedRef.current.delete(t.id); });
           return;
@@ -710,7 +717,7 @@ export const TicketProvider = ({ children }) => {
         runTransaction(db, async (tx) => {
           const ref = doc(db, 'tickets', String(t.id));
           const snap = await tx.get(ref);
-          if (!snap.exists() || snap.data().status !== 'scheduled') return false;
+          if (!snap.exists() || snap.data().status !== 'scheduled' || snap.data().closedAt) return false;
           tx.update(ref, { status: 'in_progress', activatedAtISO: new Date().toISOString(), statusChangedAt: new Date().toISOString() });
           return true;
         })
