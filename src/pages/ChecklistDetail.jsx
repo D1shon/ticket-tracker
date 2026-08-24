@@ -16,7 +16,7 @@ const ChecklistDetail = () => {
   const { shiftId, cardId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { addTicket, user, tickets } = useTickets();
+  const { addTicket, updateTicket, addComment, user, tickets } = useTickets();
   const { checklistData, updateCheckState, saveSessionInspector } = useChecklist();
   
   const dateKey = searchParams.get('date') || format(startOfToday(), 'yyyy-MM-dd');
@@ -108,38 +108,50 @@ const ChecklistDetail = () => {
     if (!cardData.noTicket) {
       let createdCount = 0;
       let skippedCount = 0;
+      let reopenedCount = 0;
 
-      // Авто-дедупликация: если по этому пункту уже есть НЕзакрытая заявка в этом
-      // клубе — новую не создаём (иначе каждая смена плодит дубль, пока не починят).
+      // Дедупликация по пункту чек-листа: если заявка ОТКРЫТА — новую не создаём
+      // (иначе каждая смена плодит дубль). Если заявка по этому же пункту ЗАКРЫТА,
+      // а проблема на проверке снова отмечена — это значит, что физически её не
+      // починили: возвращаем В РАБОТУ ТУ ЖЕ заявку (с комментарием о повторе),
+      // а не создаём новую. Раньше после >3 дней с закрытия плодился дубль, из-за
+      // чего менеджерам казалось, что «закрытая заявка сама воскресает».
       // Заголовки заявок чек-листа имеют вид «Пункт (ЧЧ:ММ)» — сравниваем без времени.
       // Сверяемся с СЕРВЕРНЫМ списком заявок клуба: локальный кеш при холодном
-      // старте пуст, и дубли проскакивали. Плюс не пересоздаём заявку, закрытую
-      // менее 3 дней назад — «уже закрывали, а она появилась снова».
+      // старте пуст, и дубли проскакивали.
       const baseTitle = (s) => String(s || '').replace(/\s*\(\d{1,2}:\d{2}\)\s*$/, '').trim().toLowerCase();
       let clubTickets = tickets || [];
       try {
         const snap = await getDocs(query(collection(db, 'tickets'), where('club', '==', club)));
         clubTickets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       } catch (e) { console.warn('[checklist] dedup fallback to local tickets:', e); }
-      const recentCutoffISO = new Date(Date.now() - 3 * 86400_000).toISOString();
-      const hasOpenDuplicate = (itemTitle) => clubTickets.some(t =>
-        baseTitle(t.title) === baseTitle(itemTitle) &&
-        (t.status !== 'closed' || (t.closedAt || t.statusChangedAt || '') >= recentCutoffISO)
-      );
+      const findMatchingTicket = (itemTitle) => clubTickets.find(t => baseTitle(t.title) === baseTitle(itemTitle));
 
       for (const idx of issueIndices) {
         if (itemRepeats[idx] === true) continue;
 
         const problemDescription = itemIssues[idx] || '';
         const itemTitle = effectiveItems[idx];
-
-        if (hasOpenDuplicate(itemTitle)) { skippedCount++; continue; }
-        
-        const descText = problemDescription.trim()
-          ? (inspectorName.trim() ? `${problemDescription.trim()} (Проверил: ${inspectorName.trim()})` : problemDescription.trim())
-          : (inspectorName.trim() ? `Проблема обнаружена (Проверил: ${inspectorName.trim()})` : 'Проблема обнаружена');
-
         const cleanInspector = inspectorName.trim();
+        const descText = problemDescription.trim()
+          ? (cleanInspector ? `${problemDescription.trim()} (Проверил: ${cleanInspector})` : problemDescription.trim())
+          : (cleanInspector ? `Проблема обнаружена (Проверил: ${cleanInspector})` : 'Проблема обнаружена');
+
+        const match = findMatchingTicket(itemTitle);
+        if (match) {
+          if (match.status !== 'closed') { skippedCount++; continue; }
+          // Та же проблема снова всплыла на проверке — реоткрываем существующую
+          // заявку вместо дубля, чтобы вся история была в одном треде.
+          if (updateTicket) {
+            await updateTicket(match.id, { status: 'in_progress', statusChangedAt: new Date().toISOString() });
+          }
+          if (addComment) {
+            await addComment(match.id, `🔁 Проблема обнаружена повторно при проверке чек-листа (${shift.time})${cleanInspector ? ` · ${cleanInspector}` : ''}: ${descText}`);
+          }
+          reopenedCount++;
+          continue;
+        }
+
         const newTicket = {
           title: `${itemTitle} (${shift.time})`,
           subtitle: descText,
@@ -151,7 +163,7 @@ const ChecklistDetail = () => {
           status: 'new',
           createdAt: 'Только что'
         };
-        
+
         if (addTicket) {
           await addTicket(newTicket);
           createdCount++;
@@ -159,6 +171,9 @@ const ChecklistDetail = () => {
       }
       if (createdCount > 0) {
         toast.success(`${createdCount} заявок создано автоматически`);
+      }
+      if (reopenedCount > 0) {
+        toast.info(`${reopenedCount} заявок возвращено в работу — проблема повторилась`);
       }
       if (skippedCount > 0) {
         toast.info(`${skippedCount} дубл. не создано — заявка уже в работе`);
