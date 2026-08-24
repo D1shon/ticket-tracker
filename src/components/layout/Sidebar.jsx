@@ -352,39 +352,55 @@ const MobileNav = () => {
     window.location.reload();
   };
   const sheetRef = useRef(null);
-  // Свайп вниз по ручке шторки — закрыть (ручка сама по себе не тянется,
-  // поэтому жест вешаем на её зону касания)
-  const dragStartY = useRef(null);
-  const dragDelta = useRef(0);
-  const onHandleTouchStart = (e) => {
-    dragStartY.current = e.touches[0].clientY;
-    dragDelta.current = 0;
-    if (sheetRef.current) sheetRef.current.style.transition = 'none';
-  };
-  const onHandleTouchMove = (e) => {
-    if (dragStartY.current == null) return;
-    const dy = Math.max(0, e.touches[0].clientY - dragStartY.current);
-    dragDelta.current = dy;
-    if (sheetRef.current) sheetRef.current.style.transform = `translateY(${dy}px)`;
-  };
-  const onHandleTouchEnd = () => {
+  // Свайп вниз — закрыть шторку (как системные шторки iOS): жест начинается
+  // с любого места, если список прокручен в самый верх. Нативные слушатели
+  // с passive:false — React вешает touchmove пассивно и preventDefault не работает,
+  // без него браузер продолжает скроллить список вместо перетаскивания.
+  useEffect(() => {
     const el = sheetRef.current;
-    const dy = dragDelta.current;
-    dragStartY.current = null;
-    if (!el) return;
-    el.style.transition = 'transform 0.2s cubic-bezier(0.4,0,0.2,1)';
-    if (dy > 70) {
-      el.style.transform = 'translateY(120%)';
-      setTimeout(() => { setShowMore(false); setShowNotifications(false); }, 180);
-    } else {
-      el.style.transform = 'translateY(0)';
-    }
-  };
-  const handleDragProps = {
-    onTouchStart: onHandleTouchStart,
-    onTouchMove: onHandleTouchMove,
-    onTouchEnd: onHandleTouchEnd,
-  };
+    if (!el || (!showMore && !showNotifications)) return;
+    const scroller = () => el.querySelector('.sheet-scroll') || el;
+    let startY = 0, delta = 0, tracking = false, dragging = false;
+    const onStart = (e) => {
+      tracking = true; dragging = false; delta = 0;
+      startY = e.touches[0].clientY;
+    };
+    const onMove = (e) => {
+      if (!tracking) return;
+      const dy = e.touches[0].clientY - startY;
+      if (!dragging) {
+        if (scroller().scrollTop > 0 || dy < -6) { tracking = false; return; }
+        if (dy <= 6) return;
+        dragging = true;
+        el.style.transition = 'none';
+      }
+      delta = Math.max(0, dy);
+      e.preventDefault();
+      el.style.transform = `translateY(${delta}px)`;
+    };
+    const onEnd = () => {
+      tracking = false;
+      if (!dragging) return;
+      dragging = false;
+      el.style.transition = 'transform 0.2s cubic-bezier(0.4,0,0.2,1)';
+      if (delta > 70) {
+        el.style.transform = 'translateY(120%)';
+        setTimeout(() => { setShowMore(false); setShowNotifications(false); }, 180);
+      } else {
+        el.style.transform = 'translateY(0)';
+      }
+    };
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  }, [showMore, showNotifications]);
   const [isDemoDayActive, setIsDemoDayActive] = useState(false);
 
   useEffect(() => {
@@ -727,10 +743,8 @@ const MobileNav = () => {
               maxHeight: 'calc(100dvh - 140px)', overflowY: 'auto',
             }}
           >
-            {/* Handle — потянуть вниз, чтобы закрыть */}
-            <div {...handleDragProps} style={{ touchAction: 'none', padding: '12px 0 12px', margin: '-12px 0 0' }}>
-              <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto' }} />
-            </div>
+            {/* Handle */}
+            <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
 
             {(() => {
               // ── Новый визуал «Ещё»: плитки с подписями по секциям ──
@@ -862,15 +876,13 @@ const MobileNav = () => {
             }}
           >
             <div style={{ padding: '16px 20px 0', flexShrink: 0 }}>
-              <div {...handleDragProps} style={{ touchAction: 'none', padding: '16px 0 12px', margin: '-16px 0 0' }}>
-                <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto' }} />
-              </div>
+              <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)' }}>Уведомления</span>
                 {unreadCount > 0 && <span style={{ fontSize: 11, background: '#B06A6A', color: '#fff', borderRadius: 20, padding: '2px 8px', fontWeight: 700 }}>{unreadCount} новых</span>}
               </div>
             </div>
-            <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 16 }}>
+            <div className="sheet-scroll" style={{ overflowY: 'auto', flex: 1, paddingBottom: 16 }}>
               {notifications.slice(0, 15).map(n => {
                 const isUnread = !readIds?.has?.(n.id);
                 return (
