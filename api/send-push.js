@@ -43,7 +43,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { title, body, club, excludeEmail, url, tag, tokens: clientTokens } = req.body ?? {}
+  const { title, body, club, excludeEmail, targetEmail, url, tag, tokens: clientTokens } = req.body ?? {}
   if (!title) return res.status(400).json({ error: 'title required' })
 
   // Временно: НЕ рассылаем push-итоги WhatsApp (по запросу). Анализ в ленте
@@ -61,8 +61,10 @@ export default async function handler(req, res) {
     } else {
       const allTokens = await getAllTokens()
       const exclude = (excludeEmail || '').toLowerCase()
+      const target = (targetEmail || '').toLowerCase()
       const clubNorm = (club || '').toUpperCase()
       allTokens.forEach(t => {
+        if (target && (t.email || '').toLowerCase() !== target) return
         if (exclude && (t.email || '').toLowerCase() === exclude) return
         // Клубный пуш → только точный клуб ИЛИ глобальная роль (шеф/Ком-Дир).
         // Пустой/чужой клуб у обычной роли НЕ получает (фикс межклубной утечки).
