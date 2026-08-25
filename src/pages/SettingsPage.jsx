@@ -912,8 +912,10 @@ const SettingsPage = () => {
             const clubColor = (CLUBS.find(c => c.name === clubName) || {}).color || 'var(--accent-purple)';
             const staticAdmins = Object.entries(USER_ROLES)
               .filter(([email, u]) => u.role === 'admin' && u.club === clubName && !(email in appUsers));
+            // МОПы (role:'rop', mop:true) управляются на странице /staff — здесь только админы,
+            // иначе МОП отображается с бейджем ADMIN и его можно случайно удалить как админа
             const dynamicAdmins = Object.entries(appUsers)
-              .filter(([, u]) => !u.revoked && (u.club || '').toUpperCase() === clubName.toUpperCase());
+              .filter(([, u]) => !u.revoked && (u.role || 'admin') === 'admin' && (u.club || '').toUpperCase() === clubName.toUpperCase());
             const allAdmins = [
               ...staticAdmins.map(([email, u]) => ({ email, name: u.displayName, dynamic: false })),
               ...dynamicAdmins.map(([email, u]) => ({ email, name: u.displayName, dynamic: true, addedBy: u.addedBy })),
