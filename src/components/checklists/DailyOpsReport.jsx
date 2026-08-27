@@ -381,6 +381,11 @@ const DailyOpsReport = ({ club }) => {
         </span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: isMobile ? 4 : 7 }}>
+        {/* Шапка дней недели + смещение первого числа — как в обычном календаре (неделя с Пн) */}
+        {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((wd, i) => (
+          <div key={wd} style={{ textAlign: 'center', fontSize: isMobile ? 10 : 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: i >= 5 ? 'var(--text-secondary)' : 'var(--text-muted)', paddingBottom: isMobile ? 2 : 4 }}>{wd}</div>
+        ))}
+        {Array.from({ length: (monthDays[0].getDay() + 6) % 7 }, (_, i) => <div key={`pad${i}`} />)}
         {monthDays.map(d => {
           const key = format(d, 'yyyy-MM-dd');
           const dayTickets = ticketsByDay[key] || [];
