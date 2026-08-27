@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShieldCheck, X, Clock, Users, Shield, History, ChevronDown } from 'lucide-react';
+import { ShieldCheck, X, Clock, Users, Shield, History, ChevronDown, ClipboardList, Camera } from 'lucide-react';
 import { format, addDays, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { collection, onSnapshot, query, where, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, onSnapshot, query, where, doc, addDoc, Timestamp } from 'firebase/firestore';
+import { db, getStorageLazy } from '../lib/firebase';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
+
+const CHECKOUT_CHECKLIST = [
+  'Посчитать пульсы, проверить каждый и отметить',
+  'Посчитать полотенца, заполнить в треке',
+  'Убраться в рабочей зоне',
+  'Отписаться по задачам на завтра (передачи, посылки, поручения)',
+  'Сверить кассу, зафоткать и отправить в чат',
+];
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 
@@ -102,6 +110,11 @@ const AttendancePage = () => {
   const [failedCheckins, setFailedCheckins] = useState([]);
   const [checkinStatus, setCheckinStatus] = useState('idle'); // idle | loading | ok | err
   const [checkinResult, setCheckinResult] = useState(null);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checkedItems, setCheckedItems] = useState([]);
+  const [photoStoragePath, setPhotoStoragePath] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [gateways, setGateways]           = useState({});
 
   // «Сегодня» пересчитывается каждую минуту: у менеджеров страница висит открытой
@@ -185,6 +198,35 @@ const AttendancePage = () => {
       return { key, name: u.name, marks: u.marks, firstIn, lastOut, duration };
     }).sort((a, b) => (a.firstIn ? ts(a.firstIn) : Infinity) - (b.firstIn ? ts(b.firstIn) : Infinity));
   }, [historyCheckins, opMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Загрузка фото кассы (обязательно перед чекаутом) ─────────────
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    setPhotoPreviewUrl(URL.createObjectURL(file));
+    try {
+      const storage = await getStorageLazy();
+      const { ref, uploadBytes } = await import('firebase/storage');
+      const safeName = (user?.email || 'unknown').replace(/[^a-z0-9]/gi, '_');
+      const path = `checkout_photos/${safeName}_${Date.now()}.jpg`;
+      await uploadBytes(ref(storage, path), file, { contentType: file.type || 'image/jpeg' });
+      await addDoc(collection(db, 'checkout_photos'), {
+        userId: user?.email || 'unknown',
+        userName: user?.displayName || null,
+        club: user?.club || null,
+        storagePath: path,
+        uploadedAt: Timestamp.now(),
+        expiresAt: Timestamp.fromMillis(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      });
+      setPhotoStoragePath(path);
+    } catch {
+      setPhotoPreviewUrl(null);
+      alert('Не удалось загрузить фото. Попробуйте ещё раз.');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   // ── IP check-in ───────────────────────────────────────────────────
   const handleCheckin = async (type = 'in') => {
@@ -398,7 +440,17 @@ const AttendancePage = () => {
                 Check-in
               </button>
               <button
-                onClick={() => handleCheckin('out')}
+                onClick={() => {
+                  if (user?.role === 'admin') {
+                    setCheckedItems([]);
+                    setPhotoStoragePath(null);
+                    setPhotoPreviewUrl(null);
+                    setPhotoUploading(false);
+                    setChecklistOpen(true);
+                  } else {
+                    handleCheckin('out');
+                  }
+                }}
                 style={{
                   flex: 1, width: isMobile ? '100%' : undefined, minHeight: isMobile ? 48 : undefined,
                   padding: isMobile ? '14px 20px' : '18px 20px', borderRadius: 20, cursor: 'pointer',
@@ -599,6 +651,176 @@ const AttendancePage = () => {
                 </div>
               </div>
             ))}
+        </div>
+      )}
+
+      {/* ── Чеклист перед чекаутом (только для администраторов) ── */}
+      {checklistOpen && (
+        <div
+          onClick={() => setChecklistOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 24, width: '100%', maxWidth: 420,
+              boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Шапка */}
+            <div style={{
+              padding: '18px 20px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 12, flexShrink: 0,
+                background: 'rgba(192,143,79,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <ClipboardList size={17} color="#C08F4F" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Чеклист перед уходом
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>
+                  Отметьте все пункты, чтобы выйти
+                </div>
+              </div>
+              <button
+                onClick={() => setChecklistOpen(false)}
+                style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Пункты чеклиста */}
+            <div style={{ padding: '10px 0' }}>
+              {CHECKOUT_CHECKLIST.map((item, idx) => {
+                const checked = checkedItems.includes(idx);
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => setCheckedItems(prev =>
+                      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+                    )}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 12,
+                      padding: '11px 20px', cursor: 'pointer',
+                      transition: 'background 0.15s',
+                      background: checked ? 'rgba(95,156,129,0.06)' : 'transparent',
+                    }}
+                  >
+                    <div style={{
+                      width: 22, height: 22, borderRadius: 7, flexShrink: 0, marginTop: 1,
+                      border: `2px solid ${checked ? '#5F9C81' : 'var(--border)'}`,
+                      background: checked ? '#5F9C81' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'all 0.15s',
+                    }}>
+                      {checked && (
+                        <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
+                          <path d="M1 4L4 7.5L10 1" stroke="#000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <span style={{
+                      fontSize: 13, fontWeight: 700, lineHeight: 1.4,
+                      color: checked ? 'var(--text-muted)' : 'var(--text-primary)',
+                      textDecoration: checked ? 'line-through' : 'none',
+                      transition: 'all 0.15s',
+                    }}>
+                      {idx + 1}. {item}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Фото кассы — обязательно */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#C08F4F', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                Фото кассы — обязательно
+              </div>
+              {photoStoragePath ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <img src={photoPreviewUrl} alt="касса" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 10, border: '2px solid #5F9C81', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#5F9C81' }}>Фото прикреплено ✓</div>
+                    <label style={{ fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer', textDecoration: 'underline' }}>
+                      Заменить
+                      <input type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                    </label>
+                  </div>
+                </div>
+              ) : photoUploading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                  <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid #C08F4F', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Загружаем фото...</span>
+                </div>
+              ) : (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 14, border: '1.5px dashed rgba(192,143,79,0.4)', background: 'rgba(192,143,79,0.04)', cursor: 'pointer' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(192,143,79,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Camera size={16} color="#C08F4F" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>Сфотографировать кассу</div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1 }}>Нажмите, чтобы открыть камеру</div>
+                  </div>
+                  <input type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                </label>
+              )}
+            </div>
+
+            {/* Прогресс + кнопка подтверждения */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <div style={{ flex: 1, height: 4, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 4, background: '#5F9C81',
+                    width: `${(checkedItems.length / CHECKOUT_CHECKLIST.length) * 100}%`,
+                    transition: 'width 0.25s ease',
+                  }} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0 }}>
+                  {checkedItems.length}/{CHECKOUT_CHECKLIST.length}
+                </span>
+              </div>
+              {(() => {
+                const allChecked = checkedItems.length >= CHECKOUT_CHECKLIST.length;
+                const canConfirm = allChecked && !!photoStoragePath;
+                const remaining = CHECKOUT_CHECKLIST.length - checkedItems.length;
+                const label = !allChecked
+                  ? `Осталось ${remaining} пункт${remaining === 1 ? '' : remaining < 5 ? 'а' : 'ов'}`
+                  : !photoStoragePath
+                    ? 'Прикрепите фото кассы'
+                    : 'Подтвердить чекаут ✓';
+                return (
+                  <button
+                    disabled={!canConfirm}
+                    onClick={() => { setChecklistOpen(false); handleCheckin('out'); }}
+                    style={{
+                      width: '100%', padding: '14px 20px', borderRadius: 16, border: 'none',
+                      cursor: canConfirm ? 'pointer' : 'not-allowed',
+                      background: canConfirm ? '#C08F4F' : 'var(--bg-hover)',
+                      color: canConfirm ? '#fff' : 'var(--text-muted)',
+                      fontWeight: 900, fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })()}
+            </div>
+          </div>
         </div>
       )}
 

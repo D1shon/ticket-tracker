@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cleanup-checkout-photos",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/).*)",
