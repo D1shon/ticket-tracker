@@ -19,6 +19,7 @@ export const canCreateStaff = (user) => {
   if (role === 'manager') return true;
   return false;
 };
-// Пункт в левом меню — у реального РОПа и у менеджеров (у шефа — в Настройках).
+// Пункт в левом меню — только у реального РОПа.
+// У шефа и менеджеров вход на /staff — через карточку в Настройках.
 export const showStaffNav = (user) =>
-  (user?.role === 'rop' && !user?.mop) || user?.role === 'manager';
+  user?.role === 'rop' && !user?.mop;
