@@ -225,62 +225,97 @@ const DesktopSidebar = () => {
   })();
   const { rows, save, reset, isCustom } = useNavLayout(user, allowedPaths, defaultRows);
 
-  // ── Drag&drop: перетаскивание пунктов/групп; удержание над пунктом ~2с — объединение ──
+  // ── Drag&drop мышью: перетаскивание пунктов/групп; удержание над пунктом ~2с — объединение.
+  // Нарочно НЕ HTML5 DnD: перетаскивание <a> браузеры превращают в «перенос ссылки»
+  // (ghost с URL, drop не срабатывает), поэтому жест собран вручную на mousedown/mousemove ──
   const [dragKey, setDragKey] = useState(null);          // {kind:'item',path} | {kind:'group',id}
   const [dropHint, setDropHintState] = useState(null);   // {key, mode:'before'|'after'|'into'}
+  const [ghost, setGhost] = useState(null);              // {x, y, label} — «призрак» у курсора
   const dropHintRef = useRef(null);
   const setDropHint = (h) => { dropHintRef.current = h; setDropHintState(h); };
   const mergeTimerRef = useRef(null);                    // {key, t}
+  const rowNodes = useRef(new Map());                    // key → {el, target, mergeable}
+  const dragStateRef = useRef(null);                     // {drag, label, startX, startY, moved}
+  const suppressClickRef = useRef(false);                // гасим клик-навигацию после переноса
   const keyOf = (t) => t.kind === 'group' ? 'g:' + t.id : 'i:' + t.path;
   const clearMergeTimer = () => { if (mergeTimerRef.current) { clearTimeout(mergeTimerRef.current.t); mergeTimerRef.current = null; } };
-  const endDrag = () => { clearMergeTimer(); setDragKey(null); setDropHint(null); };
+  const endDrag = () => { clearMergeTimer(); setDragKey(null); setDropHint(null); setGhost(null); };
 
-  const onDragStartRow = (e, drag) => {
-    e.dataTransfer.effectAllowed = 'move';
-    try { e.dataTransfer.setData('text/plain', keyOf(drag)); } catch {}
-    setDragKey(drag);
+  const registerRow = (key, target, mergeable) => (el) => {
+    if (el) rowNodes.current.set(key, { el, target, mergeable });
+    else rowNodes.current.delete(key);
   };
 
-  // mergeable: цель умеет принимать «внутрь» (пункт верхнего уровня → новая группа;
-  // заголовок группы → добавить в группу). Пункты внутри групп — только before/after.
-  const onDragOverRow = (e, target, mergeable) => {
-    if (!dragKey || keyOf(dragKey) === keyOf(target)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = (e.clientY - rect.top) / Math.max(rect.height, 1);
-    const canMerge = mergeable && dragKey.kind === 'item';
-    const inMiddle = canMerge && ratio > 0.3 && ratio < 0.7;
-    const cur = dropHintRef.current;
-    if (inMiddle) {
-      if (cur?.key === keyOf(target) && cur.mode === 'into') return; // уже «вооружено»
-      if (mergeTimerRef.current?.key !== keyOf(target)) {
-        clearMergeTimer();
-        const key = keyOf(target);
-        mergeTimerRef.current = { key, t: setTimeout(() => { setDropHint({ key, mode: 'into' }); }, 2000) };
+  const beginPress = (e, drag, label) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); // глушим нативный drag ссылки и выделение текста; click всё равно придёт
+    const st = { drag, label, startX: e.clientX, startY: e.clientY, moved: false };
+    dragStateRef.current = st;
+
+    const onMove = (ev) => {
+      const s = dragStateRef.current; if (!s) return;
+      if (!s.moved) {
+        if (Math.abs(ev.clientX - s.startX) + Math.abs(ev.clientY - s.startY) < 6) return;
+        s.moved = true;
+        setDragKey(s.drag);
+        document.body.style.userSelect = 'none';
       }
-    } else if (mergeTimerRef.current) {
-      clearMergeTimer();
-    }
-    const mode = ratio < 0.5 ? 'before' : 'after';
-    if (!inMiddle || cur?.mode !== 'into') {
-      if (!cur || cur.key !== keyOf(target) || cur.mode !== mode) setDropHint({ key: keyOf(target), mode });
-    }
+      setGhost({ x: ev.clientX, y: ev.clientY, label: s.label });
+      let found = null;
+      for (const [key, info] of rowNodes.current) {
+        const r = info.el.getBoundingClientRect();
+        if (ev.clientY >= r.top && ev.clientY <= r.bottom && ev.clientX >= r.left && ev.clientX <= r.right) {
+          found = { key, info, rect: r };
+          break;
+        }
+      }
+      if (!found || keyOf(s.drag) === found.key) { clearMergeTimer(); setDropHint(null); return; }
+      const ratio = (ev.clientY - found.rect.top) / Math.max(found.rect.height, 1);
+      // mergeable: пункт верхнего уровня (→ новая группа) или заголовок группы (→ внутрь);
+      // пункты внутри групп принимают только before/after
+      const canMerge = found.info.mergeable && s.drag.kind === 'item';
+      const inMiddle = canMerge && ratio > 0.3 && ratio < 0.7;
+      const cur = dropHintRef.current;
+      if (inMiddle) {
+        if (cur?.key === found.key && cur.mode === 'into') return; // объединение уже «вооружено»
+        if (mergeTimerRef.current?.key !== found.key) {
+          clearMergeTimer();
+          const key = found.key;
+          mergeTimerRef.current = { key, t: setTimeout(() => { setDropHint({ key, mode: 'into' }); }, 2000) };
+        }
+      } else if (mergeTimerRef.current) {
+        clearMergeTimer();
+      }
+      const mode = ratio < 0.5 ? 'before' : 'after';
+      if (!inMiddle || cur?.mode !== 'into') {
+        if (!cur || cur.key !== found.key || cur.mode !== mode) setDropHint({ key: found.key, mode });
+      }
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      const s = dragStateRef.current;
+      dragStateRef.current = null;
+      document.body.style.userSelect = '';
+      if (!s || !s.moved) { endDrag(); return; } // обычный клик — навигация пройдёт сама
+      suppressClickRef.current = true;
+      setTimeout(() => { suppressClickRef.current = false; }, 0);
+      const hint = dropHintRef.current;
+      const targetInfo = hint ? rowNodes.current.get(hint.key) : null;
+      if (hint && targetInfo) {
+        const makeLabel = () => window.prompt('Название новой группы:', 'Группа');
+        const next = applyDrop(rows, s.drag, targetInfo.target, hint.mode, makeLabel);
+        if (next !== rows) save(next);
+      }
+      endDrag();
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
-  const onDragLeaveRow = (e, target) => {
-    if (mergeTimerRef.current?.key === keyOf(target)) clearMergeTimer();
-  };
-
-  const onDropRow = (e, target) => {
-    e.preventDefault();
-    const hint = dropHintRef.current;
-    if (!dragKey || !hint || hint.key !== keyOf(target)) { endDrag(); return; }
-    const makeLabel = () => window.prompt('Название новой группы:', 'Группа');
-    const next = applyDrop(rows, dragKey, target, hint.mode, makeLabel);
-    if (next !== rows) save(next);
-    endDrag();
-  };
+  const guardClick = (e) => { if (suppressClickRef.current) { e.preventDefault(); e.stopPropagation(); } };
 
   const hintStyle = (target) => {
     const h = dropHint;
@@ -325,12 +360,9 @@ const DesktopSidebar = () => {
     return (
       <div
         key={item.path}
-        draggable
-        onDragStart={(e) => onDragStartRow(e, target)}
-        onDragEnd={endDrag}
-        onDragOver={(e) => onDragOverRow(e, target, !indent)}
-        onDragLeave={(e) => onDragLeaveRow(e, target)}
-        onDrop={(e) => onDropRow(e, target)}
+        ref={registerRow(keyOf(target), target, !indent)}
+        onMouseDown={(e) => beginPress(e, target, item.label)}
+        onClickCapture={guardClick}
         style={{ opacity: dragKey && keyOf(dragKey) === keyOf(target) ? 0.4 : 1, ...hintStyle(target) }}
       >
         {renderItem(item, indent)}
@@ -349,16 +381,12 @@ const DesktopSidebar = () => {
     return (
       <div key={row.id}>
         <div
-          draggable
-          onDragStart={(e) => onDragStartRow(e, target)}
-          onDragEnd={endDrag}
-          onDragOver={(e) => onDragOverRow(e, target, true)}
-          onDragLeave={(e) => onDragLeaveRow(e, target)}
-          onDrop={(e) => onDropRow(e, target)}
+          ref={registerRow(keyOf(target), target, true)}
+          onMouseDown={(e) => beginPress(e, target, row.label)}
           style={{ opacity: dragKey && keyOf(dragKey) === keyOf(target) ? 0.4 : 1, ...hintStyle(target) }}
         >
           <button
-            onClick={() => setGroupOpen(row.id, !open)}
+            onClick={(e) => { if (suppressClickRef.current) return; setGroupOpen(row.id, !open); }}
             onDoubleClick={() => {
               const v = window.prompt('Название группы:', row.label);
               if (v && v.trim()) save(rows.map(r => r.type === 'group' && r.id === row.id ? { ...r, label: v.trim() } : r));
@@ -403,6 +431,19 @@ const DesktopSidebar = () => {
           ? renderGroupRow(row)
           : (byPath[row.path] ? renderItemRow(byPath[row.path]) : null))}
       </nav>
+
+      {/* «Призрак» перетаскиваемого пункта у курсора */}
+      {ghost && (
+        <div style={{
+          position: 'fixed', left: ghost.x + 14, top: ghost.y + 6, zIndex: 9999,
+          pointerEvents: 'none', padding: '7px 14px', borderRadius: 10,
+          background: 'var(--bg-card)', border: '1px solid var(--accent-purple)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)', fontSize: 13, fontWeight: 700,
+          color: 'var(--text-primary)', whiteSpace: 'nowrap',
+        }}>
+          {ghost.label}
+        </div>
+      )}
 
       <div style={{ borderTop: '1px solid var(--sidebar-border)', paddingTop: 4, paddingBottom: 8, position: 'relative' }}>
         {isCustom && (
