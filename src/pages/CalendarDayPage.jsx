@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, CalendarDays, Plus, Link2, Messag
 import { format, parseISO, isValid, addDays, subDays, isToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { useTickets } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
 
@@ -45,8 +45,9 @@ const CalendarDayPage = () => {
     const q = query(collection(db, 'calendar_events'), where('date', '==', date));
     return onSnapshot(q, snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        // События без клуба (старые) видны везде, остальные — только в своём клубе
-        .filter(e => !e.club || e.club === club);
+        // События без клуба (старые) видны везде, остальные — только в своём клубе.
+        // deleted — надгробия удалённых (нужны, чтобы автоповтор их не воскрешал)
+        .filter(e => !e.deleted && (!e.club || e.club === club));
       list.sort((a, b) => (a.createdAtISO || '').localeCompare(b.createdAtISO || ''));
       setEvents(list);
     }, err => console.error('[calendar-day]', err));
@@ -97,8 +98,10 @@ const CalendarDayPage = () => {
   };
 
   const handleDelete = async (ev) => {
-    if (!window.confirm(`Удалить событие «${ev.title}»?`)) return;
-    try { await deleteDoc(doc(db, 'calendar_events', ev.id)); }
+    if (!window.confirm(`Удалить событие «${ev.title}»?\n\nОно перестанет повторяться в следующих месяцах.`)) return;
+    // Не deleteDoc, а надгробие: автоповтор (CalendarPage) видит, что док существует,
+    // и не создаёт копию заново; цепочка повторов останавливается на этом месяце.
+    try { await updateDoc(doc(db, 'calendar_events', ev.id), { deleted: true, deletedByEmail: myEmail, deletedAtISO: new Date().toISOString() }); }
     catch (e) { console.error(e); alert('Не удалось удалить'); }
   };
 

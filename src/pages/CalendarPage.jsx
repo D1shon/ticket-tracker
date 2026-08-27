@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, Link2, MessageSquare } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, runTransaction } from 'firebase/firestore';
 import { useTickets } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
 
@@ -33,6 +33,43 @@ const CalendarPage = () => {
     }, err => console.error('[calendar]', err));
   }, []);
 
+  // ── Автоповтор: каждое событие дублируется на тот же день следующего месяца.
+  // Цепочка: август → сентябрь → октябрь… Удаление копии (tombstone deleted:true)
+  // останавливает повтор с этого месяца. Детерминированный id rep_{root}_{YYYY-MM}
+  // + транзакция «создать, если нет» — дубликаты невозможны при гонке клиентов,
+  // а удалённая копия (док существует как надгробие) никогда не воскресает.
+  const repeatEnsuredRef = useRef(false);
+  useEffect(() => {
+    if (repeatEnsuredRef.current || events.length === 0) return;
+    repeatEnsuredRef.current = true;
+    (async () => {
+      const now = new Date();
+      // прошлый месяц → текущий (если календарь долго не открывали) и текущий → следующий
+      for (const base of [subMonths(now, 1), now]) {
+        const mKey = format(base, 'yyyy-MM');
+        const src = events.filter(e => !e.deleted && (e.date || '').startsWith(mKey));
+        for (const e of src) {
+          const rootId = e.repeatedFrom || e.id;
+          const newDate = format(addMonths(new Date(e.date + 'T12:00:00'), 1), 'yyyy-MM-dd');
+          const targetKey = newDate.slice(0, 7);
+          const dupId = `rep_${rootId}_${targetKey}`;
+          if (events.some(x => x.id === dupId)) continue; // копия (или её надгробие) уже есть
+          // в целевом месяце уже есть живое событие этой цепочки (например, созданное руками)
+          if (events.some(x => !x.deleted && (x.repeatedFrom || x.id) === rootId && (x.date || '').startsWith(targetKey))) continue;
+          try {
+            await runTransaction(db, async (tx) => {
+              const ref = doc(db, 'calendar_events', dupId);
+              const snap = await tx.get(ref);
+              if (snap.exists()) return;
+              const { id: _id, comments: _c, repeatedFrom: _r, deleted: _d, deletedByEmail: _de, deletedAtISO: _da, ...rest } = e;
+              tx.set(ref, { ...rest, date: newDate, comments: [], repeatedFrom: rootId, createdAtISO: new Date().toISOString() });
+            });
+          } catch {}
+        }
+      }
+    })();
+  }, [events]);
+
   // Сетка месяца: дни 1..28/30/31 подряд, 1-е число всегда в первой клетке.
   // День недели показывается внутри каждой клетки.
   const monthDays = useMemo(() => eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) }), [month]);
@@ -41,7 +78,7 @@ const CalendarPage = () => {
   const eventsByDay = useMemo(() => {
     const map = {};
     events.forEach(e => {
-      if (!e.date) return;
+      if (!e.date || e.deleted) return;
       // События без клуба (созданные до разделения) видны во всех клубах
       if (e.club && e.club !== activeClub) return;
       if (!map[e.date]) map[e.date] = [];
