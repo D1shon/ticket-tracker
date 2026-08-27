@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { isMobileDevice } from '../../lib/isMobile';
 import useSheetDrag from '../../lib/useSheetDrag';
+import useNavLayout, { applyDrop } from '../../lib/useNavLayout';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Ticket, CheckSquare, Calendar, CalendarDays,
@@ -8,7 +9,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -124,7 +125,6 @@ const NAV_GROUPS = [
   { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/archive', '/merch'] },
   { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/leads', '/assistant'] },
 ];
-const groupOf = (path) => NAV_GROUPS.find(g => g.paths.includes(path));
 
 const useNavGroups = () => {
   const [openGroups, setOpenGroups] = useState(() => {
@@ -206,6 +206,91 @@ const DesktopSidebar = () => {
   const [openGroups, setGroupOpen] = useNavGroups();
   const location = useLocation();
 
+  // ── Персональная раскладка меню: drag&drop порядок + свои группы ──
+  const allowedPaths = allowedNav.map(i => i.path);
+  const byPath = Object.fromEntries(allowedNav.map(i => [i.path, i]));
+  // Стандартная раскладка повторяет прежний статичный порядок:
+  // Новости / Доска задач / Дашборд, затем группы (у шефов/менеджеров), затем остальное
+  const defaultRows = (() => {
+    const allowed = new Set(allowedPaths);
+    const rows = [];
+    ['/news', '/shift-board', '/dashboard'].forEach(p => { if (allowed.has(p)) rows.push({ type: 'item', path: p }); });
+    if (useGrouping) {
+      NAV_GROUPS.forEach(g => {
+        const items = g.paths.filter(p => allowed.has(p));
+        if (items.length) rows.push({ type: 'group', id: g.id, label: g.label, items });
+      });
+    }
+    return rows; // остальные пункты допишет normalize внутри useNavLayout
+  })();
+  const { rows, save, reset, isCustom } = useNavLayout(user, allowedPaths, defaultRows);
+
+  // ── Drag&drop: перетаскивание пунктов/групп; удержание над пунктом ~2с — объединение ──
+  const [dragKey, setDragKey] = useState(null);          // {kind:'item',path} | {kind:'group',id}
+  const [dropHint, setDropHintState] = useState(null);   // {key, mode:'before'|'after'|'into'}
+  const dropHintRef = useRef(null);
+  const setDropHint = (h) => { dropHintRef.current = h; setDropHintState(h); };
+  const mergeTimerRef = useRef(null);                    // {key, t}
+  const keyOf = (t) => t.kind === 'group' ? 'g:' + t.id : 'i:' + t.path;
+  const clearMergeTimer = () => { if (mergeTimerRef.current) { clearTimeout(mergeTimerRef.current.t); mergeTimerRef.current = null; } };
+  const endDrag = () => { clearMergeTimer(); setDragKey(null); setDropHint(null); };
+
+  const onDragStartRow = (e, drag) => {
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', keyOf(drag)); } catch {}
+    setDragKey(drag);
+  };
+
+  // mergeable: цель умеет принимать «внутрь» (пункт верхнего уровня → новая группа;
+  // заголовок группы → добавить в группу). Пункты внутри групп — только before/after.
+  const onDragOverRow = (e, target, mergeable) => {
+    if (!dragKey || keyOf(dragKey) === keyOf(target)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientY - rect.top) / Math.max(rect.height, 1);
+    const canMerge = mergeable && dragKey.kind === 'item';
+    const inMiddle = canMerge && ratio > 0.3 && ratio < 0.7;
+    const cur = dropHintRef.current;
+    if (inMiddle) {
+      if (cur?.key === keyOf(target) && cur.mode === 'into') return; // уже «вооружено»
+      if (mergeTimerRef.current?.key !== keyOf(target)) {
+        clearMergeTimer();
+        const key = keyOf(target);
+        mergeTimerRef.current = { key, t: setTimeout(() => { setDropHint({ key, mode: 'into' }); }, 2000) };
+      }
+    } else if (mergeTimerRef.current) {
+      clearMergeTimer();
+    }
+    const mode = ratio < 0.5 ? 'before' : 'after';
+    if (!inMiddle || cur?.mode !== 'into') {
+      if (!cur || cur.key !== keyOf(target) || cur.mode !== mode) setDropHint({ key: keyOf(target), mode });
+    }
+  };
+
+  const onDragLeaveRow = (e, target) => {
+    if (mergeTimerRef.current?.key === keyOf(target)) clearMergeTimer();
+  };
+
+  const onDropRow = (e, target) => {
+    e.preventDefault();
+    const hint = dropHintRef.current;
+    if (!dragKey || !hint || hint.key !== keyOf(target)) { endDrag(); return; }
+    const makeLabel = () => window.prompt('Название новой группы:', 'Группа');
+    const next = applyDrop(rows, dragKey, target, hint.mode, makeLabel);
+    if (next !== rows) save(next);
+    endDrag();
+  };
+
+  const hintStyle = (target) => {
+    const h = dropHint;
+    if (!h || h.key !== keyOf(target)) return {};
+    if (h.mode === 'into') return { outline: '2px solid var(--accent-purple)', outlineOffset: '-2px', borderRadius: 10, background: 'rgba(125,111,179,0.10)' };
+    return h.mode === 'before'
+      ? { boxShadow: 'inset 0 2px 0 0 var(--accent-purple)' }
+      : { boxShadow: 'inset 0 -2px 0 0 var(--accent-purple)' };
+  };
+
   const renderItem = (item, indent = false) => {
     const isTowelAlert   = item.path === '/towels'       && towelAlert;
     const isMonitorAlert = item.path === '/hr-monitors'  && monitorAlert;
@@ -216,6 +301,7 @@ const DesktopSidebar = () => {
       <NavLink
         key={item.path}
         to={item.path}
+        draggable={false}
         className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
         style={{
           ...(isAlerted ? { boxShadow: '0 0 0 1.5px #B06A6A', borderRadius: 10, position: 'relative' } : {}),
@@ -234,14 +320,65 @@ const DesktopSidebar = () => {
     );
   };
 
-  const groups = useGrouping
-    ? NAV_GROUPS.map(g => ({ ...g, items: allowedNav.filter(i => g.paths.includes(i.path)) })).filter(g => g.items.length)
-    : [];
-  const ungrouped = useGrouping ? allowedNav.filter(i => !groupOf(i.path)) : allowedNav;
-  const newsItem = ungrouped.find(i => i.path === '/news');
-  const boardItem = ungrouped.find(i => i.path === '/shift-board');
-  const dashItem = ungrouped.find(i => i.path === '/dashboard'); // Дашборд — сразу под «Доска задач»
-  const restItems = ungrouped.filter(i => i.path !== '/news' && i.path !== '/shift-board' && i.path !== '/dashboard');
+  const renderItemRow = (item, indent = false) => {
+    const target = { kind: 'item', path: item.path };
+    return (
+      <div
+        key={item.path}
+        draggable
+        onDragStart={(e) => onDragStartRow(e, target)}
+        onDragEnd={endDrag}
+        onDragOver={(e) => onDragOverRow(e, target, !indent)}
+        onDragLeave={(e) => onDragLeaveRow(e, target)}
+        onDrop={(e) => onDropRow(e, target)}
+        style={{ opacity: dragKey && keyOf(dragKey) === keyOf(target) ? 0.4 : 1, ...hintStyle(target) }}
+      >
+        {renderItem(item, indent)}
+      </div>
+    );
+  };
+
+  const renderGroupRow = (row) => {
+    const target = { kind: 'group', id: row.id };
+    const items = row.items.map(p => byPath[p]).filter(Boolean);
+    const active = row.items.includes(location.pathname);
+    // Явный выбор пользователя (если группу уже сворачивали/раскрывали) важнее авто-раскрытия
+    const open = (row.id in openGroups) ? !!openGroups[row.id] : active;
+    const groupAlert = (row.items.includes('/towels') && towelAlert) || (row.items.includes('/hr-monitors') && monitorAlert);
+    const GIcon = NAV_GROUPS.find(g => g.id === row.id)?.icon || Folder;
+    return (
+      <div key={row.id}>
+        <div
+          draggable
+          onDragStart={(e) => onDragStartRow(e, target)}
+          onDragEnd={endDrag}
+          onDragOver={(e) => onDragOverRow(e, target, true)}
+          onDragLeave={(e) => onDragLeaveRow(e, target)}
+          onDrop={(e) => onDropRow(e, target)}
+          style={{ opacity: dragKey && keyOf(dragKey) === keyOf(target) ? 0.4 : 1, ...hintStyle(target) }}
+        >
+          <button
+            onClick={() => setGroupOpen(row.id, !open)}
+            onDoubleClick={() => {
+              const v = window.prompt('Название группы:', row.label);
+              if (v && v.trim()) save(rows.map(r => r.type === 'group' && r.id === row.id ? { ...r, label: v.trim() } : r));
+            }}
+            className="nav-item"
+            title="Двойной клик — переименовать группу"
+            style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+          >
+            <GIcon size={17} strokeWidth={1.8} />
+            <span style={{ fontWeight: 700 }}>{row.label}</span>
+            {groupAlert && !open && (
+              <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#B06A6A', flexShrink: 0, boxShadow: '0 0 6px #B06A6A' }} />
+            )}
+            <ChevronDownIcon size={14} style={{ marginLeft: groupAlert && !open ? 6 : 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0, opacity: 0.6 }} />
+          </button>
+        </div>
+        {open && items.map(item => renderItemRow(item, true))}
+      </div>
+    );
+  };
 
   return (
     <aside className="sidebar">
@@ -262,39 +399,22 @@ const DesktopSidebar = () => {
       )}
 
       <nav style={{ flex: 1, paddingTop: 8 }}>
-        {newsItem && renderItem(newsItem)}
-        {boardItem && renderItem(boardItem)}
-        {dashItem && renderItem(dashItem)}
-
-        {groups.map(g => {
-          const active = g.paths.includes(location.pathname);
-          // Явный выбор пользователя (если группу уже сворачивали/раскрывали) важнее авто-раскрытия
-          const open = (g.id in openGroups) ? !!openGroups[g.id] : active;
-          const groupAlert = g.paths.includes('/towels') && towelAlert || g.paths.includes('/hr-monitors') && monitorAlert;
-          const GIcon = g.icon;
-          return (
-            <div key={g.id}>
-              <button
-                onClick={() => setGroupOpen(g.id, !open)}
-                className="nav-item"
-                style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-              >
-                <GIcon size={17} strokeWidth={1.8} />
-                <span style={{ fontWeight: 700 }}>{g.label}</span>
-                {groupAlert && !open && (
-                  <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#B06A6A', flexShrink: 0, boxShadow: '0 0 6px #B06A6A' }} />
-                )}
-                <ChevronDownIcon size={14} style={{ marginLeft: groupAlert && !open ? 6 : 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0, opacity: 0.6 }} />
-              </button>
-              {open && g.items.map(item => renderItem(item, true))}
-            </div>
-          );
-        })}
-
-        {restItems.map(item => renderItem(item))}
+        {rows.map(row => row.type === 'group'
+          ? renderGroupRow(row)
+          : (byPath[row.path] ? renderItemRow(byPath[row.path]) : null))}
       </nav>
 
       <div style={{ borderTop: '1px solid var(--sidebar-border)', paddingTop: 4, paddingBottom: 8, position: 'relative' }}>
+        {isCustom && (
+          <button
+            onClick={() => { if (window.confirm('Вернуть стандартный порядок меню?')) reset(); }}
+            className="nav-item"
+            style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}
+          >
+            <RotateCcw size={14} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+            <span>Сбросить меню</span>
+          </button>
+        )}
         <DailyReport />
 
         <button className="theme-toggle" onClick={() => setIsDark(d => !d)}>
