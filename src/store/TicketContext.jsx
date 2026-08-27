@@ -694,6 +694,30 @@ export const TicketProvider = ({ children }) => {
         // локальный кеш иногда сообщал устаревший status:'new'/'scheduled' для уже
         // закрытой заявки, транзакция читала это же самое и реактивировала её —
         // закрытые заявки «сами» оживали как «В работе».
+        // ── Самолечение «воскресших» заявок: устройства со СТАРОЙ версией приложения
+        // (слепой цикл активации без серверной проверки) переоткрывают уже закрытые
+        // заявки. Подпись зомби-активации: activatedAtISO === statusChangedAt при
+        // closedAt < statusChangedAt — человек (TicketDetail) и чек-лист пишут
+        // statusChangedAt БЕЗ activatedAtISO, поэтому их легитимные переоткрытия
+        // под подпись не попадают. Живой клиент тихо (без пуша) закрывает обратно.
+        // Ключ с меткой времени: каждый новый зомби-подъём лечится заново.
+        if (t.closedAt && t.status === 'in_progress' && t.activatedAtISO
+            && t.activatedAtISO === t.statusChangedAt && t.closedAt < t.statusChangedAt) {
+          const healKey = `heal:${t.id}:${t.statusChangedAt}`;
+          if (!activationAttemptedRef.current.has(healKey)) {
+            activationAttemptedRef.current.add(healKey);
+            runTransaction(db, async (tx) => {
+              const ref = doc(db, 'tickets', String(t.id));
+              const snap = await tx.get(ref);
+              if (!snap.exists()) return;
+              const d = snap.data();
+              if (!(d.closedAt && d.status === 'in_progress' && d.activatedAtISO
+                    && d.activatedAtISO === d.statusChangedAt && d.closedAt < d.statusChangedAt)) return;
+              tx.update(ref, { status: 'closed', statusChangedAt: new Date().toISOString(), healedAtISO: new Date().toISOString() });
+            }).catch(() => { activationAttemptedRef.current.delete(healKey); });
+          }
+          return;
+        }
         if (t.closedAt) return;
         if (t.status === 'new') {
           activationAttemptedRef.current.add(t.id);
