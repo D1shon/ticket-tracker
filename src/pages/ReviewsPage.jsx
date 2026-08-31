@@ -164,6 +164,9 @@ const ReviewsPage = () => {
   const fmtDate = (iso) => {
     try { return format(new Date(iso), 'd MMMM yyyy', { locale: ru }); } catch { return ''; }
   };
+  const fmtDateTime = (iso) => {
+    try { return format(new Date(iso), 'd MMMM yyyy, HH:mm', { locale: ru }); } catch { return ''; }
+  };
 
   const visibleClubs = isChef || !clubAvailable ? CLUBS : [userClub];
 
@@ -293,7 +296,7 @@ const ReviewsPage = () => {
                       <Stars n={r.rating || 0} size={13} />
                       {r.zone && <span style={{ fontSize: 9, fontWeight: 900, color: '#5580A8', background: 'rgba(85,128,168,0.1)', padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>{r.zone}</span>}
                       <span style={{ fontSize: 8, fontWeight: 900, color: '#5580A8', background: 'rgba(85,128,168,0.1)', padding: '2px 6px', borderRadius: 5 }}>QR</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{fmtDate(r.createdAtISO)}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{fmtDateTime(r.createdAtISO)}</span>
                     </div>
                     {r.text && <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{r.text}</div>}
                     {(r.clientName || r.clientPhone) && (
