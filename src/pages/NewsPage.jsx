@@ -25,6 +25,30 @@ const RICH_TEMPLATES = {
 // Приходящие релизы — сплошной монотонный текст. Разбираем его на лету:
 // заголовок, секции («…:»), буллеты «• Название — описание» (название жирным).
 // Сам текст в базе НЕ меняется — это только рендер, дублей/правок не создаёт.
+// Тематические эмодзи для оформления (подбираются по ключевым словам,
+// только если в строке ещё нет своего эмодзи)
+const HAS_EMOJI = /\p{Extended_Pictographic}/u;
+const SECTION_EMOJI = [
+  [/что нового/i, '✨'],
+  [/техническ/i, '⚙️'],
+  [/исправлен|фикс|баг/i, '🛠️'],
+  [/важно|внимани/i, '❗'],
+];
+const BULLET_EMOJI = [
+  [/приложени|мобильн/i, '📱'],
+  [/отч[её]т|аналитик|статистик|дашборд/i, '📊'],
+  [/оплат|плат[её]ж|билет|касс|цен/i, '💳'],
+  [/расписани|календар|недел|график/i, '📅'],
+  [/сезон|наград|приз|лидерборд|клан|итог/i, '🏆'],
+  [/анкет|клиент|атлет|профил|карточк/i, '🙋'],
+  [/тумблер|настройк|переключ|админк/i, '⚙️'],
+  [/чат|сообщени|уведомлен|push|пуш/i, '💬'],
+  [/цел|вес|прогресс|трениров/i, '🎯'],
+  [/qr|скан|чекин/i, '🔳'],
+  [/пульс|датчик/i, '❤️'],
+];
+const pickEmoji = (rules, s) => (rules.find(([re]) => re.test(s)) || [])[1] || null;
+
 const renderNewsText = (raw) => {
   const lines = String(raw || '').split('\n');
   // Релизы дублируют заголовок первой строкой без эмодзи — прячем её,
@@ -45,9 +69,12 @@ const renderNewsText = (raw) => {
     if (/^[•\-–▪]\s/.test(t)) {
       const body = t.replace(/^[•\-–▪]\s*/, '');
       const m = body.match(/^(.{2,80}?)\s+—\s+([\s\S]+)$/);
+      const emoji = !HAS_EMOJI.test(body) ? pickEmoji(BULLET_EMOJI, m ? m[1] : body) : null;
       out.push(
         <div key={k} style={{ display: 'flex', gap: 9, marginTop: 8, alignItems: 'flex-start' }}>
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-purple)', flexShrink: 0, marginTop: 8 }} />
+          {emoji
+            ? <span style={{ fontSize: 13, flexShrink: 0, lineHeight: '21px' }}>{emoji}</span>
+            : <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-purple)', flexShrink: 0, marginTop: 8 }} />}
           <span style={{ minWidth: 0 }}>
             {m ? <><span style={{ fontWeight: 800 }}>{m[1]}</span> — {m[2]}</> : body}
           </span>
@@ -55,10 +82,12 @@ const renderNewsText = (raw) => {
       );
       titleDone = true;
     } else if (!titleDone) {
-      out.push(<div key={k} style={{ fontSize: 14.5, fontWeight: 800, marginBottom: 2 }}>{t}</div>);
+      out.push(<div key={k} style={{ fontSize: 14.5, fontWeight: 800, marginBottom: 2 }}>{HAS_EMOJI.test(t) ? t : `🗞️ ${t}`}</div>);
       titleDone = true;
     } else if (/:$/.test(t) && t.length <= 48) {
-      out.push(<div key={k} style={{ fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginTop: 14 }}>{t.replace(/:$/, '')}</div>);
+      const label = t.replace(/:$/, '');
+      const emoji = !HAS_EMOJI.test(label) ? (pickEmoji(SECTION_EMOJI, label) || '📌') : null;
+      out.push(<div key={k} style={{ fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginTop: 14 }}>{emoji ? `${emoji} ${label}` : label}</div>);
     } else {
       out.push(<div key={k} style={{ marginTop: 8 }}>{t}</div>);
     }
