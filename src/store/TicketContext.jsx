@@ -139,9 +139,10 @@ export function applyDynamicUsers(usersMap) {
 
     // A dynamic entry never overrides a hardcoded account
     if (key in STATIC_USER_ROLES) continue;
-    // Разрешённые роли для динамических аккаунтов: admin (по умолчанию) и rop.
+    // Разрешённые роли для динамических аккаунтов: admin (по умолчанию), rop и manager
+    // (manager добавлен 2026-08-31 — повышение Дины/EUROPE CITY до менеджера).
     // МОП создаётся как rop с флагом mop — те же права, но без создания аккаунтов.
-    const ALLOWED_DYN_ROLES = ['admin', 'rop'];
+    const ALLOWED_DYN_ROLES = ['admin', 'rop', 'manager'];
     USER_ROLES[key] = {
       role: ALLOWED_DYN_ROLES.includes(profile.role) ? profile.role : 'admin',
       club: profile.club || null,
