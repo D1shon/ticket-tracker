@@ -21,6 +21,51 @@ const RICH_TEMPLATES = {
   'merch-sizes': SizesAnnounce,
 };
 
+// ── Визуальное оформление текста новости при отображении ──
+// Приходящие релизы — сплошной монотонный текст. Разбираем его на лету:
+// заголовок, секции («…:»), буллеты «• Название — описание» (название жирным).
+// Сам текст в базе НЕ меняется — это только рендер, дублей/правок не создаёт.
+const renderNewsText = (raw) => {
+  const lines = String(raw || '').split('\n');
+  // Релизы дублируют заголовок первой строкой без эмодзи — прячем её,
+  // если следующая содержательная строка повторяет тот же текст
+  let start = 0;
+  const firstIdx = lines.findIndex(l => l.trim());
+  if (firstIdx !== -1) {
+    const first = lines[firstIdx].trim();
+    const next = lines.slice(firstIdx + 1).find(l => l.trim());
+    if (next && first.length > 3 && next.includes(first) && next.trim() !== first) start = firstIdx + 1;
+  }
+  const out = [];
+  let titleDone = false;
+  for (let i = start; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    const k = `l${i}`;
+    if (/^[•\-–▪]\s/.test(t)) {
+      const body = t.replace(/^[•\-–▪]\s*/, '');
+      const m = body.match(/^(.{2,80}?)\s+—\s+([\s\S]+)$/);
+      out.push(
+        <div key={k} style={{ display: 'flex', gap: 9, marginTop: 8, alignItems: 'flex-start' }}>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-purple)', flexShrink: 0, marginTop: 8 }} />
+          <span style={{ minWidth: 0 }}>
+            {m ? <><span style={{ fontWeight: 800 }}>{m[1]}</span> — {m[2]}</> : body}
+          </span>
+        </div>
+      );
+      titleDone = true;
+    } else if (!titleDone) {
+      out.push(<div key={k} style={{ fontSize: 14.5, fontWeight: 800, marginBottom: 2 }}>{t}</div>);
+      titleDone = true;
+    } else if (/:$/.test(t) && t.length <= 48) {
+      out.push(<div key={k} style={{ fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginTop: 14 }}>{t.replace(/:$/, '')}</div>);
+    } else {
+      out.push(<div key={k} style={{ marginTop: 8 }}>{t}</div>);
+    }
+  }
+  return out;
+};
+
 const NewsPage = () => {
   const { user } = useTickets();
   // Публиковать и удалять новости может только Дильшат (и Claude через базу)
@@ -422,7 +467,7 @@ const NewsPage = () => {
               {p.template && RICH_TEMPLATES[p.template] ? (
                 React.createElement(RICH_TEMPLATES[p.template])
               ) : p.text && (
-                <div style={{ fontSize: 13.5, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{p.text}</div>
+                <div style={{ fontSize: 13.5, color: 'var(--text-primary)', lineHeight: 1.6 }}>{renderNewsText(p.text)}</div>
               )}
               {p.mediaNote && (
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 6 }}>{p.mediaNote}</div>
