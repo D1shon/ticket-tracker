@@ -14,7 +14,6 @@ const SECTIONS = [
   { id: 'Introduction', label: 'Введение и основы' },
   { id: 'Communication', label: 'Коммуникация' },
   { id: 'Critical Situations', label: 'Критические ситуации' },
-  { id: 'Injury Protocol', label: 'Травмы: регламент' },
   { id: 'Behavior', label: 'Стандарты поведения' },
   { id: 'faq', label: 'Частые вопросы (FAQ)' }
 ];

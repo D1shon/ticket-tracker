@@ -9,7 +9,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus, Folder, RotateCcw
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -116,6 +116,7 @@ const ALL_NAV = [
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
+  { icon: ShieldAlert,     label: 'Регламент травм', path: '/injury-protocol', primary: false },
   { icon: FileText,        label: 'Соглашение',  path: '/policy',      primary: false },
   { icon: Settings,        label: 'Настройки',   path: '/settings',    primary: false },
 ];
@@ -183,7 +184,7 @@ const DesktopSidebar = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -574,7 +575,7 @@ const MobileNav = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -885,6 +886,7 @@ const MobileNav = () => {
                 '/archive':     { sub: 'закрытые заявки', sect: 2 },
                 '/calls':       { sub: 'видеосвязь', sect: 3 },
                 '/guidebook':   { sub: 'база знаний', sect: 3 },
+                '/injury-protocol': { sub: 'действия при травмах', sect: 3 },
                 '/policy':      { sub: 'правила платформы', sect: 3 },
                 '/assistant':   { sub: 'ИИ по гайдбуку', sect: 3 },
                 '/staff':       { sub: 'аккаунты МОП', sect: 3 },

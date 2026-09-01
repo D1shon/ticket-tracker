@@ -71,6 +71,7 @@ const IMPORTERS = {
   FeedbackPage:    () => import('./pages/FeedbackPage'),
   AssistantPage:   () => import('./pages/AssistantPage'),
   StaffCreatePage: () => import('./pages/StaffCreatePage'),
+  InjuryProtocolPage: () => import('./pages/InjuryProtocolPage'),
 };
 
 const Dashboard       = lazyPage(IMPORTERS.Dashboard);
@@ -105,6 +106,7 @@ const LeadsPage       = lazyPage(IMPORTERS.LeadsPage);
 const FeedbackPage    = lazyPage(IMPORTERS.FeedbackPage);
 const AssistantPage   = lazyPage(IMPORTERS.AssistantPage);
 const StaffCreatePage = lazyPage(IMPORTERS.StaffCreatePage);
+const InjuryProtocolPage = lazyPage(IMPORTERS.InjuryProtocolPage);
 
 // Last-resort screen instead of a black page if a chunk still fails
 class PageErrorBoundary extends React.Component {
@@ -358,6 +360,11 @@ const AppContent = () => {
         <Route path="/guidebook" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer']}>
             <GuidebookPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/injury-protocol" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'komdir', 'rop']}>
+            <InjuryProtocolPage />
           </ProtectedLayout>
         } />
         <Route path="/policy" element={
