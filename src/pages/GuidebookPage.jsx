@@ -14,6 +14,7 @@ const SECTIONS = [
   { id: 'Introduction', label: 'Введение и основы' },
   { id: 'Communication', label: 'Коммуникация' },
   { id: 'Critical Situations', label: 'Критические ситуации' },
+  { id: 'Injury Protocol', label: 'Травмы: регламент' },
   { id: 'Behavior', label: 'Стандарты поведения' },
   { id: 'faq', label: 'Частые вопросы (FAQ)' }
 ];
@@ -45,6 +46,7 @@ const getTopicIcon = (title) => {
   const t = title.toLowerCase();
   if (t.includes('общие') || t.includes('роль')) return BookOpen;
   if (t.includes('клиент') || t.includes('сервис') || t.includes('общени')) return MessageSquare;
+  if (t.includes('травм') || t.includes('первые минуты') || t.includes('акт')) return ShieldCheck;
   if (t.includes('правила') || t.includes('клуб') || t.includes('чп') || t.includes('безопасн')) return ShieldCheck;
   if (t.includes('скрипт') || t.includes('телефон')) return Smartphone;
   if (t.includes('абонемент') || t.includes('продукт')) return Package;
