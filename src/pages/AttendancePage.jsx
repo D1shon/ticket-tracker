@@ -7,12 +7,20 @@ import { db, getStorageLazy } from '../lib/firebase';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
 
-const CHECKOUT_CHECKLIST = [
-  'Посчитать пульсы, проверить каждый и отметить',
-  'Посчитать полотенца, заполнить в треке',
-  'Убраться в рабочей зоне',
-  'Отписаться по задачам на завтра (передачи, посылки, поручения)',
-  'Сверить кассу, зафоткать и отправить в чат',
+// Дневная пересменка (чекаут до 20:00): передача смены — без кассы и фото
+const DAY_CHECKLIST = [
+  'Выполнить задачи с Доски задач, переданные на вашу смену',
+  'Внести задачи на Доску задач для следующей смены или на другой день',
+  'Передать информацию сменщику: неисправности, баги, посылки, поручения',
+  'Проверить рабочий WhatsApp: ответить на все входящие и закрыть диалоги',
+  'Навести порядок на рабочем месте',
+];
+// Вечерняя смена (закрытие, чекаут с 20:00): пересменка + подсчёты и касса с обязательным фото
+const EVENING_CHECKLIST = [
+  'Посчитать пульсометры, проверить каждый и отметить',
+  'Посчитать полотенца, заполнить в HJ Track',
+  ...DAY_CHECKLIST,
+  'Сверить кассу, сфотографировать и отправить в чат',
 ];
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
@@ -452,10 +460,9 @@ const AttendancePage = () => {
               </button>
               <button
                 onClick={() => {
-                  // Чек-лист перед уходом (с фото кассы) — только на вечернем закрытии,
-                  // с 20:00 и позднее. Дневной чекаут (пересменка ~13:00–15:00) — без него.
-                  const isClosingTime = new Date().getHours() >= 20;
-                  if (user?.role === 'admin' && isClosingTime) {
+                  // Админам чек-лист при любом чекауте: до 20:00 — короткий дневной
+                  // (пересменка), с 20:00 — полный вечерний с кассой и фото.
+                  if (user?.role === 'admin') {
                     setCheckedItems([]);
                     setPhotoPreviewUrl(null);
                     setChecklistOpen(true);
@@ -666,8 +673,12 @@ const AttendancePage = () => {
         </div>
       )}
 
-      {/* ── Чеклист перед чекаутом (только для администраторов) ── */}
-      {checklistOpen && (
+      {/* ── Чеклист перед чекаутом (только для администраторов):
+           до 20:00 — дневная пересменка, с 20:00 — закрытие с кассой и фото ── */}
+      {checklistOpen && (() => {
+        const closingShift = new Date().getHours() >= 20;
+        const checklist = closingShift ? EVENING_CHECKLIST : DAY_CHECKLIST;
+        return (
         <div
           onClick={() => setChecklistOpen(false)}
           style={{
@@ -699,7 +710,7 @@ const AttendancePage = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Чеклист перед уходом
+                  {closingShift ? 'Закрытие смены' : 'Дневная пересменка'}
                 </div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginTop: 1 }}>
                   Отметьте все пункты, чтобы выйти
@@ -715,7 +726,7 @@ const AttendancePage = () => {
 
             {/* Пункты чеклиста */}
             <div style={{ padding: '10px 0' }}>
-              {CHECKOUT_CHECKLIST.map((item, idx) => {
+              {checklist.map((item, idx) => {
                 const checked = checkedItems.includes(idx);
                 return (
                   <div
@@ -756,7 +767,8 @@ const AttendancePage = () => {
               })}
             </div>
 
-            {/* Фото кассы — обязательно */}
+            {/* Фото кассы — обязательно (только на закрытии смены) */}
+            {closingShift && (
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: '#C08F4F', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
                 Фото кассы — обязательно
@@ -785,6 +797,7 @@ const AttendancePage = () => {
                 </label>
               )}
             </div>
+            )}
 
             {/* Прогресс + кнопка подтверждения */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
@@ -792,21 +805,21 @@ const AttendancePage = () => {
                 <div style={{ flex: 1, height: 4, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
                   <div style={{
                     height: '100%', borderRadius: 4, background: '#5F9C81',
-                    width: `${(checkedItems.length / CHECKOUT_CHECKLIST.length) * 100}%`,
+                    width: `${(checkedItems.length / checklist.length) * 100}%`,
                     transition: 'width 0.25s ease',
                   }} />
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0 }}>
-                  {checkedItems.length}/{CHECKOUT_CHECKLIST.length}
+                  {checkedItems.length}/{checklist.length}
                 </span>
               </div>
               {(() => {
-                const allChecked = checkedItems.length >= CHECKOUT_CHECKLIST.length;
-                const canConfirm = allChecked && !!photoPreviewUrl;
-                const remaining = CHECKOUT_CHECKLIST.length - checkedItems.length;
+                const allChecked = checkedItems.length >= checklist.length;
+                const canConfirm = allChecked && (!closingShift || !!photoPreviewUrl);
+                const remaining = checklist.length - checkedItems.length;
                 const label = !allChecked
                   ? `Осталось ${remaining} пункт${remaining === 1 ? '' : remaining < 5 ? 'а' : 'ов'}`
-                  : !photoPreviewUrl
+                  : (closingShift && !photoPreviewUrl)
                     ? 'Прикрепите фото кассы'
                     : 'Подтвердить чекаут ✓';
                 return (
@@ -829,7 +842,8 @@ const AttendancePage = () => {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
