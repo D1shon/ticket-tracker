@@ -199,19 +199,32 @@ const AttendancePage = () => {
 
   // ── Загрузка фото кассы (обязательно перед чекаутом) ─────────────
   // Фото принимается сразу при выборе — чекаут не ждёт Storage.
-  // Загрузка идёт в фоне; если упадёт — логируем, не блокируем.
+  // Перед загрузкой сжимаем через canvas: ~5 МБ → ~200 КБ.
   const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setPhotoPreviewUrl(URL.createObjectURL(file));
-    // фоновая загрузка
     (async () => {
       try {
+        // Сжатие через canvas
+        const compressedBlob = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX = 1280;
+            const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(resolve, 'image/jpeg', 0.75);
+          };
+          img.src = URL.createObjectURL(file);
+        });
         const storage = await getStorageLazy();
         const { ref, uploadBytes } = await import('firebase/storage');
         const safeName = (user?.email || 'unknown').replace(/[^a-z0-9]/gi, '_');
         const path = `checkout_photos/${safeName}_${Date.now()}.jpg`;
-        await uploadBytes(ref(storage, path), file, { contentType: file.type || 'image/jpeg' });
+        await uploadBytes(ref(storage, path), compressedBlob, { contentType: 'image/jpeg' });
         await addDoc(collection(db, 'checkout_photos'), {
           userId: user?.email || 'unknown',
           userName: user?.displayName || null,
