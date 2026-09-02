@@ -47,10 +47,12 @@ const MerchPage = () => {
   // РОП заперт на своём клубе; Ком-Дир видит все
   const lockedClub = useMemo(() => managerClub || (user?.role === 'rop' ? user?.club || null : null), [user, managerClub]);
   const canSelectAllClubs = useMemo(() => isChef || isMarketing || user?.role === 'komdir' || user?.role === 'lostviewer', [isChef, isMarketing, user]);
-  // Наблюдатель (Луиза): полные права менеджера склада, но сразу по всем клубам
-  // (без себестоимости — как у обычного менеджера). isLostviewerFull подставляется
-  // везде, где обычно проверяют «шеф или менеджер СВОЕГО клуба».
-  const isLostviewerFull = user?.role === 'lostviewer';
+  // Полные права менеджера склада сразу по ВСЕМ клубам, включая ГОЛОВНОЙ СКЛАД
+  // (без себестоимости — как у обычного менеджера). Подставляется везде, где
+  // обычно проверяют «шеф или менеджер СВОЕГО клуба».
+  // Кому выдано: наблюдатель Луиза (lostviewer) и Гульдана (маркетинг, 02.09.2026).
+  const isLostviewerFull = user?.role === 'lostviewer'
+    || (user?.email || '').toLowerCase() === 'guldana.k@hj.fit';
 
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'sales', 'resort'
   const [selectedClub, setSelectedClub] = useState(() => (!canSelectAllClubs && lockedClub) ? lockedClub : 'ALL');
