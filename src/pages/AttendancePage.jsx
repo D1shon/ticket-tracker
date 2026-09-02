@@ -452,7 +452,10 @@ const AttendancePage = () => {
               </button>
               <button
                 onClick={() => {
-                  if (user?.role === 'admin') {
+                  // Чек-лист перед уходом (с фото кассы) — только на вечернем закрытии,
+                  // с 20:00 и позднее. Дневной чекаут (пересменка ~13:00–15:00) — без него.
+                  const isClosingTime = new Date().getHours() >= 20;
+                  if (user?.role === 'admin' && isClosingTime) {
                     setCheckedItems([]);
                     setPhotoPreviewUrl(null);
                     setChecklistOpen(true);
