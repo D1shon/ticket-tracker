@@ -112,9 +112,7 @@ const AttendancePage = () => {
   const [checkinResult, setCheckinResult] = useState(null);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checkedItems, setCheckedItems] = useState([]);
-  const [photoStoragePath, setPhotoStoragePath] = useState(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(null);
-  const [photoUploading, setPhotoUploading] = useState(false);
   const [gateways, setGateways]           = useState({});
 
   // «Сегодня» пересчитывается каждую минуту: у менеджеров страница висит открытой
@@ -200,32 +198,32 @@ const AttendancePage = () => {
   }, [historyCheckins, opMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Загрузка фото кассы (обязательно перед чекаутом) ─────────────
-  const handlePhotoSelect = async (e) => {
+  // Фото принимается сразу при выборе — чекаут не ждёт Storage.
+  // Загрузка идёт в фоне; если упадёт — логируем, не блокируем.
+  const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setPhotoUploading(true);
     setPhotoPreviewUrl(URL.createObjectURL(file));
-    try {
-      const storage = await getStorageLazy();
-      const { ref, uploadBytes } = await import('firebase/storage');
-      const safeName = (user?.email || 'unknown').replace(/[^a-z0-9]/gi, '_');
-      const path = `checkout_photos/${safeName}_${Date.now()}.jpg`;
-      await uploadBytes(ref(storage, path), file, { contentType: file.type || 'image/jpeg' });
-      await addDoc(collection(db, 'checkout_photos'), {
-        userId: user?.email || 'unknown',
-        userName: user?.displayName || null,
-        club: user?.club || null,
-        storagePath: path,
-        uploadedAt: Timestamp.now(),
-        expiresAt: Timestamp.fromMillis(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      });
-      setPhotoStoragePath(path);
-    } catch {
-      setPhotoPreviewUrl(null);
-      alert('Не удалось загрузить фото. Попробуйте ещё раз.');
-    } finally {
-      setPhotoUploading(false);
-    }
+    // фоновая загрузка
+    (async () => {
+      try {
+        const storage = await getStorageLazy();
+        const { ref, uploadBytes } = await import('firebase/storage');
+        const safeName = (user?.email || 'unknown').replace(/[^a-z0-9]/gi, '_');
+        const path = `checkout_photos/${safeName}_${Date.now()}.jpg`;
+        await uploadBytes(ref(storage, path), file, { contentType: file.type || 'image/jpeg' });
+        await addDoc(collection(db, 'checkout_photos'), {
+          userId: user?.email || 'unknown',
+          userName: user?.displayName || null,
+          club: user?.club || null,
+          storagePath: path,
+          uploadedAt: Timestamp.now(),
+          expiresAt: Timestamp.fromMillis(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        });
+      } catch (err) {
+        console.warn('checkout photo upload failed:', err.message);
+      }
+    })();
   };
 
   // ── IP check-in ───────────────────────────────────────────────────
@@ -443,9 +441,7 @@ const AttendancePage = () => {
                 onClick={() => {
                   if (user?.role === 'admin') {
                     setCheckedItems([]);
-                    setPhotoStoragePath(null);
                     setPhotoPreviewUrl(null);
-                    setPhotoUploading(false);
                     setChecklistOpen(true);
                   } else {
                     handleCheckin('out');
@@ -749,7 +745,7 @@ const AttendancePage = () => {
               <div style={{ fontSize: 10, fontWeight: 800, color: '#C08F4F', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
                 Фото кассы — обязательно
               </div>
-              {photoStoragePath ? (
+              {photoPreviewUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <img src={photoPreviewUrl} alt="касса" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 10, border: '2px solid #5F9C81', flexShrink: 0 }} />
                   <div>
@@ -759,11 +755,6 @@ const AttendancePage = () => {
                       <input type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} style={{ display: 'none' }} />
                     </label>
                   </div>
-                </div>
-              ) : photoUploading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                  <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid #C08F4F', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Загружаем фото...</span>
                 </div>
               ) : (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 14, border: '1.5px dashed rgba(192,143,79,0.4)', background: 'rgba(192,143,79,0.04)', cursor: 'pointer' }}>
@@ -795,11 +786,11 @@ const AttendancePage = () => {
               </div>
               {(() => {
                 const allChecked = checkedItems.length >= CHECKOUT_CHECKLIST.length;
-                const canConfirm = allChecked && !!photoStoragePath;
+                const canConfirm = allChecked && !!photoPreviewUrl;
                 const remaining = CHECKOUT_CHECKLIST.length - checkedItems.length;
                 const label = !allChecked
                   ? `Осталось ${remaining} пункт${remaining === 1 ? '' : remaining < 5 ? 'а' : 'ов'}`
-                  : !photoStoragePath
+                  : !photoPreviewUrl
                     ? 'Прикрепите фото кассы'
                     : 'Подтвердить чекаут ✓';
                 return (
