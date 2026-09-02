@@ -62,11 +62,15 @@ const getTopicIcon = (title) => {
   return Book;
 };
 
-const GuidebookPage = () => {
+// mode="injury" — та же страница, но показывает ТОЛЬКО раздел «Регламент при травмах»
+// (роут /injury-protocol): интерфейс гайдбука один-в-один, данные из той же коллекции.
+const GuidebookPage = ({ mode }) => {
+  const injury = mode === 'injury';
+  const PAGE_SECTIONS = injury ? [{ id: 'Injury Protocol', label: 'Регламент при травмах' }] : SECTIONS;
   const { user } = useTickets();
   const navigate = useNavigate();
   const isChef = user?.role === 'chef' || user?.role === 'viewer' || user?.role === 'admin' || user?.role === 'manager';
-  const [activeSection, setActiveSection] = useState('Introduction');
+  const [activeSection, setActiveSection] = useState(injury ? 'Injury Protocol' : 'Introduction');
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
 
@@ -130,12 +134,17 @@ const GuidebookPage = () => {
   }, [activeSection, guidebookData]);
 
   // Filter Guidebook Sections
+  // В режиме «регламент травм» пул статей ограничен своим разделом (и поиск тоже);
+  // в обычном гайдбуке регламент не показывается — у него своя страница
+  const dataPool = injury
+    ? guidebookData.filter(i => i.section === 'Injury Protocol')
+    : guidebookData.filter(i => i.section !== 'Injury Protocol');
   const getFilteredData = () => {
-    if (!searchQuery) return guidebookData.filter(item => item.section === activeSection);
+    if (!searchQuery) return dataPool.filter(item => item.section === activeSection);
 
     // Поиск идёт по ВСЕМ разделам, а не только по открытому
     const query = searchQuery.toLowerCase();
-    return guidebookData.filter(item =>
+    return dataPool.filter(item =>
       item.title.toLowerCase().includes(query) ||
       (item.subsection && item.subsection.toLowerCase().includes(query)) ||
       (item.blocks && item.blocks.some(block => block.text && block.text.toLowerCase().includes(query)))
@@ -513,28 +522,31 @@ const GuidebookPage = () => {
           <div style={{ flex: 1 }}>
             {/* Шторки-переключатели: Гайдбук ↔ Регламент при травмах */}
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 22, flexWrap: 'wrap' }}>
-              <h1 className="text-xl font-black italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)', margin: 0 }}>
-                <span style={{ color: 'var(--accent-purple)' }}>
-                  <BookOpen size={22} strokeWidth={2.5} />
-                </span>
-                ГАЙДБУК АДМИНИСТРАТОРА
-              </h1>
-              <button
-                onClick={() => navigate('/injury-protocol')}
-                className="text-xl font-black italic flex items-center gap-2"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', margin: 0, padding: 0, opacity: 0.65, transition: '0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                onMouseLeave={e => { e.currentTarget.style.opacity = 0.65; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                title="Открыть регламент при травмах"
-              >
-                <span style={{ color: '#B06A6A' }}>
-                  <ShieldCheck size={22} strokeWidth={2.5} />
-                </span>
-                РЕГЛАМЕНТ ПРИ ТРАВМАХ
-              </button>
+              {[
+                { key: 'guide', label: 'ГАЙДБУК АДМИНИСТРАТОРА', Icon: BookOpen, color: 'var(--accent-purple)', to: '/guidebook', active: !injury },
+                { key: 'injury', label: 'РЕГЛАМЕНТ ПРИ ТРАВМАХ', Icon: ShieldCheck, color: '#B06A6A', to: '/injury-protocol', active: injury },
+              ].map(t => t.active ? (
+                <h1 key={t.key} className="text-xl font-black italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)', margin: 0 }}>
+                  <span style={{ color: t.color }}><t.Icon size={22} strokeWidth={2.5} /></span>
+                  {t.label}
+                </h1>
+              ) : (
+                <button
+                  key={t.key}
+                  onClick={() => navigate(t.to)}
+                  className="text-xl font-black italic flex items-center gap-2"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', margin: 0, padding: 0, opacity: 0.65, transition: '0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.opacity = 0.65; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                  title={t.key === 'injury' ? 'Открыть регламент при травмах' : 'Открыть гайдбук'}
+                >
+                  <span style={{ color: t.color }}><t.Icon size={22} strokeWidth={2.5} /></span>
+                  {t.label}
+                </button>
+              ))}
             </div>
             <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--text-muted)' }}>
-              🎯 база знаний, стандарты обслуживания и регламенты безопасности
+              {injury ? '🚑 действия команды студии при получении травмы атлетом во время тренировки' : '🎯 база знаний, стандарты обслуживания и регламенты безопасности'}
             </p>
           </div>
 
@@ -575,7 +587,7 @@ const GuidebookPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Layers size={13} style={{ color: 'var(--accent-purple)' }} />
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
-              Тем: {guidebookData.length}
+              Тем: {dataPool.length}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -593,6 +605,16 @@ const GuidebookPage = () => {
         </div>
       </div>
 
+      {/* Экстренная шпаргалка — только в режиме регламента травм */}
+      {injury && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(176,106,106,0.08)', border: '1px solid rgba(176,106,106,0.3)', borderRadius: 14, padding: '12px 16px' }}>
+          <AlertTriangle size={18} style={{ color: '#B06A6A', flexShrink: 0 }} />
+          <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+            <b>Тяжёлое состояние?</b> Первый шаг — немедленно <b>103</b>. Не перемещать атлета при подозрении на перелом или травму головы. Не признавать вину, не ставить диагнозы, не обсуждать деньги.
+          </div>
+        </div>
+      )}
+
       {/* Tabs Pill Navigation */}
       <div 
         style={{ 
@@ -605,7 +627,7 @@ const GuidebookPage = () => {
         }}
         className="custom-scrollbar"
       >
-        {SECTIONS.map(sec => {
+        {PAGE_SECTIONS.filter(s => !injury || s.id !== 'faq').map(sec => {
           const isActive = activeSection === sec.id;
           return (
             <button
@@ -751,7 +773,7 @@ const GuidebookPage = () => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                               <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {searchQuery
-                                  ? (SECTIONS.find(s => s.id === item.section)?.label || item.section)
+                                  ? (PAGE_SECTIONS.find(s => s.id === item.section)?.label || item.section)
                                   : (item.subsection || 'Общее')}
                               </span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -846,7 +868,7 @@ const GuidebookPage = () => {
                             letterSpacing: '0.05em'
                           }}
                         >
-                          {SECTIONS.find(s => s.id === activeTopic.section)?.label || activeTopic.section}
+                          {PAGE_SECTIONS.find(s => s.id === activeTopic.section)?.label || activeTopic.section}
                         </span>
                         
                         <span 
@@ -937,7 +959,7 @@ const GuidebookPage = () => {
                   onChange={e => setEditorForm(p => ({ ...p, section: e.target.value }))}
                   style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, outline: 'none' }}
                 >
-                  {SECTIONS.filter(s => s.id !== 'faq').map(s => (
+                  {PAGE_SECTIONS.filter(s => s.id !== 'faq').map(s => (
                     <option key={s.id} value={s.id}>{s.label}</option>
                   ))}
                 </select>
