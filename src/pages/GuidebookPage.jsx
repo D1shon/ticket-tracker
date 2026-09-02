@@ -71,6 +71,14 @@ const GuidebookPage = ({ mode }) => {
   const navigate = useNavigate();
   const isChef = user?.role === 'chef' || user?.role === 'viewer' || user?.role === 'admin' || user?.role === 'manager';
   const [activeSection, setActiveSection] = useState(injury ? 'Injury Protocol' : 'Introduction');
+  // Роуты /guidebook и /injury-protocol рендерят ОДИН компонент — при переключении
+  // шторок React не пересоздаёт его, и activeSection оставался от прошлого режима
+  // (раздела нет в новом режиме → «нет статей», ни одна вкладка не активна)
+  useEffect(() => {
+    setActiveSection(injury ? 'Injury Protocol' : 'Introduction');
+    setSearchQuery('');
+    setOpenFaqIdx(null);
+  }, [injury]); // eslint-disable-line react-hooks/exhaustive-deps
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
 
