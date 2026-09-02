@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, ChevronDown, Loader2, Phone } from 'lucide-react';
+import { ShieldAlert, ChevronDown, Loader2, Phone, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -7,6 +8,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 // Статьи лежат в guidebook с section='Injury Protocol' (ids injury_1..6) —
 // контент правится в базе, страница только отображает.
 const InjuryProtocolPage = () => {
+  const navigate = useNavigate();
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState('injury_1');
@@ -42,14 +44,32 @@ const InjuryProtocolPage = () => {
 
   return (
     <div className="animate-fade" style={{ maxWidth: 860, display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 30 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(176,106,106,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <ShieldAlert size={20} style={{ color: '#B06A6A' }} />
+      {/* Шторки-переключатели: Гайдбук ↔ Регламент при травмах (как в шапке Гайдбука) */}
+      <div style={{ background: 'linear-gradient(135deg, rgba(176,106,106,0.06) 0%, rgba(176,106,106,0.01) 100%)', border: '1px solid var(--border)', borderRadius: 24, padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => navigate('/guidebook')}
+            className="text-xl font-black italic flex items-center gap-2"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', margin: 0, padding: 0, opacity: 0.65, transition: '0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--text-primary)'; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = 0.65; e.currentTarget.style.color = 'var(--text-muted)'; }}
+            title="Открыть гайдбук"
+          >
+            <span style={{ color: 'var(--accent-purple)' }}>
+              <BookOpen size={22} strokeWidth={2.5} />
+            </span>
+            ГАЙДБУК АДМИНИСТРАТОРА
+          </button>
+          <h1 className="text-xl font-black italic flex items-center gap-2" style={{ color: 'var(--text-primary)', margin: 0 }}>
+            <span style={{ color: '#B06A6A' }}>
+              <ShieldAlert size={22} strokeWidth={2.5} />
+            </span>
+            РЕГЛАМЕНТ ПРИ ТРАВМАХ
+          </h1>
         </div>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Регламент травм</h1>
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, margin: 0 }}>Действия команды студии при получении травмы атлетом во время тренировки</p>
-        </div>
+        <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--text-muted)' }}>
+          🚑 действия команды студии при получении травмы атлетом во время тренировки
+        </p>
       </div>
 
       {/* Экстренная шпаргалка — всегда на виду */}

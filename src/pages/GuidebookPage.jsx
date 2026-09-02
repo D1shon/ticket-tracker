@@ -6,6 +6,7 @@ import {
   ArrowLeft, Clock, Layers, FileText, Plus, Edit3, Trash2, X
 } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -63,6 +64,7 @@ const getTopicIcon = (title) => {
 
 const GuidebookPage = () => {
   const { user } = useTickets();
+  const navigate = useNavigate();
   const isChef = user?.role === 'chef' || user?.role === 'viewer' || user?.role === 'admin' || user?.role === 'manager';
   const [activeSection, setActiveSection] = useState('Introduction');
   const [searchQuery, setSearchQuery] = useState('');
@@ -509,12 +511,28 @@ const GuidebookPage = () => {
       >
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'between', alignItems: isMobile ? 'flex-start' : 'center', gap: 16 }}>
           <div style={{ flex: 1 }}>
-            <h1 className="text-xl font-black italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)', margin: 0 }}>
-              <span style={{ color: 'var(--accent-purple)' }}>
-                <BookOpen size={22} strokeWidth={2.5} />
-              </span>
-              ГАЙДБУК АДМИНИСТРАТОРА
-            </h1>
+            {/* Шторки-переключатели: Гайдбук ↔ Регламент при травмах */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 22, flexWrap: 'wrap' }}>
+              <h1 className="text-xl font-black italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)', margin: 0 }}>
+                <span style={{ color: 'var(--accent-purple)' }}>
+                  <BookOpen size={22} strokeWidth={2.5} />
+                </span>
+                ГАЙДБУК АДМИНИСТРАТОРА
+              </h1>
+              <button
+                onClick={() => navigate('/injury-protocol')}
+                className="text-xl font-black italic flex items-center gap-2"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', margin: 0, padding: 0, opacity: 0.65, transition: '0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = 0.65; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                title="Открыть регламент при травмах"
+              >
+                <span style={{ color: '#B06A6A' }}>
+                  <ShieldCheck size={22} strokeWidth={2.5} />
+                </span>
+                РЕГЛАМЕНТ ПРИ ТРАВМАХ
+              </button>
+            </div>
             <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--text-muted)' }}>
               🎯 база знаний, стандарты обслуживания и регламенты безопасности
             </p>
