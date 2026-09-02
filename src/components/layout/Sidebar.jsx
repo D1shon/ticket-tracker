@@ -9,7 +9,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -103,6 +103,7 @@ const ALL_NAV = [
   { icon: LayoutDashboard, label: 'Дашборд',    path: '/dashboard',   primary: false },
   { icon: Archive,         label: 'Архив',       path: '/archive',     primary: false },
   { icon: Heart,           label: 'Пульсометры', path: '/hr-monitors', primary: false },
+  { icon: Cross,           label: 'Аптечка',     path: '/first-aid',   primary: false },
   { icon: Shirt,           label: 'Учет полотенец', path: '/towels',   primary: false },
   { icon: ShoppingBag,     label: 'Утерянные вещи', path: '/lost-items', primary: false },
   { icon: Star,            label: 'Отзывы',       path: '/reviews',     primary: false },
@@ -124,7 +125,7 @@ const ALL_NAV = [
 /* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
 const NAV_GROUPS = [
   { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/archive', '/merch'] },
-  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/leads', '/assistant'] },
+  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/leads', '/assistant'] },
 ];
 
 const useNavGroups = () => {
@@ -184,7 +185,7 @@ const DesktopSidebar = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -575,7 +576,7 @@ const MobileNav = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -874,6 +875,7 @@ const MobileNav = () => {
                 '/merch':       { sub: 'мерч: склад и учёт', sect: 2 },
                 '/sales':       { sub: 'продажа мерча', sect: 2 },
                 '/hr-monitors': { sub: 'проверка датчиков', sect: 2 },
+                '/first-aid':   { sub: 'состав и остатки', sect: 2 },
                 '/towels':      { sub: 'учёт полотенец', sect: 2 },
                 '/lost-items':  { sub: 'находки и возвраты', sect: 2 },
                 '/calendar':    { sub: 'оплаты, ТО, подрядчики', sect: 2 },
