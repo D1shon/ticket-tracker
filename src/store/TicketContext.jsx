@@ -53,7 +53,7 @@ export const USER_ROLES = {
   'alibekakniet38@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Акниет'    },
   'bhtg.l.bhtg.l@gmail.com':         { role: 'admin', club: '4YOU', displayName: 'Бахыткуль' },
   'abisheva.alua07@gmail.com':        { role: 'admin', club: '4YOU', displayName: 'Алуа'      },
-  'abuzalma8@gmail.com':              { role: 'admin', club: '4YOU', displayName: 'Абулхаир'  },
+  'abuzalma8@gmail.com':              { role: 'manager', club: 'COLIBRI', displayName: 'Абулхаир'  },
   'ibrayevana@mail.ru':               { role: 'admin', club: '4YOU', displayName: 'Назым'     },
   'hedabatyrova.14@gmail.com':        { role: 'admin', club: '4YOU', displayName: 'Хеда'      },
   'yussentyan@gmail.com':             { role: 'admin', club: 'COLIBRI', displayName: 'Юссен'     },

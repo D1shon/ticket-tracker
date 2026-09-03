@@ -27,11 +27,13 @@ const STATUS_BADGE_COLORS = {
 };
 
 function timeAgo(isoString) {
-  const diff = (Date.now() - new Date(isoString).getTime()) / 1000;
-  if (diff < 60)   return 'только что';
-  if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
+  const d = new Date(isoString);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60)    return 'только что';
+  if (diff < 3600)  return `${Math.floor(diff / 60)} мин назад`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
-  return `${Math.floor(diff / 86400)} д назад`;
+  const mon = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'][d.getMonth()];
+  return `${d.getDate()} ${mon}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
 const NotificationBell = () => {

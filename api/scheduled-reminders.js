@@ -118,7 +118,9 @@ export default async function handler(req, res) {
   try {
     const alm = new Date(Date.now() + 5 * 3600 * 1000)
     const due = dueReminders(alm)
-    if (due.length === 0) return res.json({ ok: true, reason: 'no due reminders' })
+    const nowMin = alm.getUTCHours() * 60 + alm.getUTCMinutes()
+    const dateStr = alm.toISOString().slice(0, 10)
+    const inWin = (t) => nowMin >= t && nowMin < t + 6
 
     const allTokens = await getTokens(req.body?.tokens)
     const results = []
@@ -159,6 +161,50 @@ export default async function handler(req, res) {
       results.push({ id: r.id, sent: out.successCount, failed: out.failureCount })
     }
 
+    // 5. Calendar events — 08:00 Almaty: push today's events per club
+    if (inWin(480)) {
+      try {
+        const evSnap = await admin.firestore().collection('calendar_events')
+          .where('date', '==', dateStr)
+          .get()
+        const byClub = {}
+        evSnap.docs.forEach(d => {
+          const ev = d.data()
+          if (ev.deleted) return
+          const club = (ev.club || '').toUpperCase()
+          if (!byClub[club]) byClub[club] = []
+          byClub[club].push(ev.title || 'Событие')
+        })
+        for (const [club, titles] of Object.entries(byClub)) {
+          const id = `${dateStr}_cal_${club}`
+          const body = titles.length === 1 ? titles[0] : `${titles[0]} и ещё ${titles.length - 1}`
+          try {
+            await admin.firestore().collection('checklist_reminders').doc(id).create({ sentAtISO: new Date().toISOString(), title: '📅 Событие сегодня' })
+          } catch (e) {
+            if (String(e.code) === '6' || /already exists/i.test(e.message || '')) { results.push({ id, skipped: 'already sent' }); continue }
+          }
+          const tokens = allTokens
+            .filter(t => (t.club || '').toUpperCase() === club)
+            .filter(t => ['manager', 'admin', 'chef'].includes(t.role))
+            .map(t => t.token)
+          if (!tokens.length) { results.push({ id, sent: 0 }); continue }
+          const out = await admin.messaging().sendEachForMulticast({
+            tokens,
+            notification: { title: '📅 Событие сегодня', body },
+            webpush: {
+              headers: { Urgency: 'high', TTL: '3600' },
+              notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: id },
+              fcmOptions: { link: 'https://ticket-tracker-inky.vercel.app/calendar' },
+            },
+          })
+          results.push({ id, sent: out.successCount, failed: out.failureCount })
+        }
+      } catch (calErr) {
+        console.warn('calendar push failed:', calErr.message)
+      }
+    }
+
+    if (!due.length && !results.length) return res.json({ ok: true, reason: 'no due reminders' })
     return res.json({ ok: true, results })
   } catch (err) {
     console.error('scheduled-reminders error:', err)
