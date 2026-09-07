@@ -26,9 +26,10 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest'
 // модель. Можно переопределить через GEMINI_LEAD_MODEL (напр. gemini-2.5-pro) без правки кода.
 const LEAD_MODEL = process.env.GEMINI_LEAD_MODEL || 'gemini-2.5-flash'
 
-// Бесплатная цепочка для ИИ-чата (freeChat), когда нет платного ANTHROPIC_API_KEY:
-// Gemini → Groq → Mistral → OpenRouter, первый успешный ответ побеждает.
-// Все три — OpenAI-совместимый формат (messages/choices), поэтому один хелпер.
+// Цепочка для ИИ-чата (freeChat), когда нет платного ANTHROPIC_API_KEY:
+// DeepSeek (дёшево, умно — reasoner) → Gemini → Groq → Mistral → OpenRouter (бесплатные),
+// первый успешный ответ побеждает. Все — OpenAI-совместимый формат (messages/choices).
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-reasoner'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-latest'
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free'
@@ -319,6 +320,10 @@ ${PLATFORM_INFO}
       while (messages.length > 1 && messages[0].role !== 'user') messages.shift()
 
       const providers = []
+      // DeepSeek первым — дёшево (доли цента за запрос) и заметно умнее бесплатных
+      // моделей ниже по цепочке; reasoner-модель «размышляет» перед ответом.
+      if (process.env.DEEPSEEK_API_KEY) providers.push({ name: 'deepseek', run: () =>
+        callOpenAICompatible('https://api.deepseek.com/v1', process.env.DEEPSEEK_API_KEY, DEEPSEEK_MODEL, freeSys, messages) })
       if (gkey) providers.push({ name: 'gemini', run: async () => {
         const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
         let r
@@ -346,7 +351,7 @@ ${PLATFORM_INFO}
       if (process.env.OPENROUTER_API_KEY) providers.push({ name: 'openrouter', run: () =>
         callOpenAICompatible('https://openrouter.ai/api/v1', process.env.OPENROUTER_API_KEY, OPENROUTER_MODEL, freeSys, messages) })
 
-      if (!providers.length) return res.json({ answer: 'ИИ-чат ещё не подключён — нет ни одного ключа (ANTHROPIC/GEMINI/GROQ/MISTRAL/OPENROUTER). Обратитесь к администратору платформы.' })
+      if (!providers.length) return res.json({ answer: 'ИИ-чат ещё не подключён — нет ни одного ключа (ANTHROPIC/DEEPSEEK/GEMINI/GROQ/MISTRAL/OPENROUTER). Обратитесь к администратору платформы.' })
 
       for (const p of providers) {
         try {
