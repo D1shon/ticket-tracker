@@ -11,16 +11,16 @@ if (!admin.apps.length) {
   try { admin.firestore().settings({ preferRest: true }) } catch {}
 }
 
-// Shift start times in minutes (Almaty, UTC+5, no DST)
+// Shift start times in minutes (Almaty, UTC+5, no DST).
+// ДЕРЖАТЬ В СИНХРОНЕ с src/data/checklistData.js (getShiftsForDate):
+// 2026-09 дневная (11:30/14:00) и вечерняя (16:30) смены убраны из чек-листов —
+// напоминания шлём только по оставшимся.
 const WEEKDAY_SHIFTS = [
   { id: 'morning', name: 'Утренняя смена', time: '6:30',  min: 390 },
-  { id: 'day',     name: 'Дневная смена',  time: '11:30', min: 690 },
-  { id: 'evening', name: 'Вечерняя смена', time: '16:30', min: 990 },
   { id: 'night',   name: 'Ночная смена',   time: '21:30', min: 1290 },
 ]
 const WEEKEND_SHIFTS = [
   { id: 'morning', name: 'Утренняя смена', time: '9:00',  min: 540 },
-  { id: 'day',     name: 'Дневная смена',  time: '14:00', min: 840 },
   { id: 'evening', name: 'Вечерняя смена', time: '19:00', min: 1140 },
 ]
 
