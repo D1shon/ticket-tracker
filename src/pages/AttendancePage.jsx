@@ -205,6 +205,43 @@ const AttendancePage = () => {
     }).sort((a, b) => (a.firstIn ? ts(a.firstIn) : Infinity) - (b.firstIn ? ts(b.firstIn) : Infinity));
   }, [historyCheckins, opMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Вкладка «Фото касс»: фотоотчёты закрытия кассы (checkout_photos) ──
+  // Метаданные в Firestore, сами фото в Storage; крон удаляет их через 3 дня.
+  const [checkoutPhotos, setCheckoutPhotos] = useState([]);
+  const [photoUrls, setPhotoUrls] = useState({}); // docId -> download URL
+  const [photoModal, setPhotoModal] = useState(null);
+
+  useEffect(() => {
+    if (viewMode !== 'photos') return;
+    const clubFilter = isChef ? selectedClub : (userClub || null);
+    const qq = clubFilter
+      ? query(collection(db, 'checkout_photos'), where('club', '==', clubFilter))
+      : collection(db, 'checkout_photos');
+    return onSnapshot(qq, snap => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => (b.uploadedAt?.toMillis?.() || 0) - (a.uploadedAt?.toMillis?.() || 0));
+      setCheckoutPhotos(list);
+    }, () => {});
+  }, [viewMode, selectedClub]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (viewMode !== 'photos' || checkoutPhotos.length === 0) return;
+    let dead = false;
+    (async () => {
+      const storage = await getStorageLazy();
+      const { ref: sRef, getDownloadURL } = await import('firebase/storage');
+      for (const p of checkoutPhotos) {
+        if (!p.storagePath || photoUrls[p.id]) continue;
+        try {
+          const url = await getDownloadURL(sRef(storage, p.storagePath));
+          if (dead) return;
+          setPhotoUrls(prev => ({ ...prev, [p.id]: url }));
+        } catch {} // файл уже удалён кроном очистки — карточку скроем
+      }
+    })();
+    return () => { dead = true; };
+  }, [viewMode, checkoutPhotos]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Загрузка фото кассы (обязательно перед чекаутом) ─────────────
   // Фото принимается сразу при выборе — чекаут не ждёт Storage.
   // Перед загрузкой сжимаем через canvas: ~5 МБ → ~200 КБ.
@@ -342,7 +379,7 @@ const AttendancePage = () => {
       {/* ── Сегодня / История ── */}
       {canSeeHistory && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-          {[['today', 'Сегодня', Clock], ['history', 'История', History]].map(([id, label, Icon]) => (
+          {[['today', 'Сегодня', Clock], ['history', 'История', History], ['photos', 'Фото касс', Camera]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setViewMode(id)} style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               flex: isMobile ? 1 : 'none', minHeight: isMobile ? 40 : undefined,
@@ -574,6 +611,72 @@ const AttendancePage = () => {
       )}
 
       {/* ── Список чекинов сегодня ── */}
+      {/* ── Фото касс: фотоотчёты вечернего закрытия ── */}
+      {viewMode === 'photos' && canSeeHistory && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(192,143,79,0.08)', border: '1px solid rgba(192,143,79,0.25)', fontSize: 12, fontWeight: 700, color: '#C08F4F' }}>
+            📸 Фото закрытия кассы, приложенные админами при вечернем чекауте · хранятся 3 дня
+          </div>
+          {checkoutPhotos.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 16 }}>
+              Фотоотчётов за последние 3 дня нет
+            </div>
+          ) : (() => {
+            const byDay = {};
+            checkoutPhotos.forEach(p => {
+              const d = p.uploadedAt?.toDate?.();
+              if (!d) return;
+              const k = format(d, 'yyyy-MM-dd');
+              (byDay[k] = byDay[k] || []).push(p);
+            });
+            return Object.entries(byDay).map(([day, list]) => (
+              <div key={day}>
+                <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '4px 2px 8px' }}>
+                  {format(new Date(day + 'T12:00:00'), 'd MMMM, EEEE', { locale: ru })}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+                  {list.map(p => {
+                    const url = photoUrls[p.id];
+                    const time = p.uploadedAt?.toDate?.() ? format(p.uploadedAt.toDate(), 'HH:mm') : '';
+                    return (
+                      <div key={p.id} onClick={() => url && setPhotoModal({ ...p, url })} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: url ? 'pointer' : 'default' }}>
+                        {url ? (
+                          <img src={url} alt="касса" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 11, background: 'var(--bg-hover)' }}>Загрузка…</div>
+                        )}
+                        <div style={{ padding: '8px 10px' }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.userName || p.userId}</div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{p.club || '—'} · {time}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+
+      {/* Полноэкранный просмотр фото кассы */}
+      {photoModal && (
+        <div onClick={() => setPhotoModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth: 640, width: '100%', background: 'var(--bg-card)', borderRadius: 18, padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{photoModal.userName || photoModal.userId}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
+                  {photoModal.club || '—'} · {photoModal.uploadedAt?.toDate?.() ? format(photoModal.uploadedAt.toDate(), 'd MMMM, HH:mm', { locale: ru }) : ''}
+                </div>
+              </div>
+              <button onClick={() => setPhotoModal(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
+            </div>
+            <img src={photoModal.url} alt="касса" style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 12, background: '#000' }} />
+          </div>
+        </div>
+      )}
+
       {viewMode === 'today' && <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 24, overflow: 'hidden' }}>
         <div style={{ padding: isMobile ? '12px 14px' : '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <ShieldCheck size={15} color="#7D6FB3" />
