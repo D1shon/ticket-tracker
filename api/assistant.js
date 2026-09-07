@@ -26,6 +26,34 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest'
 // модель. Можно переопределить через GEMINI_LEAD_MODEL (напр. gemini-2.5-pro) без правки кода.
 const LEAD_MODEL = process.env.GEMINI_LEAD_MODEL || 'gemini-2.5-flash'
 
+// Бесплатная цепочка для ИИ-чата (freeChat), когда нет платного ANTHROPIC_API_KEY:
+// Gemini → Groq → Mistral → OpenRouter, первый успешный ответ побеждает.
+// Все три — OpenAI-совместимый формат (messages/choices), поэтому один хелпер.
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-latest'
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free'
+
+async function callOpenAICompatible(baseUrl, key, model, sys, messages) {
+  const r = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: sys }, ...messages],
+      temperature: 0.7,
+      max_tokens: 2048,
+    }),
+  })
+  if (!r.ok) {
+    const t = await r.text().catch(() => '')
+    throw new Error(`${r.status} ${t.slice(0, 200)}`)
+  }
+  const data = await r.json()
+  const text = data?.choices?.[0]?.message?.content || ''
+  if (!text.trim()) throw new Error('empty response')
+  return text
+}
+
 // Гайдбук меняется редко — кэшируем разделы на 10 минут (Spark-квота Firestore).
 let guideCache = null // массив разделов
 let guideCachedAt = 0
@@ -275,45 +303,62 @@ ${PLATFORM_INFO}
 Спрашивает: роль ${frole || 'сотрудник'}${fclub ? `, клуб ${fclub}` : ''}. Пиши обычным текстом, БЕЗ markdown-разметки (без **, ##, обратных кавычек) — фронт не рендерит markdown, оформляй списки как «1. 2. 3.» или тире. Отвечай по делу, но не обрывай мысль.`
     const stripMd = (s) => String(s || '').replace(/\*\*/g, '').replace(/`/g, '').replace(/^#{1,6}\s+/gm, '')
 
-    // Нет ключа Anthropic → работаем на Gemini (тот же ключ, что у «Помощника»),
-    // с тем же свободным промптом. Появится ANTHROPIC_API_KEY — переключимся сами.
-    if (!akey && gkey) {
-      const contents = []
+    // Нет ключа Anthropic → бесплатная цепочка провайдеров: Gemini → Groq → Mistral
+    // → OpenRouter. Каждый провайдер получает ОДИН И ТОТ ЖЕ контекст диалога, поэтому
+    // при переключении середины разговора (квота кончилась) память не теряется.
+    // Появится ANTHROPIC_API_KEY — переключимся на Opus (ветка ниже), эта цепочка не тронется.
+    if (!akey) {
+      const messages = []
       if (Array.isArray(fhistory)) {
         for (const h of fhistory.slice(-20)) {
           const text = String(h?.text || '').slice(0, 4000)
-          if (text) contents.push({ role: h?.role === 'bot' ? 'model' : 'user', parts: [{ text }] })
+          if (text) messages.push({ role: h?.role === 'bot' ? 'assistant' : 'user', content: text })
         }
       }
-      contents.push({ role: 'user', parts: [{ text: fquestion }] })
-      while (contents.length > 1 && contents[0].role !== 'user') contents.shift()
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${gkey}`
+      messages.push({ role: 'user', content: fquestion })
+      while (messages.length > 1 && messages[0].role !== 'user') messages.shift()
+
+      const providers = []
+      if (gkey) providers.push({ name: 'gemini', run: async () => {
+        const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
         let r
         for (let i = 0; i < 2; i++) {
-          r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-            systemInstruction: { parts: [{ text: freeSys }] },
-            contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-          }) })
+          r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${gkey}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+              systemInstruction: { parts: [{ text: freeSys }] },
+              contents,
+              generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+            }),
+          })
           if (r.ok || (r.status !== 503 && r.status !== 429)) break
           await new Promise(res2 => setTimeout(res2, 700))
         }
-        if (!r.ok) {
-          const t = await r.text().catch(() => '')
-          console.error('gemini-freechat error', r.status, t.slice(0, 300))
-          return res.json({ answer: r.status === 429 ? 'Лимит запросов ИИ-чата исчерпан. Попробуйте позже.' : 'Не удалось получить ответ от ИИ-чата. Попробуйте ещё раз.' })
-        }
+        if (!r.ok) throw new Error(`${r.status} ${(await r.text().catch(() => '')).slice(0, 200)}`)
         const data = await r.json()
-        const answer = stripMd((data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim())
-          || 'Не удалось сформулировать ответ. Переформулируйте вопрос.'
-        return res.json({ answer })
-      } catch (err) {
-        console.error('gemini-freechat error:', err.message)
-        return res.status(500).json({ answer: 'Ошибка ИИ-чата. Попробуйте ещё раз.' })
+        const text = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('')
+        if (!text.trim()) throw new Error('empty response')
+        return text
+      }})
+      if (process.env.GROQ_API_KEY) providers.push({ name: 'groq', run: () =>
+        callOpenAICompatible('https://api.groq.com/openai/v1', process.env.GROQ_API_KEY, GROQ_MODEL, freeSys, messages) })
+      if (process.env.MISTRAL_API_KEY) providers.push({ name: 'mistral', run: () =>
+        callOpenAICompatible('https://api.mistral.ai/v1', process.env.MISTRAL_API_KEY, MISTRAL_MODEL, freeSys, messages) })
+      if (process.env.OPENROUTER_API_KEY) providers.push({ name: 'openrouter', run: () =>
+        callOpenAICompatible('https://openrouter.ai/api/v1', process.env.OPENROUTER_API_KEY, OPENROUTER_MODEL, freeSys, messages) })
+
+      if (!providers.length) return res.json({ answer: 'ИИ-чат ещё не подключён — нет ни одного ключа (ANTHROPIC/GEMINI/GROQ/MISTRAL/OPENROUTER). Обратитесь к администратору платформы.' })
+
+      for (const p of providers) {
+        try {
+          const text = await p.run()
+          return res.json({ answer: stripMd(text.trim()) })
+        } catch (err) {
+          console.warn(`freechat ${p.name} failed:`, err.message)
+          // квота/ошибка этого провайдера — пробуем следующего в цепочке
+        }
       }
+      return res.json({ answer: 'Все бесплатные ИИ сейчас недоступны (дневные лимиты исчерпаны у всех). Попробуйте позже.' })
     }
-    if (!akey) return res.json({ answer: 'ИИ-чат ещё не подключён — не задан ключ ANTHROPIC_API_KEY (или GEMINI_API_KEY). Обратитесь к администратору платформы.' })
 
     const messages = []
     if (Array.isArray(fhistory)) {
