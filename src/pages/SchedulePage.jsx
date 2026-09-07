@@ -1792,7 +1792,9 @@ const SchedulePage = () => {
                   )}
                 </div>
               </div>
-              {canViewFull && clubEmployees.filter(e => !e.isService && !(e.name||'').toLowerCase().includes('сервис') && !(e.name||'').toLowerCase().includes('техник')).length > 0 && (
+              {/* Панель ставок показывает ВСЕХ, включая сервисников (СЕР) — их оклад
+                  выставляется здесь же, без снятия ключика; «Норма для всех» их не трогает */}
+              {canViewFull && clubEmployees.length > 0 && (
                 <div className="md:col-span-2 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-black uppercase text-[var(--text-muted)]">Ставки сотрудников</h3>
@@ -1820,7 +1822,7 @@ const SchedulePage = () => {
                     )}
                   </div>
                   <div className="grid grid-cols-1 gap-3">
-                    {clubEmployees.filter(e => !e.isService && !(e.name||'').toLowerCase().includes('сервис') && !(e.name||'').toLowerCase().includes('техник')).map(emp => {
+                    {clubEmployees.map(emp => {
                       const stats = getEmployeeStats(emp.id);
                       const empDocId = emp.id.includes('_') ? emp.id : `${monthKey}_${emp.id}`;
                       const empScheduleData = scheduleData[empDocId] || {};
@@ -1908,7 +1910,11 @@ const SchedulePage = () => {
                               />
                               <span className="text-xs text-[var(--text-muted)]">₸</span>
                             </div>
-                            {empFixedSalary && (
+                            {/* Сервисник (СЕР): зарплата строго = окладу, норма не участвует */}
+                            {isSvc && (
+                              <span className="text-[10px] font-black uppercase px-2 py-1 rounded-lg text-amber-500 bg-amber-500/10 border border-amber-500/25">СЕР · зарплата = окладу</span>
+                            )}
+                            {empFixedSalary && !isSvc && (
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] font-black uppercase text-[var(--text-muted)]">Норма:</span>
                                 <input
