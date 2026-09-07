@@ -327,12 +327,16 @@ ${PLATFORM_INFO}
     while (messages.length > 1 && messages[0].role !== 'user') messages.shift()
 
     try {
+      // Opus + extended thinking: модель «размышляет» невидимо перед ответом —
+      // качество важнее скорости (осознанный выбор). budget_tokens должен быть
+      // < max_tokens; thinking-блоки не показываем, только type:'text'.
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': akey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
-          model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
-          max_tokens: 2048,
+          model: process.env.ANTHROPIC_MODEL || 'claude-opus-4-8',
+          max_tokens: 8192,
+          thinking: { type: 'enabled', budget_tokens: 4096 },
           system: freeSys,
           messages,
         }),
@@ -345,7 +349,7 @@ ${PLATFORM_INFO}
           : 'Не удалось получить ответ от ИИ-чата. Попробуйте ещё раз.' })
       }
       const data = await r.json()
-      const answer = stripMd((data?.content || []).map(b => b.text || '').join('').trim())
+      const answer = stripMd((data?.content || []).filter(b => b.type === 'text').map(b => b.text || '').join('').trim())
         || 'Не удалось сформулировать ответ. Переформулируйте вопрос.'
       return res.json({ answer })
     } catch (err) {
