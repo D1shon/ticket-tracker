@@ -41,16 +41,17 @@ const MerchPage = () => {
   const marketingExtra = isMarketing && (user?.email || '').toLowerCase() === 'guldana.k@hj.fit';
   // Ком-Дир и РОП: мониторинг всего склада (включая себестоимость и выручку), но без продаж и редактирования
   const isKomdir = useMemo(() => user?.role === 'komdir' || user?.role === 'rop', [user]);
-  const canSeeCost = isChef || isKomdir;
+  // Гульдане (07.09.2026) открыт ПОЛНЫЙ доступ: управление всеми складами + финансы
+  const canSeeCost = isChef || isKomdir || marketingExtra;
   // managerClub даёт права управления складом — у РОПа его быть не должно (только мониторинг)
   const managerClub = useMemo(() => (user?.role === 'manager' ? user?.club || null : null), [user]);
   // РОП заперт на своём клубе; Ком-Дир видит все
   const lockedClub = useMemo(() => managerClub || (user?.role === 'rop' ? user?.club || null : null), [user, managerClub]);
   const canSelectAllClubs = useMemo(() => isChef || isMarketing || user?.role === 'komdir' || user?.role === 'lostviewer', [isChef, isMarketing, user]);
-  // Полные права менеджера склада сразу по ВСЕМ клубам, включая ГОЛОВНОЙ СКЛАД
-  // (без себестоимости — как у обычного менеджера). Подставляется везде, где
-  // обычно проверяют «шеф или менеджер СВОЕГО клуба».
-  // Кому выдано: наблюдатель Луиза (lostviewer) и Гульдана (маркетинг, 02.09.2026).
+  // Полные права менеджера склада сразу по ВСЕМ клубам, включая ГОЛОВНОЙ СКЛАД.
+  // Подставляется везде, где обычно проверяют «шеф или менеджер СВОЕГО клуба».
+  // Кому выдано: наблюдатель Луиза (lostviewer, без себестоимости) и Гульдана
+  // (маркетинг, 02.09.2026; с 07.09 также видит себестоимость через canSeeCost).
   const isLostviewerFull = user?.role === 'lostviewer'
     || (user?.email || '').toLowerCase() === 'guldana.k@hj.fit';
 
