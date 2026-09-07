@@ -9,7 +9,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search, Bot
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -110,6 +110,7 @@ const ALL_NAV = [
   { icon: QrCode,          label: 'QR-отзывы',    path: '/qr-reviews',  primary: false },
   { icon: Target,          label: 'Лиды',         path: '/leads',       primary: false },
   { icon: Sparkles,        label: 'Помощник',     path: '/assistant',   primary: false },
+  { icon: Bot,             label: 'ИИ-чат',       path: '/ai-chat',     primary: false },
   { icon: UserPlus,        label: 'Сотрудники',   path: '/staff',       primary: false },
   { icon: CalendarDays,    label: 'Календарь',   path: '/calendar',    primary: false },
   { icon: MonitorSmartphone, label: 'InStudio',  path: '/instudio',    primary: false },
@@ -125,7 +126,7 @@ const ALL_NAV = [
 /* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
 const NAV_GROUPS = [
   { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/archive', '/merch'] },
-  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/leads', '/assistant'] },
+  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/leads', '/assistant', '/ai-chat'] },
 ];
 
 const useNavGroups = () => {
@@ -185,7 +186,7 @@ const DesktopSidebar = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant' || item.path === '/ai-chat';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -193,7 +194,7 @@ const DesktopSidebar = () => {
     if (user?.role === 'komdir' || user?.role === 'rop') {
       // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
       if (item.path === '/shift-board') return true;
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/ai-chat' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN.has(item.path);
@@ -615,7 +616,7 @@ const MobileNav = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant' || item.path === '/ai-chat';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -623,7 +624,7 @@ const MobileNav = () => {
     if (user?.role === 'komdir' || user?.role === 'rop') {
       // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
       if (item.path === '/shift-board') return true;
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/ai-chat' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN_M.has(item.path);
@@ -951,6 +952,7 @@ const MobileNav = () => {
                 '/injury-protocol': { sub: 'действия при травмах', sect: 3 },
                 '/policy':      { sub: 'правила платформы', sect: 3 },
                 '/assistant':   { sub: 'ИИ по гайдбуку', sect: 3 },
+                '/ai-chat':     { sub: 'ИИ-чат без ограничений', sect: 3 },
                 '/staff':       { sub: 'аккаунты МОП', sect: 3 },
                 '/settings':    { sub: 'профиль и push', sect: 3 },
               };

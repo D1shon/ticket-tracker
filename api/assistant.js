@@ -254,6 +254,98 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Ветка: свободный ИИ-чат (Claude, без привязки к гайдбуку/платформе) ──
+  // Отдельная вкладка «ИИ-чат» — общий помощник для менеджеров без ограничения
+  // тем, в отличие от /assistant (тот отвечает строго по гайдбуку).
+  if (req.body?.freeChat) {
+    const { question: fq, history: fhistory, role: frole, club: fclub } = req.body
+    const fquestion = String(fq || '').trim().slice(0, 4000)
+    if (!fquestion) return res.status(400).json({ error: 'question required' })
+
+    const akey = process.env.ANTHROPIC_API_KEY
+    const gkey = process.env.GEMINI_API_KEY
+    const freeSys = `Ты — универсальный ИИ-помощник для сотрудников сети фитнес-клубов Hero's Journey внутри платформы HJ Track. В отличие от вкладки «Помощник» (та отвечает строго по гайдбуку), ты НЕ ограничен темами: помогай с планированием, текстами, расчётами, идеями, разбором рабочих ситуаций — с чем угодно, что нужно сотруднику. Спрашивает: роль ${frole || 'сотрудник'}${fclub ? `, клуб ${fclub}` : ''}. Пиши обычным текстом, БЕЗ markdown-разметки (без **, ##, обратных кавычек) — фронт не рендерит markdown, оформляй списки как «1. 2. 3.» или тире. Отвечай по делу, но не обрывай мысль.`
+    const stripMd = (s) => String(s || '').replace(/\*\*/g, '').replace(/`/g, '').replace(/^#{1,6}\s+/gm, '')
+
+    // Нет ключа Anthropic → работаем на Gemini (тот же ключ, что у «Помощника»),
+    // с тем же свободным промптом. Появится ANTHROPIC_API_KEY — переключимся сами.
+    if (!akey && gkey) {
+      const contents = []
+      if (Array.isArray(fhistory)) {
+        for (const h of fhistory.slice(-20)) {
+          const text = String(h?.text || '').slice(0, 4000)
+          if (text) contents.push({ role: h?.role === 'bot' ? 'model' : 'user', parts: [{ text }] })
+        }
+      }
+      contents.push({ role: 'user', parts: [{ text: fquestion }] })
+      while (contents.length > 1 && contents[0].role !== 'user') contents.shift()
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${gkey}`
+        let r
+        for (let i = 0; i < 2; i++) {
+          r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            systemInstruction: { parts: [{ text: freeSys }] },
+            contents,
+            generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+          }) })
+          if (r.ok || (r.status !== 503 && r.status !== 429)) break
+          await new Promise(res2 => setTimeout(res2, 700))
+        }
+        if (!r.ok) {
+          const t = await r.text().catch(() => '')
+          console.error('gemini-freechat error', r.status, t.slice(0, 300))
+          return res.json({ answer: r.status === 429 ? 'Лимит запросов ИИ-чата исчерпан. Попробуйте позже.' : 'Не удалось получить ответ от ИИ-чата. Попробуйте ещё раз.' })
+        }
+        const data = await r.json()
+        const answer = stripMd((data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim())
+          || 'Не удалось сформулировать ответ. Переформулируйте вопрос.'
+        return res.json({ answer })
+      } catch (err) {
+        console.error('gemini-freechat error:', err.message)
+        return res.status(500).json({ answer: 'Ошибка ИИ-чата. Попробуйте ещё раз.' })
+      }
+    }
+    if (!akey) return res.json({ answer: 'ИИ-чат ещё не подключён — не задан ключ ANTHROPIC_API_KEY (или GEMINI_API_KEY). Обратитесь к администратору платформы.' })
+
+    const messages = []
+    if (Array.isArray(fhistory)) {
+      for (const h of fhistory.slice(-20)) {
+        const mrole = h?.role === 'bot' ? 'assistant' : 'user'
+        const text = String(h?.text || '').slice(0, 4000)
+        if (text) messages.push({ role: mrole, content: text })
+      }
+    }
+    messages.push({ role: 'user', content: fquestion })
+    while (messages.length > 1 && messages[0].role !== 'user') messages.shift()
+
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': akey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 2048,
+          system: freeSys,
+          messages,
+        }),
+      })
+      if (!r.ok) {
+        const t = await r.text().catch(() => '')
+        console.error('claude-chat error', r.status, t.slice(0, 300))
+        return res.json({ answer: r.status === 429
+          ? 'Лимит запросов ИИ-чата исчерпан. Попробуйте позже.'
+          : 'Не удалось получить ответ от ИИ-чата. Попробуйте ещё раз.' })
+      }
+      const data = await r.json()
+      const answer = stripMd((data?.content || []).map(b => b.text || '').join('').trim())
+        || 'Не удалось сформулировать ответ. Переформулируйте вопрос.'
+      return res.json({ answer })
+    } catch (err) {
+      console.error('claude-chat error:', err.message)
+      return res.status(500).json({ answer: 'Ошибка ИИ-чата. Попробуйте ещё раз.' })
+    }
+  }
+
   const { question, role, club } = req.body ?? {}
   const { history } = req.body ?? {}
   const q = String(question || '').trim().slice(0, 1000)
