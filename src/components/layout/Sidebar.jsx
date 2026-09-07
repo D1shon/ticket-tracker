@@ -9,7 +9,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -227,6 +227,12 @@ const DesktopSidebar = () => {
   })();
   const { rows, save, reset, isCustom } = useNavLayout(user, allowedPaths, defaultRows);
 
+  // Поиск по пунктам меню: при вводе показываем плоский список совпадений
+  // (без групп и перетаскивания), клик очищает поиск
+  const [navSearch, setNavSearch] = useState('');
+  const navQuery = navSearch.trim().toLowerCase();
+  const searchResults = navQuery ? allowedNav.filter(i => i.label.toLowerCase().includes(navQuery)) : [];
+
   // ── Drag&drop мышью: перетаскивание пунктов/групп; удержание над пунктом ~2с — объединение.
   // Нарочно НЕ HTML5 DnD: перетаскивание <a> браузеры превращают в «перенос ссылки»
   // (ghost с URL, drop не срабатывает), поэтому жест собран вручную на mousedown/mousemove ──
@@ -428,8 +434,40 @@ const DesktopSidebar = () => {
         </div>
       )}
 
+      {/* Поиск по меню */}
+      <div style={{ padding: '6px 12px 2px', position: 'relative' }}>
+        <Search size={13} style={{ position: 'absolute', left: 22, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+        <input
+          value={navSearch}
+          onChange={e => setNavSearch(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setNavSearch('');
+            if (e.key === 'Enter' && searchResults.length > 0) { navigate(searchResults[0].path); setNavSearch(''); }
+          }}
+          placeholder="Поиск по меню…"
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '7px 26px 7px 30px',
+            borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-hover)',
+            color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, outline: 'none',
+          }}
+        />
+        {navSearch && (
+          <button onClick={() => setNavSearch('')} style={{ position: 'absolute', right: 18, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, lineHeight: 0 }}>
+            <X size={12} />
+          </button>
+        )}
+      </div>
+
       <nav style={{ flex: 1, paddingTop: 8 }}>
-        {rows.map(row => row.type === 'group'
+        {navQuery ? (
+          searchResults.length > 0
+            ? searchResults.map(item => (
+                <div key={item.path} onClick={() => setNavSearch('')}>
+                  {renderItem(item)}
+                </div>
+              ))
+            : <div style={{ padding: '14px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Ничего не найдено</div>
+        ) : rows.map(row => row.type === 'group'
           ? renderGroupRow(row)
           : (byPath[row.path] ? renderItemRow(byPath[row.path]) : null))}
       </nav>
@@ -495,6 +533,7 @@ const MobileNav = () => {
   const newsAlert    = useNewsAlert(user?.role);
   const [openGroupsM, setGroupOpenM] = useNavGroups();
   const [showMore, setShowMore] = useState(false);
+  const [moreSearch, setMoreSearch] = useState(''); // поиск по плиткам шторки «Ещё»
   const [showCreate, setShowCreate] = useState(false); // шторка «+» (быстрое создание)
   const [showNotifications, setShowNotifications] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -609,6 +648,7 @@ const MobileNav = () => {
     setShowMore(false);
     setShowCreate(false);
     setShowNotifications(false);
+    setMoreSearch('');
     navigate(path);
   };
 
@@ -863,6 +903,26 @@ const MobileNav = () => {
             {/* Handle */}
             <div style={{ width: 36, height: 4, background: 'var(--border)', borderRadius: 4, margin: '0 auto 12px' }} />
 
+            {/* Поиск по вкладкам */}
+            <div style={{ padding: '0 16px 12px', position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: 28, top: '50%', transform: 'translateY(-56%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <input
+                value={moreSearch}
+                onChange={e => setMoreSearch(e.target.value)}
+                placeholder="Поиск по вкладкам…"
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '10px 34px 10px 34px',
+                  borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)',
+                  color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, outline: 'none',
+                }}
+              />
+              {moreSearch && (
+                <button onClick={() => setMoreSearch('')} style={{ position: 'absolute', right: 24, top: '50%', transform: 'translateY(-56%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
             {(() => {
               // ── Новый визуал «Ещё»: плитки с подписями по секциям ──
               const META = {
@@ -924,6 +984,24 @@ const MobileNav = () => {
                   </button>
                 );
               };
+
+              // Режим поиска: плоская сетка совпадений (по названию и подписи)
+              const q = moreSearch.trim().toLowerCase();
+              if (q) {
+                const found = secondaryItems.filter(i =>
+                  i.label.toLowerCase().includes(q) || (META[i.path]?.sub || '').toLowerCase().includes(q));
+                return (
+                  <div style={{ padding: '0 16px 12px' }}>
+                    {found.length === 0 ? (
+                      <div style={{ padding: '18px 4px', fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', textAlign: 'center' }}>Ничего не найдено</div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        {found.map(item => <Tile key={item.path} item={item} />)}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
 
               return SECTIONS.map(([sect, label]) => {
                 const items = secondaryItems.filter(i => (META[i.path]?.sect ?? 3) === sect);
