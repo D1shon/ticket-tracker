@@ -175,7 +175,7 @@ const DesktopSidebar = () => {
     return `${Math.floor(d / 86400)} д назад`;
   };
 
-  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads']);
+  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads', '/ai-chat']);
 
   const allowedNav = ALL_NAV.filter(item => {
     if (item.path === '/staff') return showStaffNav(user); // только реальный РОП; у шефа — в Настройках
@@ -186,7 +186,7 @@ const DesktopSidebar = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant' || item.path === '/ai-chat';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -194,7 +194,7 @@ const DesktopSidebar = () => {
     if (user?.role === 'komdir' || user?.role === 'rop') {
       // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
       if (item.path === '/shift-board') return true;
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/ai-chat' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN.has(item.path);
@@ -605,7 +605,7 @@ const MobileNav = () => {
     return `${Math.floor(d / 86400)} д`;
   };
 
-  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads']);
+  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads', '/ai-chat']);
 
   const allowedNav = ALL_NAV.filter(item => {
     if (item.path === '/staff') return showStaffNav(user); // только реальный РОП; у шефа — в Настройках
@@ -616,7 +616,7 @@ const MobileNav = () => {
     if (user?.role === 'admin') {
       // Чек-листы — только админам Europe City
       if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant' || item.path === '/ai-chat';
+      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
     }
     if (user?.role === 'marketing') {
       return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
@@ -624,7 +624,7 @@ const MobileNav = () => {
     if (user?.role === 'komdir' || user?.role === 'rop') {
       // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
       if (item.path === '/shift-board') return true;
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/ai-chat' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
+      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
     }
     if (user?.role === 'viewer') {
       return !VIEWER_HIDDEN_M.has(item.path);

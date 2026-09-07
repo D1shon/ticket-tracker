@@ -455,7 +455,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/ai-chat" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'komdir', 'rop']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager']}>
             <AiChatPage />
           </ProtectedLayout>
         } />
