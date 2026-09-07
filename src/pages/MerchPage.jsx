@@ -35,14 +35,16 @@ const MerchPage = () => {
   }, []);
 
   // Role & Permissions check
-  const isChef = useMemo(() => user?.role === 'chef' || user?.role === 'viewer', [user]);
   const isMarketing = useMemo(() => user?.role === 'marketing', [user]);
-  // Гульдане (маркетинг) дополнительно открыты «История продаж» и «Перемещения»
+  // Гульдана (маркетинг): ПОЛНОЕ управление складом — на этой странице у неё права
+  // шефа (все клубы + ГОЛОВНОЙ СКЛАД, финансы, продажи, удаление, пересортица).
   const marketingExtra = isMarketing && (user?.email || '').toLowerCase() === 'guldana.k@hj.fit';
+  // Маркетинг БЕЗ полного доступа — только просмотр (гейты «!marketingReadOnly» ниже)
+  const marketingReadOnly = isMarketing && !marketingExtra;
+  const isChef = user?.role === 'chef' || user?.role === 'viewer' || marketingExtra;
   // Ком-Дир и РОП: мониторинг всего склада (включая себестоимость и выручку), но без продаж и редактирования
   const isKomdir = useMemo(() => user?.role === 'komdir' || user?.role === 'rop', [user]);
-  // Гульдане (07.09.2026) открыт ПОЛНЫЙ доступ: управление всеми складами + финансы
-  const canSeeCost = isChef || isKomdir || marketingExtra;
+  const canSeeCost = isChef || isKomdir;
   // managerClub даёт права управления складом — у РОПа его быть не должно (только мониторинг)
   const managerClub = useMemo(() => (user?.role === 'manager' ? user?.club || null : null), [user]);
   // РОП заперт на своём клубе; Ком-Дир видит все
@@ -1361,7 +1363,7 @@ const MerchPage = () => {
           )}
 
           {/* Add Product Button */}
-          {(isChef || !!managerClub || isLostviewerFull) && !isMarketing && (
+          {(isChef || !!managerClub || isLostviewerFull) && !marketingReadOnly && (
             <button
               onClick={() => {
                 setEditingProduct(null);
@@ -1379,7 +1381,7 @@ const MerchPage = () => {
       {/* Analytics Dashboard Grid */}
       <div className="merch-stats grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         
-        {isMarketing ? (
+        {marketingReadOnly ? (
           <>
             {/* Total items count for marketing */}
             <div className="bg-[var(--bg-card)] p-5 rounded-3xl border border-[var(--border)] shadow-md flex items-center justify-between col-span-2">
@@ -1719,7 +1721,7 @@ const MerchPage = () => {
           >
             🎁 Маркетинг
           </button>
-          {(!isMarketing || marketingExtra) && (
+          {(!marketingReadOnly || marketingExtra) && (
             <>
               <button
                 onClick={() => setActiveTab('sales')}
@@ -1727,7 +1729,7 @@ const MerchPage = () => {
               >
                 <History size={14} /> История продаж
               </button>
-              {!isMarketing && (
+              {!marketingReadOnly && (
               <button
                 onClick={() => setActiveTab('returns')}
                 className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'returns' ? 'bg-amber-500 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
@@ -1752,7 +1754,7 @@ const MerchPage = () => {
                   <span className="ml-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-black">{incomingPending.length}</span>
                 )}
               </button>
-              {!isMarketing && (
+              {!marketingReadOnly && (
               <button
                 onClick={() => setActiveTab('logs')}
                 className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'logs' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
@@ -1761,7 +1763,7 @@ const MerchPage = () => {
               </button>
               )}
               {/* Sales totals tab */}
-              {selectedClub !== 'ALL' && !isMarketing && (
+              {selectedClub !== 'ALL' && !marketingReadOnly && (
                 <button
                   onClick={() => setActiveTab('nurly-sales')}
                   className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'nurly-sales' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
@@ -2446,8 +2448,8 @@ const MerchPage = () => {
                 const isLow = p.stock <= p.minStock;
                 const isOut = p.stock === 0;
                 const stockColor = isOut ? '#B06A6A' : isLow ? '#C08F4F' : '#5F9C81';
-                const canSell = !isMarketing && !isKomdir;
-                const canManage = !isMarketing && (isChef || (managerClub && p.club === managerClub) || isLostviewerFull);
+                const canSell = !marketingReadOnly && !isKomdir;
+                const canManage = !marketingReadOnly && (isChef || (managerClub && p.club === managerClub) || isLostviewerFull);
                 return (
                   <div key={p.id} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 14, padding: 12 }}>
                     {/* Фото + название + цена/остаток */}
@@ -2675,7 +2677,7 @@ const MerchPage = () => {
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2.5">
                             {/* Sell Button — Ком-Дир только смотрит, не продаёт */}
-                            {!isMarketing && !isKomdir && (
+                            {!marketingReadOnly && !isKomdir && (
                               <button
                                 disabled={isOut}
                                 onClick={() => {
@@ -2699,7 +2701,7 @@ const MerchPage = () => {
                               </button>
                             )}
 
-                            {!isMarketing && (isChef || (managerClub && p.club === managerClub) || isLostviewerFull) && (
+                            {!marketingReadOnly && (isChef || (managerClub && p.club === managerClub) || isLostviewerFull) && (
                               <>
                                 {/* Restock Button */}
                                 <button
@@ -2830,7 +2832,7 @@ const MerchPage = () => {
                       <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: '#C08F4F' }}>
                         <RotateCcw size={13} /> Возвращена{s.returnedAtISO ? ` · ${new Date(s.returnedAtISO).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}{s.returnedBy ? ` · ${s.returnedBy}` : ''}
                       </div>
-                    ) : isMarketing ? null : (
+                    ) : marketingReadOnly ? null : (
                       <button
                         onClick={() => handleDeleteSale(s)}
                         style={{
@@ -2939,7 +2941,7 @@ const MerchPage = () => {
                             >
                               <RotateCcw size={12} /> Возвращена
                             </span>
-                          ) : isMarketing ? null : isSale ? (
+                          ) : marketingReadOnly ? null : isSale ? (
                             <button
                               onClick={() => handleDeleteSale(s)}
                               className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 rounded-lg border border-amber-500/25 transition-all text-[11px] font-black uppercase tracking-wide"
