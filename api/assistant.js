@@ -301,6 +301,8 @@ ${PLATFORM_INFO}
 === КОНЕЦ ОПИСАНИЯ ПЛАТФОРМЫ ===
 
 По всем остальным темам (не про платформу) отвечай свободно, без ограничений.
+
+ПОИСК В ИНТЕРНЕТЕ: у тебя есть доступ к поиску Google в реальном времени. Если сотрудник просит найти товар, цену, поставщика, магазин или любую свежую информацию — ОБЯЗАТЕЛЬНО используй поиск и предложи РОВНО 3 варианта: каждый с номером, названием, коротким пояснением (цена/что это/чем хорош) и полной ссылкой (URL прямо в тексте). Если поиск тебе недоступен в текущем режиме — честно скажи об этом, не выдумывай ссылки.
 Спрашивает: роль ${frole || 'сотрудник'}${fclub ? `, клуб ${fclub}` : ''}. Пиши обычным текстом, БЕЗ markdown-разметки (без **, ##, обратных кавычек) — фронт не рендерит markdown, оформляй списки как «1. 2. 3.» или тире. Отвечай по делу, но не обрывай мысль.`
     const stripMd = (s) => String(s || '').replace(/\*\*/g, '').replace(/`/g, '').replace(/^#{1,6}\s+/gm, '')
 
@@ -326,22 +328,39 @@ ${PLATFORM_INFO}
         callOpenAICompatible('https://api.deepseek.com/v1', process.env.DEEPSEEK_API_KEY, DEEPSEEK_MODEL, freeSys, messages) })
       if (gkey) providers.push({ name: 'gemini', run: async () => {
         const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
+        // google_search — живой поиск Google (grounding): модель сама решает,
+        // когда искать; источники приходят в groundingMetadata
+        const makeBody = (withSearch) => JSON.stringify({
+          systemInstruction: { parts: [{ text: freeSys }] },
+          contents,
+          ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
+          generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+        })
         let r
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < 3; i++) {
+          // 3-я попытка — без поиска (если grounding-квота дня исчерпана)
           r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${gkey}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-              systemInstruction: { parts: [{ text: freeSys }] },
-              contents,
-              generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-            }),
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: makeBody(i < 2),
           })
           if (r.ok || (r.status !== 503 && r.status !== 429)) break
           await new Promise(res2 => setTimeout(res2, 700))
         }
         if (!r.ok) throw new Error(`${r.status} ${(await r.text().catch(() => '')).slice(0, 200)}`)
         const data = await r.json()
-        const text = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('')
+        let text = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('')
         if (!text.trim()) throw new Error('empty response')
+        // Приложим источники поиска (до 3 ссылок), если модель искала
+        const webChunks = (data?.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
+          .map(c => c && c.web).filter(w => w && w.uri)
+        if (webChunks.length) {
+          const seen = new Set(); const links = []
+          for (const w of webChunks) {
+            if (seen.has(w.uri)) continue
+            seen.add(w.uri); links.push(w)
+            if (links.length >= 3) break
+          }
+          if (links.length) text += '\n\nИсточники:\n' + links.map((w, i) => `${i + 1}. ${w.title || 'ссылка'} — ${w.uri}`).join('\n')
+        }
         return text
       }})
       if (process.env.GROQ_API_KEY) providers.push({ name: 'groq', run: () =>

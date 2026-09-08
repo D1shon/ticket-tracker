@@ -11,6 +11,14 @@ import { isMobileDevice } from '../lib/isMobile';
 // у каждого пользователя СВОИ диалоги (фильтр по owner), можно вернуться и удалить.
 const MAX_STORED_MSGS = 40;
 
+// URL в ответах бота — кликабельные ссылки (ИИ-чат умеет искать в интернете
+// и присылать варианты со ссылками)
+const linkify = (text) => String(text || '').split(/(https?:\/\/[^\s)«»"'<>]+)/g).map((p, i) =>
+  /^https?:\/\//.test(p)
+    ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" style={{ color: '#5580A8', textDecoration: 'underline', wordBreak: 'break-all' }}>{p}</a>
+    : p
+);
+
 const AiChatPage = () => {
   const { user } = useTickets();
   const myEmail = (user?.email || '').toLowerCase();
@@ -367,7 +375,7 @@ const AiChatPage = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 11, fontWeight: 800, color: '#B36F5F' }}>
                       <Bot size={12} /> {m.via === 'claude' ? '🧠 Клод' : 'ИИ-чат'}
                     </div>
-                    {m.text}
+                    {linkify(m.text)}
                   </>
                 )}
               </div>
