@@ -1705,10 +1705,12 @@ const MerchPage = () => {
         </div>
       )}
 
-      {/* Tabs, Search & Export Panel */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Navigation Tabs — на мобильном горизонтальная лента чипов без переноса */}
-        <div className={`flex gap-1.5 p-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl ${isMobile ? 'w-full overflow-x-auto' : 'w-fit'}`} style={isMobile ? { WebkitOverflowScrolling: 'touch' } : undefined}>
+      {/* Tabs, Search & Export Panel.
+          flex-wrap: когда вкладок много (полный набор у шефа/Гульданы), панель
+          поиска переносится на следующую строку, а НЕ выталкивается за экран.
+          Лента вкладок скроллится внутри себя (max-w-full + overflow-x-auto). */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className={`flex gap-1.5 p-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-x-auto ${isMobile ? 'w-full' : 'max-w-full'}`} style={{ WebkitOverflowScrolling: 'touch' }}>
           <button
             onClick={() => setActiveTab('inventory')}
             className={`shrink-0 whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'inventory' ? 'bg-[var(--accent-purple)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
