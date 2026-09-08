@@ -21,9 +21,7 @@ export const USER_ROLES = {
   // ── COLIBRI ───────────────────────────────────────────────────────────────
   '19.anastasiya.tkachenko.88@gmail.com': { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
   'daewure@mail.ru':              { role: 'manager', club: 'COLIBRI', displayName: 'Аружан' },
-  'dias.colibri@hj.fit':          { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
-  'diasbakyt3773@gmail.com':      { role: 'manager', club: 'COLIBRI', displayName: 'Диас' },
-  'loshkadishka3006@gmail.com':   { role: 'manager', club: 'COLIBRI', displayName: 'Алишер' },
+  'loshkadishka3006@gmail.com':   { role: 'admin', club: 'COLIBRI', displayName: 'Алишер' },
 
   // ── VILLA ─────────────────────────────────────────────────────────────────
   'diassd9806@gmail.com':   { role: 'manager', club: 'VILLA', displayName: 'Диас' },
