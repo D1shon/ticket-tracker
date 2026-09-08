@@ -204,6 +204,45 @@ export default async function handler(req, res) {
       }
     }
 
+    // 6. Обзвон клиента после травмы — 10:00 Almaty, в день ticket.followUpDate.
+    // Маркер по ticketId (не по дате) — напоминание одноразовое, а не ежедневное.
+    if (inWin(600)) {
+      try {
+        const injSnap = await admin.firestore().collection('tickets')
+          .where('isInjury', '==', true)
+          .where('followUpDate', '==', dateStr)
+          .get()
+        for (const d of injSnap.docs) {
+          const t = d.data()
+          if (t.followUpDone) continue
+          const id = `injury_followup_${d.id}`
+          try {
+            await admin.firestore().collection('checklist_reminders').doc(id).create({ sentAtISO: new Date().toISOString(), title: '📞 Обзвон после травмы' })
+          } catch (e) {
+            if (String(e.code) === '6' || /already exists/i.test(e.message || '')) { results.push({ id, skipped: 'already sent' }); continue }
+          }
+          const club = (t.club || '').toUpperCase()
+          const tokens = allTokens
+            .filter(tk => (tk.club || '').toUpperCase() === club)
+            .filter(tk => ['manager', 'chef'].includes(tk.role))
+            .map(tk => tk.token)
+          if (!tokens.length) { results.push({ id, sent: 0 }); continue }
+          const out = await admin.messaging().sendEachForMulticast({
+            tokens,
+            notification: { title: '📞 Обзвон после травмы', body: `Позвоните клиенту, узнайте самочувствие — «${t.title || 'заявка'}»` },
+            webpush: {
+              headers: { Urgency: 'high', TTL: '3600' },
+              notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: id },
+              fcmOptions: { link: `https://ticket-tracker-inky.vercel.app/tickets/${d.id}` },
+            },
+          })
+          results.push({ id, sent: out.successCount, failed: out.failureCount })
+        }
+      } catch (injErr) {
+        console.warn('injury followup push failed:', injErr.message)
+      }
+    }
+
     if (!due.length && !results.length) return res.json({ ok: true, reason: 'no due reminders' })
     return res.json({ ok: true, results })
   } catch (err) {

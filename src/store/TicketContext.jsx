@@ -663,7 +663,8 @@ export const TicketProvider = ({ children }) => {
       toast.success(ticketData.status === 'scheduled' ? 'Задача запланирована' : 'Задача создана');
       // Запланированная заявка НЕ пушится при создании — push уйдёт в день (и время) наступления
       if (ticketData.status !== 'scheduled') {
-        sendPush('🆕 Новая заявка', `«${ticketData.title || 'Без названия'}»`, ticketData.club, '/tickets', '', TICKET_PUSH_ROLES);
+        const title = ticketData.isInjury ? '🩹 Заявка: ТРАВМА КЛИЕНТА' : '🆕 Новая заявка';
+        sendPush(title, `«${ticketData.title || 'Без названия'}»`, ticketData.club, '/tickets', '', TICKET_PUSH_ROLES);
       }
     } catch (error) {
       toast.error('Ошибка создания задачи');

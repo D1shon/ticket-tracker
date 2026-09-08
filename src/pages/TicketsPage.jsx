@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight, CalendarClock } from 'lucide-react';
+import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight, CalendarClock, ShieldAlert } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
 
@@ -132,6 +132,11 @@ const TicketCard = ({ ticket, columnId, isList = false, isNew = false }) => {
         }}
       >
         <span className={`badge ${clubClass}`} style={{ minWidth: 80, textAlign: 'center', padding: '4px 10px' }}>{ticket.club || '4YOU'}</span>
+        {ticket.isInjury && (
+          <span title="Была травма клиента" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 8, background: 'rgba(255,68,68,0.12)', border: '1px solid rgba(255,68,68,0.3)', color: '#ff4444', fontSize: 10, fontWeight: 800 }}>
+            <ShieldAlert size={11} /> ТРАВМА
+          </span>
+        )}
         <div style={{ flex: 1 }}>
           <h3 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{ticket.title}</h3>
           {ticket.subtitle && <p style={{ fontSize: 12, marginTop: 4, color: 'var(--text-muted)', fontWeight: 500 }}>{ticket.subtitle}</p>}
@@ -156,8 +161,15 @@ const TicketCard = ({ ticket, columnId, isList = false, isNew = false }) => {
         ...cardStyle 
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <span className={`badge ${clubClass}`} style={{ padding: '4px 12px', borderRadius: 8, fontSize: 9 }}>{ticket.club || '4YOU'}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className={`badge ${clubClass}`} style={{ padding: '4px 12px', borderRadius: 8, fontSize: 9 }}>{ticket.club || '4YOU'}</span>
+          {ticket.isInjury && (
+            <span title="Была травма клиента" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 8, background: 'rgba(255,68,68,0.12)', border: '1px solid rgba(255,68,68,0.3)', color: '#ff4444', fontSize: 9, fontWeight: 800 }}>
+              <ShieldAlert size={10} /> ТРАВМА
+            </span>
+          )}
+        </div>
         <div style={{ width: 4, height: 4, borderRadius: '50%', background: priority.color || '#555' }} />
       </div>
 
@@ -211,6 +223,11 @@ const MobileTicketCard = ({ ticket, columnId, showStatus = false }) => {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span className={`badge ${clubClass}`} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 8.5 }}>{ticket.club || '4YOU'}</span>
+        {ticket.isInjury && (
+          <span title="Была травма клиента" style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '3px 6px', borderRadius: 6, background: 'rgba(255,68,68,0.12)', border: '1px solid rgba(255,68,68,0.3)', color: '#ff4444', fontSize: 8, fontWeight: 800 }}>
+            <ShieldAlert size={9} /> ТРАВМА
+          </span>
+        )}
         {/* При фильтре «ВСЕ» показываем статус на карточке */}
         {showStatus && col && (
           <span style={{ fontSize: 9, fontWeight: 800, color: col.color, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{col.label}</span>
@@ -248,6 +265,7 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub, isMobile 
   const [club, setClub] = useState('');
   const [priority, setPriority] = useState('medium');
   const [assignee, setAssignee] = useState('');
+  const [isInjury, setIsInjury] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isChef = user?.role === 'chef';
@@ -258,6 +276,7 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub, isMobile 
       setTitle('');
       setDescription('');
       setPriority('medium');
+      setIsInjury(false);
       setIsSubmitting(false);
       // Priority: 1. User's fixed club, 2. Active filter club, 3. Default (Chef gets empty, others 4YOU)
       const initialClub = user?.club || ((activeClub && activeClub !== 'ВСЕ') ? activeClub : (isChef ? '' : '4YOU'));
@@ -277,12 +296,19 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub, isMobile 
 
     setIsSubmitting(true);
     try {
+      // Травма клиента → обзвон на следующий день (напоминание пушится клубу
+      // автоматически, api/scheduled-reminders.js, ветка injury-followup)
+      const followUpDate = isInjury
+        ? new Date(Date.now() + 5 * 3600 * 1000 + 24 * 3600 * 1000).toISOString().slice(0, 10)
+        : null;
       await onAdd({
         title,
         description,
         club,
         priority,
         assignee,
+        isInjury,
+        ...(isInjury ? { followUpDate, followUpDone: false } : {}),
       });
       onClose();
     } catch (err) {
@@ -401,6 +427,46 @@ const CreateTicketModal = ({ isOpen, onClose, user, onAdd, activeClub, isMobile 
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setIsInjury(v => {
+                const next = !v;
+                if (next && (priority === 'low' || priority === 'medium')) setPriority('high');
+                return next;
+              })}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                background: isInjury ? 'rgba(255,68,68,0.1)' : 'var(--bg-secondary)',
+                border: isInjury ? '1px solid rgba(255,68,68,0.4)' : '1px solid var(--border)',
+                transition: 'all 0.15s',
+              }}
+            >
+              <div style={{
+                width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                border: `2px solid ${isInjury ? '#ff4444' : 'var(--border)'}`,
+                background: isInjury ? '#ff4444' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {isInjury && (
+                  <svg width="10" height="8" viewBox="0 0 11 9" fill="none">
+                    <path d="M1 4L4 7.5L10 1" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+              <ShieldAlert size={15} color={isInjury ? '#ff4444' : 'var(--text-muted)'} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: isInjury ? '#ff4444' : 'var(--text-primary)' }}>Была травма клиента</div>
+                {isInjury && (
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>
+                    Завтра клубу придёт напоминание позвонить и узнать самочувствие. Прикрепите справки в переписку заявки при получении.
+                  </div>
+                )}
+              </div>
+            </button>
           </div>
 
           <div>

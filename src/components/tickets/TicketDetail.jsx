@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, Star, Home, Edit2, Play, Pause, Clock, CheckCircle, 
+  ArrowLeft, Star, Home, Edit2, Play, Pause, Clock, CheckCircle,
   Smile, Paperclip, Send, MessageSquare, User, Calendar, BookOpen,
-  Package, X, RefreshCw, Trash2
+  Package, X, RefreshCw, Trash2, ShieldAlert
 } from 'lucide-react';
 import { useTickets } from '../../store/TicketContext';
 import { formatAuthor } from '../../utils/formatters';
@@ -522,6 +522,39 @@ const TicketDetail = () => {
           </button>
         </div>
       </div>
+      )}
+
+      {/* ── Травма клиента: бейдж + статус обзвона на следующий день ── */}
+      {ticket.isInjury && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          marginBottom: isMobile ? 10 : 14, padding: isMobile ? '10px 12px' : '12px 16px',
+          borderRadius: 14, background: 'rgba(255,68,68,0.08)', border: '1px solid rgba(255,68,68,0.3)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 200 }}>
+            <ShieldAlert size={16} color="#ff4444" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: '#ff4444', letterSpacing: '0.03em' }}>ТРАВМА КЛИЕНТА</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 1 }}>
+                {ticket.followUpDone
+                  ? 'Клиенту позвонили, состояние уточнено ✓'
+                  : `Нужно созвониться ${ticket.followUpDate ? '(' + ticket.followUpDate.split('-').reverse().join('.') + ')' : 'на следующий день'} — узнать самочувствие. Справки прикрепите в переписку ниже.`}
+              </div>
+            </div>
+          </div>
+          {!ticket.followUpDone && (
+            <button
+              onClick={() => updateTicket && ticket?.id && updateTicket(ticket.id, { followUpDone: true, followUpDoneAtISO: new Date().toISOString(), followUpDoneBy: user?.email || '' })}
+              style={{
+                padding: '7px 12px', borderRadius: 10, border: '1px solid rgba(95,156,129,0.4)',
+                background: 'rgba(95,156,129,0.1)', color: '#5F9C81', fontSize: 11, fontWeight: 800,
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+              }}
+            >
+              ✓ Созвонились
+            </button>
+          )}
+        </div>
       )}
 
       {/* 2-col layout; на мобильном — одна колонка, инфо-блок уходит вниз */}
