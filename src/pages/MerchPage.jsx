@@ -680,6 +680,33 @@ const MerchPage = () => {
   const myTransfersList = (isChef || isKomdir || marketingExtra || isLostviewerFull) ? merchTransfers
     : merchTransfers.filter(t => t.fromClub === myTransferClub || t.toClub === myTransferClub);
 
+  // Пульсометры: продажа/выдача сначала списывает то, что менеджер сегодня
+  // принёс на ресепшен (hr_monitor_reception_stock — отдельный от merch_products.stock
+  // бухгалтерский счётчик, см. вкладку «Сейчас на ресепшене» в Пульсометрах).
+  // Best-effort: баланс не уходит ниже 0, ошибка НЕ блокирует саму продажу.
+  const deductReceptionStock = async (club, qty, cashierName) => {
+    try {
+      const ref = doc(db, 'hr_monitor_reception_stock', club);
+      let deducted = 0;
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        const balance = snap.exists() ? (snap.data().balance || 0) : 0;
+        deducted = Math.min(qty, balance);
+        if (deducted <= 0) return;
+        tx.set(ref, { club, balance: balance - deducted, updatedAt: serverTimestamp() }, { merge: true });
+      });
+      if (deducted > 0) {
+        await addDoc(collection(db, 'hr_monitor_reception_log'), {
+          club, type: 'sale_deduct', delta: -deducted,
+          note: `Продажа/выдача: ${qty} шт.`,
+          createdBy: cashierName, createdAt: serverTimestamp(),
+        });
+      }
+    } catch (err) {
+      console.warn('reception stock deduct failed:', err.message);
+    }
+  };
+
   const handleCreateSale = async (e) => {
     e.preventDefault();
     const qty = parseInt(saleForm.qty) || 0;
@@ -741,6 +768,10 @@ const MerchPage = () => {
           updatedAt: serverTimestamp(),
         });
       });
+
+      if ((selectedProductForSale.name || '').trim().toLowerCase() === 'пульсометр') {
+        deductReceptionStock(selectedProductForSale.club, qty, user?.name || user?.email || 'Менеджер');
+      }
 
       toast.success(isFree ? 'Товар выдан бесплатно!' : 'Продажа успешно проведена!');
       pushNotify({

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Heart, Plus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer, Package } from 'lucide-react';
+import { Heart, Plus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer, Package, Store } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, query, orderBy, where, getDocs
+  doc, serverTimestamp, query, orderBy, where, getDocs, setDoc, runTransaction
 } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -157,6 +157,14 @@ const HRMonitorsPage = () => {
   const [deliveryDate,   setDeliveryDate]   = useState(new Date().toISOString().slice(0, 10));
   const [addingDelivery, setAddingDelivery] = useState(false);
 
+  // «Сейчас на ресепшене» tab state — баланс переносится изо дня в день,
+  // менеджер пополняет, продажа «Пульсометр» в Merch списывает автоматически.
+  const [receptionBalance, setReceptionBalance] = useState(0);
+  const [receptionLog,     setReceptionLog]     = useState([]);
+  const [receptionAddQty,  setReceptionAddQty]  = useState('');
+  const [receptionNote,    setReceptionNote]    = useState('');
+  const [addingReception,  setAddingReception]  = useState(false);
+
   const canSeeActivity = isChef || user?.role === 'manager';
   const todayStr = new Date().toISOString().slice(0, 10);
   const [activityDate, setActivityDate] = useState(todayStr);
@@ -295,6 +303,78 @@ const HRMonitorsPage = () => {
   const handleDeleteDelivery = async (id) => {
     try {
       await deleteDoc(doc(db, 'hr_monitor_deliveries', id));
+    } catch (e) {
+      toast.error('Не удалось удалить запись');
+    }
+  };
+
+  // Reception balance subscription (переносится изо дня в день — один документ на клуб)
+  useEffect(() => {
+    if (!activeClub) return;
+    return onSnapshot(doc(db, 'hr_monitor_reception_stock', activeClub), snap => {
+      setReceptionBalance(snap.exists() ? (snap.data().balance || 0) : 0);
+    }, err => console.error('[hr_monitor_reception_stock]', err));
+  }, [activeClub]);
+
+  // Reception log subscription (журнал пополнений и списаний)
+  useEffect(() => {
+    if (!activeClub) return;
+    const q = query(collection(db, 'hr_monitor_reception_log'), where('club', '==', activeClub));
+    return onSnapshot(q, snap => {
+      const items = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+      setReceptionLog(items);
+    }, err => console.error('[hr_monitor_reception_log]', err));
+  }, [activeClub]);
+
+  const handleAddReception = async () => {
+    const qty = parseInt(receptionAddQty, 10);
+    if (!qty || qty <= 0) return;
+    setAddingReception(true);
+    try {
+      const ref = doc(db, 'hr_monitor_reception_stock', activeClub);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        const balance = snap.exists() ? (snap.data().balance || 0) : 0;
+        tx.set(ref, { club: activeClub, balance: balance + qty, updatedAt: serverTimestamp() }, { merge: true });
+      });
+      await addDoc(collection(db, 'hr_monitor_reception_log'), {
+        club: activeClub, type: 'manager_add', delta: qty,
+        note: receptionNote.trim() || '',
+        createdBy: user?.displayName || user?.email || 'Неизвестно',
+        createdAt: serverTimestamp(),
+      });
+      setReceptionAddQty('');
+      setReceptionNote('');
+      toast.success(`Добавлено ${qty} шт. на ресепшен`);
+      pushNotify({
+        title: '🏪 Пульсометры на ресепшене',
+        body: `${activeClub}: добавлено ${qty} шт.${receptionNote.trim() ? ` (${receptionNote.trim()})` : ''}`,
+        club: activeClub,
+        excludeEmail: user?.email || '',
+        url: '/hr-monitors',
+      });
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    } finally {
+      setAddingReception(false);
+    }
+  };
+
+  const handleDeleteReceptionLog = async (entry) => {
+    try {
+      // Удаление пополнения откатывает баланс обратно (атомарно); списания от
+      // продаж не удаляем вручную — это исказит бухгалтерию склада Merch.
+      if (entry.type === 'manager_add') {
+        const ref = doc(db, 'hr_monitor_reception_stock', activeClub);
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref);
+          const balance = snap.exists() ? (snap.data().balance || 0) : 0;
+          tx.set(ref, { club: activeClub, balance: Math.max(0, balance - entry.delta), updatedAt: serverTimestamp() }, { merge: true });
+        });
+      }
+      await deleteDoc(doc(db, 'hr_monitor_reception_log', entry.id));
     } catch (e) {
       toast.error('Не удалось удалить запись');
     }
@@ -520,6 +600,7 @@ const HRMonitorsPage = () => {
           ...( !isAdmin ? [{ id: 'history',  label: 'История',    icon: History }] : [] ),
           ...( canSeeActivity ? [{ id: 'activity', label: 'Активность', icon: Activity }] : [] ),
           { id: 'delivery',  label: 'Поставка',    icon: Package },
+          { id: 'reception', label: 'Сейчас на ресепшене', icon: Store },
         ].map(tab => {
           const active = activeTab === tab.id;
           return (
@@ -1171,6 +1252,116 @@ const HRMonitorsPage = () => {
           </div>
         );
       })()}
+
+      {/* ── Сейчас на ресепшене ── */}
+      {activeTab === 'reception' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Balance card */}
+          <div style={{ background: 'rgba(95,156,129,0.08)', border: '1px solid rgba(95,156,129,0.25)', borderRadius: 16, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <Store size={28} color="#5F9C81" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: '#5F9C81', lineHeight: 1 }}>{receptionBalance} шт.</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginTop: 4 }}>
+                Сейчас на ресепшене · переносится на следующий день, списывается автоматически при продаже «Пульсометр» в Складе
+              </div>
+            </div>
+          </div>
+
+          {/* Add form */}
+          {canEdit && (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Пополнить (менеджер дал сегодня)</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Количество</label>
+                  <input
+                    type="number" min="1"
+                    placeholder="0"
+                    value={receptionAddQty}
+                    onChange={e => setReceptionAddQty(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddReception()}
+                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', outline: 'none', width: 100, textAlign: 'center' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1, minWidth: 140 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Примечание</label>
+                  <input
+                    placeholder="Опционально..."
+                    value={receptionNote}
+                    onChange={e => setReceptionNote(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddReception()}
+                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', outline: 'none', width: '100%' }}
+                  />
+                </div>
+                <button
+                  onClick={handleAddReception}
+                  disabled={addingReception || !receptionAddQty || parseInt(receptionAddQty, 10) <= 0}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 12,
+                    border: 'none', background: '#5F9C81', color: '#fff', fontSize: 13, fontWeight: 800,
+                    cursor: 'pointer', opacity: addingReception || !receptionAddQty || parseInt(receptionAddQty, 10) <= 0 ? 0.5 : 1, whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Plus size={15} /> Добавить
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Log list */}
+          {receptionLog.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed var(--border)', borderRadius: 20, color: 'var(--text-muted)', fontSize: 14, fontWeight: 600 }}>
+              Записей пока нет
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {receptionLog.map(entry => {
+                const isAdd = entry.delta > 0;
+                const color = isAdd ? '#5F9C81' : '#C08F4F';
+                const dateLabel = (() => {
+                  try { return format(new Date((entry.createdAt?.seconds ?? 0) * 1000), 'd MMMM, HH:mm', { locale: ru }); } catch { return '—'; }
+                })();
+                return (
+                  <div key={entry.id} style={{
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderLeft: `3px solid ${color}`,
+                    borderRadius: 14, padding: '12px 16px',
+                    display: 'flex', alignItems: 'center', gap: 14,
+                  }}>
+                    <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: 12, background: `${color}20`, border: `1px solid ${color}40`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 18, fontWeight: 900, color, lineHeight: 1 }}>{isAdd ? '+' : ''}{entry.delta}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color, opacity: 0.7, textTransform: 'uppercase' }}>шт.</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 3 }}>
+                        {isAdd ? 'Пополнение' : 'Списано продажей'} · {dateLabel}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{isAdd ? 'Добавил' : 'Продал'}: {entry.createdBy}</span>
+                        {entry.note && (
+                          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: 6 }}>
+                            {entry.note}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {canDeleteDelivery && entry.type === 'manager_add' && (
+                      <button onClick={() => handleDeleteReceptionLog(entry)} style={{
+                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                        padding: 6, borderRadius: 8, lineHeight: 0, opacity: 0.4, flexShrink: 0, transition: 'opacity 0.15s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                      onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                      ><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );
