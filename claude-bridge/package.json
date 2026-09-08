@@ -1,0 +1,8 @@
+{
+  "name": "claude-bridge",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "firebase": "^12.0.0"
+  }
+}

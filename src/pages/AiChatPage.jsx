@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useTickets } from '../store/TicketContext';
+import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { Bot, Send, Loader2, RotateCcw, MessageSquare, Trash2, History, X } from 'lucide-react';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, doc } from 'firebase/firestore';
+import { Bot, Send, Loader2, RotateCcw, MessageSquare, Trash2, History, X, Sparkles } from 'lucide-react';
 import { isMobileDevice } from '../lib/isMobile';
 
 // ИИ-чат без ограничений (Claude/Gemini) — в отличие от «Помощника» (строго по
@@ -31,6 +31,84 @@ const AiChatPage = () => {
   const chatIdRef = useRef(null);
   chatIdRef.current = chatId;
 
+  // ── Режим Клода: шеф выдаёт АДРЕСНЫЙ доступ конкретному сотруднику на N часов
+  // (ai_chat_config/main.grants = [{email, name, untilISO}]). Пока грант активен —
+  // вопросы этого сотрудника идут через мост на ноутбуке (claude_chat_queue), иначе Gemini.
+  // Мост проверяет грант ещё раз на своей стороне — обойти с клиента нельзя. ──
+  const isChef = user?.role === 'chef';
+  const [cfg, setCfg] = useState(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const claudeSessRef = useRef(null); // claude session id текущего диалога (--resume)
+  useEffect(() => {
+    const iv = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(iv);
+  }, []);
+  useEffect(() => {
+    return onSnapshot(doc(db, 'ai_chat_config', 'main'), snap => setCfg(snap.exists() ? snap.data() : null), () => {});
+  }, []);
+  const nowISO = new Date(nowTick).toISOString();
+  const grants = (cfg?.grants || []).filter(g => g && g.email && g.untilISO);
+  const activeGrants = grants.filter(g => g.untilISO > nowISO);
+  const myGrant = activeGrants.find(g => (g.email || '').toLowerCase() === myEmail);
+  const claudeActive = !!myGrant;
+  const claudeLeftMin = claudeActive ? Math.max(1, Math.round((new Date(myGrant.untilISO) - nowTick) / 60000)) : 0;
+
+  // Кому можно выдать: менеджеры и шефы (включая самого себя)
+  const STAFF_OPTIONS = Object.entries(USER_ROLES)
+    .filter(([, p]) => p.role === 'manager' || p.role === 'chef')
+    .map(([email, p]) => ({ email, label: `${p.displayName || email}${p.club ? ' · ' + p.club : ''}` }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  const [grantEmail, setGrantEmail] = useState('');
+  const [grantHours, setGrantHours] = useState('');
+
+  const saveGrants = async (next) => {
+    try {
+      await setDoc(doc(db, 'ai_chat_config', 'main'), {
+        grants: next.filter(g => g.untilISO > new Date().toISOString()), // чистим истёкшие
+        setBy: myEmail, setAtISO: new Date().toISOString(),
+      }, { merge: true });
+    } catch {}
+  };
+  const grantAccess = async () => {
+    const hours = parseFloat(String(grantHours).replace(',', '.'));
+    if (!grantEmail || !Number.isFinite(hours) || hours <= 0 || hours > 720) return;
+    const opt = STAFF_OPTIONS.find(o => o.email === grantEmail);
+    const until = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+    await saveGrants([
+      ...grants.filter(g => (g.email || '').toLowerCase() !== grantEmail.toLowerCase()),
+      { email: grantEmail.toLowerCase(), name: opt?.label || grantEmail, untilISO: until, grantedAtISO: new Date().toISOString() },
+    ]);
+    setGrantEmail(''); setGrantHours('');
+  };
+  const revokeAccess = async (email) => {
+    await saveGrants(grants.filter(g => (g.email || '').toLowerCase() !== (email || '').toLowerCase()));
+  };
+
+  // Вопрос Клоду через мост: док в очередь → ждём ответ в этом же доке
+  const askClaude = (question) => new Promise(async (resolve) => {
+    let unsub = null, finished = false;
+    const finish = (answer) => { if (finished) return; finished = true; if (unsub) unsub(); resolve(answer); };
+    const timeout = setTimeout(() => finish('Клод не ответил за 3 минуты — возможно, мост на ноутбуке выключен. Отключите режим Клода или попробуйте позже.'), 200000);
+    try {
+      const qref = await addDoc(collection(db, 'claude_chat_queue'), {
+        question, owner: myEmail, sessionId: claudeSessRef.current || null,
+        status: 'pending', createdAtISO: new Date().toISOString(),
+      });
+      unsub = onSnapshot(qref, snap => {
+        const d = snap.data();
+        if (!d) return;
+        if (d.status === 'done' || d.status === 'error') {
+          clearTimeout(timeout);
+          if (d.sessionId) claudeSessRef.current = d.sessionId;
+          finish(d.answer || 'Пустой ответ от Клода.');
+        }
+      }, () => { clearTimeout(timeout); finish('Не удалось отправить вопрос Клоду.'); });
+    } catch {
+      clearTimeout(timeout);
+      finish('Не удалось отправить вопрос Клоду.');
+    }
+  });
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
   // Журнал: только свои диалоги
@@ -46,17 +124,17 @@ const AiChatPage = () => {
 
   const persist = async (finalMsgs) => {
     const clean = finalMsgs.filter(m => !m.pending && m.text).slice(-MAX_STORED_MSGS)
-      .map(m => ({ role: m.role, text: m.text }));
+      .map(m => ({ role: m.role, text: m.text, ...(m.via ? { via: m.via } : {}) }));
     if (clean.length === 0) return;
     const title = (clean.find(m => m.role === 'user')?.text || 'Диалог').slice(0, 60);
     try {
       if (chatIdRef.current) {
         await updateDoc(doc(db, 'ai_chats', chatIdRef.current), {
-          messages: clean, title, updatedAtISO: new Date().toISOString(),
+          messages: clean, title, claudeSessionId: claudeSessRef.current || null, updatedAtISO: new Date().toISOString(),
         });
       } else {
         const ref = await addDoc(collection(db, 'ai_chats'), {
-          owner: myEmail, title, messages: clean,
+          owner: myEmail, title, messages: clean, claudeSessionId: claudeSessRef.current || null,
           createdAtISO: new Date().toISOString(), updatedAtISO: new Date().toISOString(),
         });
         setChatId(ref.id);
@@ -67,7 +145,8 @@ const AiChatPage = () => {
   const openChat = (c) => {
     if (busy) return;
     setChatId(c.id);
-    setMsgs((c.messages || []).map(m => ({ role: m.role, text: m.text })));
+    setMsgs((c.messages || []).map(m => ({ role: m.role, text: m.text, via: m.via })));
+    claudeSessRef.current = c.claudeSessionId || null;
     setShowLog(false);
   };
 
@@ -75,6 +154,7 @@ const AiChatPage = () => {
     if (busy) return;
     setChatId(null);
     setMsgs([]);
+    claudeSessRef.current = null;
     setShowLog(false);
   };
 
@@ -93,17 +173,23 @@ const AiChatPage = () => {
     const history = msgs.filter(m => !m.pending && m.text).slice(-20).map(m => ({ role: m.role, text: m.text }));
     setBusy(true);
     setInput('');
-    setMsgs(m => [...m, { role: 'user', text: question }, { role: 'bot', text: '', pending: true }]);
+    const viaClaude = claudeActive;
+    setMsgs(m => [...m, { role: 'user', text: question }, { role: 'bot', text: '', pending: true, via: viaClaude ? 'claude' : 'gemini' }]);
     try {
-      const res = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ freeChat: true, question, role: user?.role || '', club: user?.club || null, history }),
-      });
-      const data = await res.json().catch(() => ({}));
-      const answer = data.answer || 'Не удалось получить ответ. Попробуйте ещё раз.';
+      let answer;
+      if (viaClaude) {
+        answer = await askClaude(question);
+      } else {
+        const res = await fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ freeChat: true, question, role: user?.role || '', club: user?.club || null, history }),
+        });
+        const data = await res.json().catch(() => ({}));
+        answer = data.answer || 'Не удалось получить ответ. Попробуйте ещё раз.';
+      }
       setMsgs(m => {
-        const next = m.map((x, i) => (i === m.length - 1 ? { role: 'bot', text: answer } : x));
+        const next = m.map((x, i) => (i === m.length - 1 ? { role: 'bot', text: answer, via: viaClaude ? 'claude' : 'gemini' } : x));
         persist(next);
         return next;
       });
@@ -181,7 +267,11 @@ const AiChatPage = () => {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>ИИ-чат</h1>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Спрашивайте о чём угодно — планы, тексты, расчёты, идеи</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+              {claudeActive
+                ? <span style={{ color: '#B36F5F', fontWeight: 800 }}>🧠 Отвечает Клод · ещё {claudeLeftMin >= 60 ? `${Math.floor(claudeLeftMin / 60)}ч ${claudeLeftMin % 60}м` : `${claudeLeftMin} мин`}</span>
+                : 'Спрашивайте о чём угодно — планы, тексты, расчёты, идеи'}
+            </div>
           </div>
           {isMobile ? (
             <button onClick={() => setShowLog(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
@@ -194,6 +284,48 @@ const AiChatPage = () => {
             </button>
           ))}
         </div>
+
+        {/* Панель шефа: адресная выдача доступа к Клоду (сотрудник + часы вручную) */}
+        {isChef && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', marginBottom: 12, borderRadius: 14, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <Sparkles size={13} /> Доступ к Клоду:
+              </span>
+              <select value={grantEmail} onChange={e => setGrantEmail(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, outline: 'none', maxWidth: 220 }}>
+                <option value="">— выбрать сотрудника —</option>
+                {STAFF_OPTIONS.map(o => <option key={o.email} value={o.email}>{o.label}</option>)}
+              </select>
+              <input
+                type="number" min="0.5" step="0.5" value={grantHours}
+                onChange={e => setGrantHours(e.target.value)}
+                placeholder="часов"
+                style={{ width: 80, padding: '7px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, outline: 'none' }}
+              />
+              <button onClick={grantAccess} disabled={!grantEmail || !parseFloat(String(grantHours).replace(',', '.'))}
+                style={{ padding: '7px 14px', borderRadius: 9, border: 'none', background: grantEmail && parseFloat(String(grantHours).replace(',', '.')) > 0 ? '#B36F5F' : 'var(--bg-hover)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                Дать доступ
+              </button>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)' }}>остальное время у всех — Gemini</span>
+            </div>
+            {activeGrants.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {activeGrants.map(g => {
+                  const left = Math.max(1, Math.round((new Date(g.untilISO) - nowTick) / 60000));
+                  return (
+                    <span key={g.email} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 9, background: 'rgba(179,111,95,0.1)', border: '1px solid rgba(179,111,95,0.35)', fontSize: 11.5, fontWeight: 800, color: '#B36F5F' }}>
+                      🧠 {g.name || g.email} · ещё {left >= 60 ? `${Math.floor(left / 60)}ч ${left % 60}м` : `${left} мин`}
+                      <button onClick={() => revokeAccess(g.email)} title="Отозвать доступ" style={{ background: 'none', border: 'none', color: '#B36F5F', cursor: 'pointer', padding: 0, lineHeight: 0 }}>
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 2px 12px' }}>
           {msgs.length === 0 && (
@@ -212,7 +344,7 @@ const AiChatPage = () => {
                 ) : (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 11, fontWeight: 800, color: '#B36F5F' }}>
-                      <Bot size={12} /> ИИ-чат
+                      <Bot size={12} /> {m.via === 'claude' ? '🧠 Клод' : 'ИИ-чат'}
                     </div>
                     {m.text}
                   </>
