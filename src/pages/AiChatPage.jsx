@@ -35,7 +35,9 @@ const AiChatPage = () => {
   // (ai_chat_config/main.grants = [{email, name, untilISO}]). Пока грант активен —
   // вопросы этого сотрудника идут через мост на ноутбуке (claude_chat_queue), иначе Gemini.
   // Мост проверяет грант ещё раз на своей стороне — обойти с клиента нельзя. ──
-  const isChef = user?.role === 'chef';
+  // Выдавать доступы к Клоду может ТОЛЬКО Дильшат — остальные (включая других
+  // шефов) панель не видят вообще
+  const canGrant = (user?.email || '').toLowerCase() === 'dilshat.r@hj.fit';
   const [cfg, setCfg] = useState(null);
   const [nowTick, setNowTick] = useState(Date.now());
   const claudeSessRef = useRef(null); // claude session id текущего диалога (--resume)
@@ -285,8 +287,8 @@ const AiChatPage = () => {
           ))}
         </div>
 
-        {/* Панель шефа: адресная выдача доступа к Клоду (сотрудник + часы вручную) */}
-        {isChef && (
+        {/* Панель выдачи доступа к Клоду — видит и пользуется только Дильшат */}
+        {canGrant && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', marginBottom: 12, borderRadius: 14, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -307,7 +309,6 @@ const AiChatPage = () => {
                 style={{ padding: '7px 14px', borderRadius: 9, border: 'none', background: grantEmail && parseFloat(String(grantHours).replace(',', '.')) > 0 ? '#B36F5F' : 'var(--bg-hover)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
                 Дать доступ
               </button>
-              <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)' }}>остальное время у всех — Gemini</span>
             </div>
             {activeGrants.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
