@@ -113,16 +113,27 @@ const AiChatPage = () => {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
-  // Журнал: только свои диалоги
+  // Журнал: у всех — только свои диалоги; Дильшат видит сессии ВСЕХ менеджеров
+  // (с именем владельца, в режиме просмотра)
+  const canViewAll = (user?.email || '').toLowerCase() === 'dilshat.r@hj.fit';
   useEffect(() => {
     if (!myEmail) return;
-    const q = query(collection(db, 'ai_chats'), where('owner', '==', myEmail));
+    const q = canViewAll
+      ? collection(db, 'ai_chats')
+      : query(collection(db, 'ai_chats'), where('owner', '==', myEmail));
     return onSnapshot(q, snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       list.sort((a, b) => (b.updatedAtISO || '').localeCompare(a.updatedAtISO || ''));
-      setChats(list.slice(0, 50));
+      setChats(list.slice(0, canViewAll ? 100 : 50));
     }, () => {});
-  }, [myEmail]);
+  }, [myEmail, canViewAll]);
+
+  const ownerName = (email) => {
+    const e = (email || '').toLowerCase();
+    if (e === myEmail) return null; // свои не подписываем
+    const p = USER_ROLES[e];
+    return p?.displayName || e.split('@')[0] || 'неизвестный';
+  };
 
   const persist = async (finalMsgs) => {
     const clean = finalMsgs.filter(m => !m.pending && m.text).slice(-MAX_STORED_MSGS)
@@ -144,11 +155,16 @@ const AiChatPage = () => {
     } catch { /* журнал не критичен для самого чата */ }
   };
 
+  // Чужой диалог открывается ТОЛЬКО на просмотр: писать в него нельзя,
+  // persist в чужой док не выполняется
+  const [viewingOwner, setViewingOwner] = useState(null);
   const openChat = (c) => {
     if (busy) return;
-    setChatId(c.id);
+    const foreign = (c.owner || '').toLowerCase() !== myEmail;
+    setViewingOwner(foreign ? (ownerName(c.owner) || c.owner) : null);
+    setChatId(foreign ? null : c.id);
     setMsgs((c.messages || []).map(m => ({ role: m.role, text: m.text, via: m.via })));
-    claudeSessRef.current = c.claudeSessionId || null;
+    claudeSessRef.current = foreign ? null : (c.claudeSessionId || null);
     setShowLog(false);
   };
 
@@ -156,6 +172,7 @@ const AiChatPage = () => {
     if (busy) return;
     setChatId(null);
     setMsgs([]);
+    setViewingOwner(null);
     claudeSessRef.current = null;
     setShowLog(false);
   };
@@ -171,7 +188,7 @@ const AiChatPage = () => {
 
   const ask = async (text) => {
     const question = (text ?? input).trim();
-    if (!question || busy) return;
+    if (!question || busy || viewingOwner) return;
     const history = msgs.filter(m => !m.pending && m.text).slice(-20).map(m => ({ role: m.role, text: m.text }));
     setBusy(true);
     setInput('');
@@ -240,7 +257,10 @@ const AiChatPage = () => {
           <MessageSquare size={13} style={{ color: chatId === c.id ? '#B36F5F' : 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'Диалог'}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{fmtWhen(c.updatedAtISO)} · {(c.messages || []).length} сообщ.</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>
+              {ownerName(c.owner) && <span style={{ color: '#5580A8', fontWeight: 800 }}>👤 {ownerName(c.owner)} · </span>}
+              {fmtWhen(c.updatedAtISO)} · {(c.messages || []).length} сообщ.
+            </div>
           </div>
           <button onClick={(e) => removeChat(e, c)} title="Удалить диалог" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 3, lineHeight: 0, opacity: 0.45, flexShrink: 0 }}>
             <Trash2 size={12} />
@@ -356,13 +376,20 @@ const AiChatPage = () => {
           <div ref={endRef} />
         </div>
 
+        {viewingOwner && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 8, borderRadius: 12, background: 'rgba(85,128,168,0.1)', border: '1px solid rgba(85,128,168,0.3)', fontSize: 12, fontWeight: 700, color: '#5580A8' }}>
+            👤 Просмотр диалога: {viewingOwner} — только чтение
+            <button onClick={newChat} style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(85,128,168,0.4)', background: 'transparent', color: '#5580A8', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>Закрыть</button>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={onKey}
             rows={1}
-            placeholder="Спросите что угодно…"
+            disabled={!!viewingOwner}
+            placeholder={viewingOwner ? 'Чужой диалог — только просмотр' : 'Спросите что угодно…'}
             style={{ flex: 1, resize: 'none', maxHeight: 120, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px 14px', fontSize: 14, color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5 }}
           />
           <button onClick={() => ask()} disabled={!input.trim() || busy} style={{
