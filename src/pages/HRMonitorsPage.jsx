@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Heart, Plus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer, Package, Store } from 'lucide-react';
+import { Heart, Plus, Minus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer, Package, Store } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
@@ -158,12 +158,16 @@ const HRMonitorsPage = () => {
   const [addingDelivery, setAddingDelivery] = useState(false);
 
   // «Сейчас на ресепшене» tab state — баланс переносится изо дня в день,
-  // менеджер пополняет, продажа «Пульсометр» в Merch списывает автоматически.
+  // менеджер пополняет, продажа «Пульсометр» в Merch списывает автоматически,
+  // а ручная выдача клиенту (без продажи, напр. на тренировку и обратно) — кнопкой «Списать».
   const [receptionBalance, setReceptionBalance] = useState(0);
   const [receptionLog,     setReceptionLog]     = useState([]);
   const [receptionAddQty,  setReceptionAddQty]  = useState('');
   const [receptionNote,    setReceptionNote]    = useState('');
   const [addingReception,  setAddingReception]  = useState(false);
+  const [receptionDeductQty,  setReceptionDeductQty]  = useState('');
+  const [receptionDeductNote, setReceptionDeductNote] = useState('');
+  const [deductingReception,  setDeductingReception]  = useState(false);
 
   const canSeeActivity = isChef || user?.role === 'manager';
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -362,11 +366,43 @@ const HRMonitorsPage = () => {
     }
   };
 
+  // Ручное списание — выдача пульсометра клиенту без продажи в Складе
+  // (напр. на тренировку и обратно, либо любая причина, не заведённая через Merch).
+  const handleManualDeduct = async () => {
+    const qty = parseInt(receptionDeductQty, 10);
+    if (!qty || qty <= 0) return;
+    setDeductingReception(true);
+    try {
+      const ref = doc(db, 'hr_monitor_reception_stock', activeClub);
+      let deducted = 0;
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        const balance = snap.exists() ? (snap.data().balance || 0) : 0;
+        deducted = Math.min(qty, balance);
+        tx.set(ref, { club: activeClub, balance: balance - deducted, updatedAt: serverTimestamp() }, { merge: true });
+      });
+      await addDoc(collection(db, 'hr_monitor_reception_log'), {
+        club: activeClub, type: 'manual_deduct', delta: -deducted,
+        note: receptionDeductNote.trim() || '',
+        createdBy: user?.displayName || user?.email || 'Неизвестно',
+        createdAt: serverTimestamp(),
+      });
+      setReceptionDeductQty('');
+      setReceptionDeductNote('');
+      if (deducted < qty) toast.warning(`Списано только ${deducted} из ${qty} — на ресепшене больше не было`);
+      else toast.success(`Списано ${qty} шт.`);
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    } finally {
+      setDeductingReception(false);
+    }
+  };
+
   const handleDeleteReceptionLog = async (entry) => {
     try {
-      // Удаление пополнения откатывает баланс обратно (атомарно); списания от
-      // продаж не удаляем вручную — это исказит бухгалтерию склада Merch.
-      if (entry.type === 'manager_add') {
+      // Удаление пополнения/ручного списания откатывает баланс обратно (атомарно);
+      // списания от продаж Merch не удаляем вручную — это исказит бухгалтерию склада.
+      if (entry.type === 'manager_add' || entry.type === 'manual_deduct') {
         const ref = doc(db, 'hr_monitor_reception_stock', activeClub);
         await runTransaction(db, async (tx) => {
           const snap = await tx.get(ref);
@@ -1309,6 +1345,47 @@ const HRMonitorsPage = () => {
             </div>
           )}
 
+          {/* Manual deduct form — выдача клиенту без продажи в Merch */}
+          {canEdit && (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Списать (выдали клиенту без продажи)</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Количество</label>
+                  <input
+                    type="number" min="1"
+                    placeholder="0"
+                    value={receptionDeductQty}
+                    onChange={e => setReceptionDeductQty(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualDeduct()}
+                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', outline: 'none', width: 100, textAlign: 'center' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1, minWidth: 140 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Примечание</label>
+                  <input
+                    placeholder="Опционально..."
+                    value={receptionDeductNote}
+                    onChange={e => setReceptionDeductNote(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualDeduct()}
+                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', outline: 'none', width: '100%' }}
+                  />
+                </div>
+                <button
+                  onClick={handleManualDeduct}
+                  disabled={deductingReception || !receptionDeductQty || parseInt(receptionDeductQty, 10) <= 0}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 12,
+                    border: 'none', background: '#C08F4F', color: '#fff', fontSize: 13, fontWeight: 800,
+                    cursor: 'pointer', opacity: deductingReception || !receptionDeductQty || parseInt(receptionDeductQty, 10) <= 0 ? 0.5 : 1, whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Minus size={15} /> Списать
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Log list */}
           {receptionLog.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed var(--border)', borderRadius: 20, color: 'var(--text-muted)', fontSize: 14, fontWeight: 600 }}>
@@ -1335,10 +1412,10 @@ const HRMonitorsPage = () => {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 3 }}>
-                        {isAdd ? 'Пополнение' : 'Списано продажей'} · {dateLabel}
+                        {entry.type === 'manager_add' ? 'Пополнение' : entry.type === 'sale_deduct' ? 'Списано продажей' : 'Списано вручную'} · {dateLabel}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{isAdd ? 'Добавил' : 'Продал'}: {entry.createdBy}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{isAdd ? 'Добавил' : 'Списал'}: {entry.createdBy}</span>
                         {entry.note && (
                           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: 6 }}>
                             {entry.note}
@@ -1346,7 +1423,7 @@ const HRMonitorsPage = () => {
                         )}
                       </div>
                     </div>
-                    {canDeleteDelivery && entry.type === 'manager_add' && (
+                    {canDeleteDelivery && (entry.type === 'manager_add' || entry.type === 'manual_deduct') && (
                       <button onClick={() => handleDeleteReceptionLog(entry)} style={{
                         background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
                         padding: 6, borderRadius: 8, lineHeight: 0, opacity: 0.4, flexShrink: 0, transition: 'opacity 0.15s',
