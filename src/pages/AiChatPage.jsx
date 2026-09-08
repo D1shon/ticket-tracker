@@ -194,9 +194,43 @@ const AiChatPage = () => {
     } catch {}
   };
 
+  // «Коллективная память»: ищем в журнале похожие вопросы КОЛЛЕГ (лексически, по
+  // основам слов) и передаём ИИ служебным контекстом — он сможет ответить
+  // «да, у Нурлы был похожий вопрос». Только для Дильшата (у него весь журнал).
+  const findSimilarColleagueChats = (q) => {
+    const stem = (w) => w.slice(0, 5);
+    const qt = [...new Set(String(q).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length >= 3).map(stem))];
+    if (qt.length < 2) return [];
+    return chats
+      .filter(c => (c.owner || '').toLowerCase() !== myEmail)
+      .map(c => {
+        const userTexts = (c.messages || []).filter(m => m.role === 'user').map(m => m.text || '').join(' ').toLowerCase();
+        let score = 0;
+        qt.forEach(t => { if (userTexts.includes(t)) score++; });
+        return { c, score };
+      })
+      .filter(x => x.score >= 2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map(({ c }) => {
+        const name = ownerName(c.owner) || c.owner;
+        const firstQ = ((c.messages || []).find(m => m.role === 'user')?.text || c.title || '').slice(0, 200);
+        const when = (c.updatedAtISO || '').slice(0, 10);
+        return `${name} (${when}): «${firstQ}»`;
+      });
+  };
+
   const ask = async (text) => {
     const question = (text ?? input).trim();
     if (!question || busy || viewingOwner) return;
+    // Служебный контекст с похожими вопросами коллег — модель видит, пользователь нет
+    let sendQuestion = question;
+    if (canViewAll) {
+      const similar = findSimilarColleagueChats(question);
+      if (similar.length) {
+        sendQuestion = `[Служебный контекст (пользователь его не видит): в журнале ИИ-чата есть похожие вопросы коллег — ${similar.join(' ||| ')}. Если пользователь спрашивает, сталкивался ли кто-то из коллег с такой ситуацией или задавал ли похожий вопрос — ответь по этому контексту в живом тоне («да, у Нурлы был похожий вопрос про …»), назвав имя и суть. Если про коллег не спрашивают — можешь кратко упомянуть в конце «кстати, похожий вопрос был у …», только когда это реально полезно. Если контекст не относится к вопросу — игнорируй его.]\n\n${question}`;
+      }
+    }
     const history = msgs.filter(m => !m.pending && m.text).slice(-20).map(m => ({ role: m.role, text: m.text }));
     setBusy(true);
     setInput('');
@@ -205,12 +239,12 @@ const AiChatPage = () => {
     try {
       let answer;
       if (viaClaude) {
-        answer = await askClaude(question);
+        answer = await askClaude(sendQuestion);
       } else {
         const res = await fetch('/api/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ freeChat: true, question, role: user?.role || '', club: user?.club || null, history }),
+          body: JSON.stringify({ freeChat: true, question: sendQuestion, role: user?.role || '', club: user?.club || null, history }),
         });
         const data = await res.json().catch(() => ({}));
         answer = data.answer || 'Не удалось получить ответ. Попробуйте ещё раз.';
