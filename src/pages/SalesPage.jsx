@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { collection, query, onSnapshot, updateDoc, deleteDoc, doc, increment, serverTimestamp, where, runTransaction } from 'firebase/firestore';
+import { collection, query, onSnapshot, updateDoc, deleteDoc, doc, increment, serverTimestamp, where, runTransaction, orderBy, limit } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
@@ -70,15 +70,15 @@ const SalesPage = () => {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(query(collection(db, 'merch_sales')), snap => {
+    const q = query(collection(db, 'merch_sales'), orderBy('createdAt', 'desc'), limit(200));
+    const unsub = onSnapshot(q, snap => {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const list = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(s => {
           if (!s.createdAt?.seconds) return false;
           return format(new Date(s.createdAt.seconds * 1000), 'yyyy-MM-dd') === todayStr && s.qty > 0;
-        })
-        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        });
       setTodaySales(list);
     });
     return unsub;

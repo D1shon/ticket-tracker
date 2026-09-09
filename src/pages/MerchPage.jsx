@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import useSheetDrag from '../lib/useSheetDrag';
 import { 
   collection, query, onSnapshot, setDoc, doc, deleteDoc,
-  serverTimestamp, addDoc, updateDoc, increment, where, getDoc, runTransaction
+  serverTimestamp, addDoc, updateDoc, increment, where, getDoc, runTransaction, orderBy, limit
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { isMobileDevice } from '../lib/isMobile';
@@ -308,11 +308,10 @@ const MerchPage = () => {
     });
 
     setLoadingSales(true);
-    const qSales = query(collection(db, 'merch_sales'));
+    const qSales = query(collection(db, 'merch_sales'), orderBy('createdAt', 'desc'), limit(300));
     const unsubSales = onSnapshot(qSales, (snapshot) => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Sort sales by date desc
-      setSales(list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+      setSales(list);
       setLoadingSales(false);
     }, (error) => {
       console.error('Error fetching sales history:', error);
@@ -320,10 +319,10 @@ const MerchPage = () => {
     });
 
     setLoadingHistory(true);
-    const qHistory = query(collection(db, 'merch_history'));
+    const qHistory = query(collection(db, 'merch_history'), orderBy('createdAt', 'desc'), limit(200));
     const unsubHistory = onSnapshot(qHistory, (snapshot) => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setHistoryLogs(list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+      setHistoryLogs(list);
       setLoadingHistory(false);
     }, (error) => {
       console.error('Error fetching history logs:', error);
