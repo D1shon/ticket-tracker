@@ -760,7 +760,8 @@ const MerchPage = () => {
       else if (msg === 'SIZE_REQUIRED') toast.error('Выберите размер — у этого товара размерная сетка');
       else if (msg.startsWith('NOT_ENOUGH_SIZE')) toast.error(`Недостаточно размера ${msg.split(':')[1]} (остаток: ${msg.split(':')[2]} шт) — продажа НЕ проведена`);
       else if (msg.startsWith('NOT_ENOUGH')) toast.error(`Недостаточно товара на складе (фактический остаток: ${msg.split(':')[1]} шт) — продажа НЕ проведена`);
-      else toast.error('Ошибка проведения продажи — ничего не записано, попробуйте ещё раз');
+      else if (msg.includes('permission') || msg.includes('PERMISSION_DENIED')) toast.error('Нет прав — войдите заново (перезагрузите страницу)');
+      else toast.error(`Ошибка: ${msg || 'неизвестная'} — продажа НЕ проведена`);
     }
   };
 
