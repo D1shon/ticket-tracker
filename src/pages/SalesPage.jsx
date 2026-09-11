@@ -5,6 +5,7 @@ import { db, auth } from '../lib/firebase';
 import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
+import { reportSaleError } from '../lib/saleError';
 import { TrendingUp, ShoppingCart, Package, Search, Check, X, AlertTriangle, RotateCcw, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -210,14 +211,7 @@ const SalesPage = () => {
       setNotes('');
       setSelectedSalesperson('');
     } catch (err) {
-      console.error(err);
-      const msg = String(err?.message || '');
-      if (msg === 'PRODUCT_MISSING') toast.error('Карточка товара удалена со склада — продажа НЕ проведена. Обновите страницу.');
-      else if (msg === 'SIZE_REQUIRED') toast.error('Выберите размер — у этого товара размерная сетка');
-      else if (msg.startsWith('NOT_ENOUGH_SIZE')) toast.error(`Недостаточно размера ${msg.split(':')[1]} (остаток: ${msg.split(':')[2]} шт)`);
-      else if (msg.startsWith('NOT_ENOUGH')) toast.error(`Недостаточно товара (фактический остаток: ${msg.split(':')[1]} шт) — продажа НЕ проведена`);
-      else if (msg.includes('permission') || msg.includes('PERMISSION_DENIED')) toast.error('Нет прав — войдите заново (перезагрузите страницу)');
-      else toast.error(`Ошибка: ${msg || 'неизвестная'} — продажа НЕ проведена`);
+      reportSaleError(err);
     } finally {
       setSubmitting(false);
     }

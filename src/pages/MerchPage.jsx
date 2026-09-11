@@ -9,6 +9,7 @@ import { db, auth } from '../lib/firebase';
 import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
+import { reportSaleError } from '../lib/saleError';
 import { toast } from 'sonner';
 import { 
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
@@ -753,14 +754,7 @@ const MerchPage = () => {
       setSelectedProductForSale(null);
       setSaleForm({ qty: '1', paymentMethod: 'Kaspi', clientName: '', buyerType: 'client', customPrice: '', notes: '', isFree: false, freeReason: 'Бартер', salespersonName: '', size: '' });
     } catch (err) {
-      console.error(err);
-      const msg = String(err?.message || '');
-      if (msg === 'PRODUCT_MISSING') toast.error('Карточка товара удалена со склада — продажа НЕ проведена. Обновите страницу.');
-      else if (msg === 'SIZE_REQUIRED') toast.error('Выберите размер — у этого товара размерная сетка');
-      else if (msg.startsWith('NOT_ENOUGH_SIZE')) toast.error(`Недостаточно размера ${msg.split(':')[1]} (остаток: ${msg.split(':')[2]} шт) — продажа НЕ проведена`);
-      else if (msg.startsWith('NOT_ENOUGH')) toast.error(`Недостаточно товара на складе (фактический остаток: ${msg.split(':')[1]} шт) — продажа НЕ проведена`);
-      else if (msg.includes('permission') || msg.includes('PERMISSION_DENIED')) toast.error('Нет прав — войдите заново (перезагрузите страницу)');
-      else toast.error(`Ошибка: ${msg || 'неизвестная'} — продажа НЕ проведена`);
+      reportSaleError(err);
     }
   };
 

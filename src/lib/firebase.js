@@ -26,6 +26,29 @@ try {
 }
 export const db = _db;
 
+// Переполненный IndexedDB (фото товаров лежат base64 прямо в документах и
+// оседают в кэше на диске) валит записи с «Quota exceeded» — и лечится только
+// сбросом локального кэша. Данные при этом не теряются: всё живёт на сервере,
+// кэш пересоберётся с нуля при следующей загрузке.
+export const resetLocalCache = async () => {
+  try {
+    const { terminate, clearIndexedDbPersistence } = await import('firebase/firestore');
+    await terminate(_db);
+    await clearIndexedDbPersistence(_db);
+  } catch {
+    // clearIndexedDbPersistence падает, если открыты другие вкладки —
+    // сносим базы напрямую, это тот же результат
+    try {
+      const dbs = (await indexedDB.databases?.()) || [];
+      await Promise.all(
+        dbs.filter(d => /firestore/i.test(d.name || ''))
+           .map(d => new Promise(res => { const r = indexedDB.deleteDatabase(d.name); r.onsuccess = r.onerror = r.onblocked = () => res(); }))
+      );
+    } catch {}
+  }
+  window.location.reload();
+};
+
 // iOS/Safari в фоне рвёт соединение вкладки с IndexedDB — после возврата
 // Firestore не может писать («Connection to Indexed Database server lost»),
 // лечится только перезагрузкой. Проверяем кэш пробным чтением при каждом
