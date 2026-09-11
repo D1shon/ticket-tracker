@@ -162,12 +162,14 @@ const HRMonitorsPage = () => {
   const [activityDate, setActivityDate] = useState(todayStr);
 
   useEffect(() => {
-    // filter client-side to avoid composite index requirement
-    return onSnapshot(collection(db, 'hr_monitors'), snap => {
+    if (!activeClub) return;
+    // Равенство по club — безопасно без составного индекса; сортировка
+    // остаётся клиентской, как и раньше. Раньше грузилась вся сеть разом.
+    const q = query(collection(db, 'hr_monitors'), where('club', '==', activeClub));
+    return onSnapshot(q, snap => {
       setMonitors(
         snap.docs
           .map(d => ({ docId: d.id, ...d.data() }))
-          .filter(m => m.club === activeClub)
           .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
       );
     }, err => console.error('[hr_monitors]', err));

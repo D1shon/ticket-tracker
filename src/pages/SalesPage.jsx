@@ -62,13 +62,18 @@ const SalesPage = () => {
   const [saleSize, setSaleSize] = useState(''); // размер для товаров с размерной сеткой
 
   useEffect(() => {
+    if (!activeClub) return;
     setLoadingProducts(true);
-    const unsub = onSnapshot(query(collection(db, 'merch_products')), snap => {
+    // Эта страница всегда работает с одним клубом (у шефа — выбор, не «все сразу»),
+    // поэтому фильтр по клубу безопасен: равенство по одному полю не требует
+    // составного индекса Firestore.
+    const q = query(collection(db, 'merch_products'), where('club', '==', activeClub));
+    const unsub = onSnapshot(q, snap => {
       setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoadingProducts(false);
     }, err => { console.error(err); setLoadingProducts(false); });
     return unsub;
-  }, []);
+  }, [activeClub]);
 
   useEffect(() => {
     const q = query(collection(db, 'merch_sales'), orderBy('createdAt', 'desc'), limit(200));

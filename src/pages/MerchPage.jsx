@@ -294,7 +294,11 @@ const MerchPage = () => {
     notes: ''
   });
 
-  // ─── Firebase Subscriptions ────────────────────────────────────────────────
+  // НЕ фильтруем по клубу (в отличие от SalesPage/HRMonitorsPage): findDestProduct
+  // (ниже) ищет товар-близнеца в клубе-ПОЛУЧАТЕЛЕ при приёмке трансфера, а его
+  // может принимать шеф, глядя на страницу другого клуба — при фильтре товар
+  // получателя не находился бы, и код завёл бы дубль карточки вместо того чтобы
+  // обновить остаток (баг, который уже когда-то чинили — см. комментарий там же).
   useEffect(() => {
     setLoadingProducts(true);
     const qProducts = query(collection(db, 'merch_products'));
@@ -307,7 +311,11 @@ const MerchPage = () => {
       toast.error('Ошибка загрузки склада');
       setLoadingProducts(false);
     });
+    return unsubProducts;
+  }, []);
 
+  // ─── Firebase Subscriptions ────────────────────────────────────────────────
+  useEffect(() => {
     setLoadingSales(true);
     const qSales = query(collection(db, 'merch_sales'), orderBy('createdAt', 'desc'), limit(300));
     const unsubSales = onSnapshot(qSales, (snapshot) => {
@@ -338,7 +346,6 @@ const MerchPage = () => {
     }, (error) => console.error('Error fetching merch transfers:', error));
 
     return () => {
-      unsubProducts();
       unsubSales();
       unsubHistory();
       unsubTransfers();
