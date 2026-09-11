@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
-  setDoc, 
-  doc, 
-  serverTimestamp 
+import {
+  collection,
+  query,
+  onSnapshot,
+  setDoc,
+  doc,
+  documentId,
+  where,
+  serverTimestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import { format, subDays } from 'date-fns';
 import { db, auth } from '../lib/firebase';
 import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
@@ -28,8 +31,14 @@ export const ChecklistProvider = ({ children }) => {
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         // Authenticated session ready, attach live listener
-        const q = query(collection(db, 'checklists'));
-        
+        // Doc id = `${dateKey}_club_shift_card`, dateKey = yyyy-MM-dd — lexicographic
+        // order matches chronological order, so a range on the doc id itself bounds
+        // by date WITHOUT a composite index (single-field range, natively indexed).
+        // Without this the collection was read whole and grows every day forever;
+        // checklists older than 30 days are a rare lookup, not the everyday flow.
+        const cutoff = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+        const q = query(collection(db, 'checklists'), where(documentId(), '>=', cutoff));
+
         // Clean up previous subscription just in case
         if (unsubscribeChecklists) {
           unsubscribeChecklists();

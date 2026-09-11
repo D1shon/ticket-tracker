@@ -63,7 +63,14 @@ const useNewsAlert = (role) => {
     return () => window.removeEventListener('hj-news-seen', onSeen);
   }, []);
   useEffect(() => {
-    return onSnapshot(collection(db, 'news_posts'), snap => {
+    // Нужна только САМАЯ свежая дата по каждой вкладке — посты старше месяца
+    // на неё повлиять не могут. Диапазон по одному полю без orderBy/where по
+    // другому полю не требует составного индекса. Этот слушатель глобальный
+    // (сайдбар всегда смонтирован), поэтому раньше читал всю историю постов
+    // у каждого сотрудника на каждой сессии.
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const q = query(collection(db, 'news_posts'), where('postedAtISO', '>=', cutoff));
+    return onSnapshot(q, snap => {
       // Свежесть считаем ПО ВКЛАДКАМ: общая / менеджерам / отделу продаж —
       // точка горит, пока не открыта КАЖДАЯ вкладка с новым постом.
       let general = '', managers = '', sales = '';
