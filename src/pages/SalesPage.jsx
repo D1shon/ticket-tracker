@@ -390,14 +390,14 @@ const SalesPage = () => {
             borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 14, boxShadow: 'var(--shadow-card)',
             ...(isMobile ? {
               width: '100%',
-              // dvh, а не vh: на iOS vh считается по высоте БЕЗ панелей браузера,
-              // из-за чего низ шторки уезжает за пределы видимой области
-              maxHeight: '88dvh',
+              // Высоту ограничивает обёртка шторки (maxHeight:100% от оверлея), а не vh/dvh:
+              // vh на iOS меряется без панелей браузера, а dvh может быть не поддержан —
+              // тогда правило отбрасывается, форма растёт выше экрана и скролла нет вовсе.
+              flex: '1 1 auto',
+              minHeight: 0,
               overflowY: 'auto',
-              // Нижняя панель навигации (position:fixed, z-index 200) рисуется поверх
-              // шторки и перекрывает её низ. Без этого отступа кнопка «Провести продажу»
-              // оказывается под панелью, и до неё невозможно добраться.
-              paddingBottom: 'calc(64px + env(safe-area-inset-bottom) + 14px)',
+              WebkitOverflowScrolling: 'touch',
+              paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)',
               borderLeft: 'none', borderRight: 'none', borderBottom: 'none',
             } : {}),
           }}>
@@ -641,12 +641,16 @@ const SalesPage = () => {
           if (!isMobile) return formBox;
           // Мобильный — форма появляется шторкой снизу только когда выбран товар
           if (!selectedProduct) return null;
+          // zIndex 300 — выше нижней панели навигации (200): иначе она рисуется
+          // поверх шторки и перекрывает кнопку «Провести продажу»
           return ReactDOM.createPortal(
             <div
               onClick={() => { setSelectedProduct(null); setQty(1); setIsFree(false); }}
-              style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+              style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
             >
-              <div onClick={e => e.stopPropagation()} style={{ width: '100%' }}>{formBox}</div>
+              {/* maxHeight:100% от оверлея (а он ровно во весь экран) — это и есть
+                  потолок высоты шторки; форма внутри сжимается и скроллится сама */}
+              <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>{formBox}</div>
             </div>,
             document.body
           );

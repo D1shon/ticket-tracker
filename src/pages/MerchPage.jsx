@@ -3246,9 +3246,12 @@ const MerchPage = () => {
 
       {/* ─── MODAL: RECORD A SALE ─── */}
       {showSaleModal && selectedProductForSale && ReactDOM.createPortal(
-        /* Мобильный: модалка прижата к низу шторкой */
-        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-50 animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
-          <div ref={saleSheetRef} className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '90vh', maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
+        /* Мобильный: модалка прижата к низу шторкой.
+           z-[300] — выше нижней панели навигации (z-index 200), иначе она рисуется
+           поверх шторки и перекрывает кнопку «Провести чек» */
+        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-[300] animate-fade ${isMobile ? 'items-end p-0' : 'items-center p-4'}`}>
+          {/* maxHeight:100% от оверлея вместо 90vh: на iOS vh меряется без панелей браузера */}
+          <div ref={saleSheetRef} className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm relative flex flex-col" style={isMobile ? { maxHeight: '100%', minHeight: 0, maxWidth: '100%', borderRadius: '20px 20px 0 0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : { maxHeight: '90vh' }}>
             <div className="p-5 border-b border-[var(--border)] flex items-center justify-between">
               <h3 className="text-md font-black text-[var(--text-primary)] uppercase italic tracking-wider flex items-center gap-2">
                 <ShoppingCart size={18} className="text-emerald-400" />
@@ -3262,10 +3265,8 @@ const MerchPage = () => {
               </button>
             </div>
 
-            {/* Нижняя панель навигации (fixed, z-index 200) перекрывает шторку (z-50):
-                без отступа кнопка «Провести чек» оказывается под ней и недоступна */}
             <form onSubmit={handleCreateSale} data-sheet-scroll className="p-5 space-y-4 overflow-y-auto"
-              style={isMobile ? { paddingBottom: 'calc(64px + env(safe-area-inset-bottom) + 20px)' } : undefined}>
+              style={isMobile ? { minHeight: 0, paddingBottom: 'calc(env(safe-area-inset-bottom) + 20px)' } : undefined}>
               
               <div className="bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] overflow-hidden">
                 {/* Product image banner */}
