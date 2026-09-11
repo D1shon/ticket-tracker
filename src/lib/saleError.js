@@ -24,8 +24,18 @@ export const reportSaleError = (err) => {
   if (/permission/i.test(msg))           return toast.error('Нет прав — войдите заново (перезагрузите страницу)');
 
   if (isQuota(err, msg)) {
-    return toast.error('Переполнено хранилище — продажа НЕ проведена', {
-      description: 'Нажмите «Сбросить кэш»: данные не потеряются, страница перезагрузится. Если не помогло — проблема на сервере, нужна проверка тарифа Firestore.',
+    // resource-exhausted приходит С СЕРВЕРА (исчерпана суточная квота Firestore),
+    // QuotaExceededError — от браузера (переполнен IndexedDB на устройстве).
+    // Лечатся по-разному, поэтому разводим их, а код показываем для диагностики.
+    const code = err?.code || err?.name || '—';
+    if (err?.code === 'resource-exhausted') {
+      return toast.error('Квота Firestore исчерпана — продажа НЕ проведена', {
+        description: `Это лимит на стороне сервера, а не устройства — сброс кэша и другой телефон не помогут. Нужно проверить тариф проекта в Firebase (Spark → Blaze). Код: ${code}`,
+        duration: Infinity,
+      });
+    }
+    return toast.error('Переполнено хранилище устройства — продажа НЕ проведена', {
+      description: `Нажмите «Сбросить кэш»: данные не потеряются, страница перезагрузится. Код: ${code}`,
       duration: Infinity,
       action: { label: 'Сбросить кэш', onClick: () => resetLocalCache() },
     });
