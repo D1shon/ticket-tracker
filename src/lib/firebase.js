@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getFirestore, initializeFirestore, memoryLocalCache } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCPAitt8EX3ialTb2-_1FQimmlpw5blFYk",
@@ -14,13 +14,18 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Persistent local cache: data renders instantly from disk on startup,
-// the network only syncs deltas (also massively cuts Firestore reads)
+// Кэш В ПАМЯТИ, а не на диске. Дисковый (persistentLocalCache) экономил чтения,
+// но складывал в хранилище браузера всё, на что подписано приложение — а там
+// base64 внутри документов: вложения заявок до 900 КБ (TicketContext.uploadFile)
+// и фото товаров в merch_products. Хранилище origin переполнялось, и запись
+// падала с «Quota exceeded» — в том числе транзакция продажи. Сброс кэша не
+// лечил: после перезагрузки всё скачивалось обратно за секунды.
+// Цена решения — больше чтений Firestore (тариф Blaze, блокировок нет) и нет
+// работы оффлайн. Вернуть дисковый кэш можно будет, когда вложения и фото
+// переедут в Storage, а подписки перестанут тянуть коллекции целиком.
 let _db;
 try {
-  _db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  });
+  _db = initializeFirestore(app, { localCache: memoryLocalCache() });
 } catch {
   _db = getFirestore(app);
 }
