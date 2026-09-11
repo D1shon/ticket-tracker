@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, onSnapshot, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { REVIEW_BRANCHES, fetchReviews } from '../lib/reviews2gis';
 import { pushNotify } from '../lib/pushNotify';
@@ -13,7 +13,11 @@ export const useNotifications = () => useContext(NotificationContext);
 const STORAGE_KEY = 'app_notifications_v1';
 const READ_KEY = 'app_notifications_read_v1';
 
-import { USER_ROLES } from './TicketContext';
+import { USER_ROLES, useTickets } from './TicketContext';
+
+// Сколько новых заявок в одном обновлении считать догрузкой с сервера, а не
+// реальной активностью: в реальном времени они приходят по одной.
+const BULK_SYNC_THRESHOLD = 5;
 
 // ── Доступ к клубным уведомлениям ──
 // ВАЖНО: раньше клуб брался из легаси-ключа localStorage 'app_session_user',
@@ -101,6 +105,13 @@ function loadReadSet() {
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export const NotificationProvider = ({ children }) => {
+  // Список заявок берём у TicketContext (он снаружи нас в App.jsx) вместо своей
+  // подписки на коллекцию — см. эффект «Уведомления по изменениям заявок» ниже.
+  // Через ?. — чтобы перестановка провайдеров стоила потери уведомлений, а не
+  // падения всего приложения белым экраном. Без `|| []`: подстановка нового
+  // массива меняла бы зависимость эффекта на каждом рендере (цикл перерисовок).
+  const tickets = useTickets()?.tickets;
+
   // Email живой сессии (заполняется из Firebase Auth ниже; легаси app_session_user мёртв)
   const [currentUserEmail, setCurrentUserEmail] = useState(null);
   const currentEmailRef = useRef(null); // для слушателя тикетов (живёт дольше колбэка авторизации)
@@ -111,6 +122,7 @@ export const NotificationProvider = ({ children }) => {
   const [panelOpen, setPanelOpen] = useState(false);
   const [popupNotif, setPopupNotif] = useState(null);
   const prevTicketsRef = useRef(null); // null means "first load — don't fire"
+  const notifyEnabledRef = useRef(false); // выдавать уведомления? (выключено у админов и до входа)
   const pendingPopupRef = useRef([]);
   const popupTimerRef = useRef(null);
 
@@ -190,10 +202,8 @@ export const NotificationProvider = ({ children }) => {
     // подтверждения действий (toast.success/error по кнопкам) не затронуты.
   }, [currentUserEmail]);
 
-  // ─── Watch Firestore tickets ──────────────────────────────────────────────
+  // ─── Кто получает уведомления (по состоянию входа) ───────────────────────
   useEffect(() => {
-    let unsubscribeTickets = null;
-
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         // Email — из живой Firebase-сессии (анонимные служебные сессии не считаются)
@@ -209,10 +219,10 @@ export const NotificationProvider = ({ children }) => {
             setCurrentUserEmail(email);
             setNotifications([]);
             setReadIds(new Set());
-            if (unsubscribeTickets) {
-              unsubscribeTickets();
-              unsubscribeTickets = null;
-            }
+            // У админов уведомлений нет: глушим выдачу и сбрасываем базу сравнения,
+            // чтобы после перехода на обычный аккаунт не прилетела вся разница разом.
+            notifyEnabledRef.current = false;
+            prevTicketsRef.current = null;
             return;
           }
 
@@ -237,113 +247,122 @@ export const NotificationProvider = ({ children }) => {
           setReadIds(loadedRead);
         }
 
-        if (unsubscribeTickets) return; // Already listening
-
-        // No orderBy — mixed Timestamp/string types in createdAt crash Firestore SDK.
-        const q = query(collection(db, 'tickets'));
-        unsubscribeTickets = onSnapshot(q, (snapshot) => {
-          const currentTickets = {};
-          snapshot.docs.forEach(d => { currentTickets[d.id] = { id: d.id, ...d.data() }; });
-
-          // Skip first load — just memorize current state
-          if (prevTicketsRef.current === null) {
-            prevTicketsRef.current = currentTickets;
-            return;
-          }
-
-          const prev = prevTicketsRef.current;
-
-          snapshot.docChanges().forEach(change => {
-            const ticket = { id: change.doc.id, ...change.doc.data() };
-            const oldTicket = prev[ticket.id];
-
-            // ── New ticket created ──
-            if (change.type === 'added' && !oldTicket) {
-              // Only notify if this ticket belongs to the user's club
-              if (!emailCanSeeClub(currentEmailRef.current, ticket.club)) return;
-              pushNotification(
-                EVENT_TYPES.NEW_TICKET,
-                '🆕 Новая заявка',
-                `"${ticket.title || 'Без названия'}"`,
-                { ticketId: ticket.id, ticketTitle: ticket.title, club: ticket.club, authorEmail: ticket.createdByEmail || '' }
-              );
-              return;
-            }
-
-            if (change.type === 'modified' && oldTicket) {
-              // Skip notifications for tickets outside the user's club
-              if (!emailCanSeeClub(currentEmailRef.current, ticket.club)) return;
-
-              // ── Status changed ──
-              if (oldTicket.status !== ticket.status && ticket.status) {
-                const statusInfo = STATUS_LABELS[ticket.status] || { label: ticket.status, icon: '🔔', color: '#7D6FB3' };
-                pushNotification(
-                  EVENT_TYPES.STATUS_CHANGE,
-                  `${statusInfo.icon} ${statusInfo.label}`,
-                  `Заявка: "${ticket.title || 'Без названия'}"`,
-                  { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status, club: ticket.club, authorEmail: ticket.lastActionBy || '' }
-                );
-              }
-
-              // ── New comment / message ──
-              const oldComments = oldTicket.comments || [];
-              const newComments = ticket.comments || [];
-              if (newComments.length > oldComments.length) {
-                const added = newComments.slice(oldComments.length);
-                added.forEach(comment => {
-                  const hasFile = !!comment.attachment;
-                  const hasText = comment.text && comment.text.trim().length > 0;
-
-                  const commentMeta = { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, authorEmail: comment.authorEmail || '', club: ticket.club };
-                  if (hasFile && hasText) {
-                    pushNotification(
-                      EVENT_TYPES.FILE_ATTACHED,
-                      `📎 Сообщение с файлом`,
-                      `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                      commentMeta
-                    );
-                  } else if (hasFile) {
-                    pushNotification(
-                      EVENT_TYPES.FILE_ATTACHED,
-                      `📎 Прикреплён файл`,
-                      `В заявке "${ticket.title || 'Без названия'}" — ${comment.attachment.name || 'файл'}`,
-                      commentMeta
-                    );
-                  } else if (hasText) {
-                    pushNotification(
-                      EVENT_TYPES.NEW_MESSAGE,
-                      `💬 Новое сообщение`,
-                      `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
-                      commentMeta
-                    );
-                  }
-                });
-              }
-            }
-          });
-
-          prevTicketsRef.current = currentTickets;
-        }, (error) => {
-          console.error('Notification watcher error:', error);
-        });
+        // Сами уведомления считает отдельный эффект ниже — по списку заявок,
+        // который уже держит TicketContext. Здесь только разрешаем их выдачу.
+        notifyEnabledRef.current = true;
       } else {
         setCurrentUserEmail(null);
         setNotifications([]);
         setReadIds(new Set());
         prevTicketsRef.current = null;
-        if (unsubscribeTickets) {
-          unsubscribeTickets();
-          unsubscribeTickets = null;
-        }
+        notifyEnabledRef.current = false;
       }
     });
 
     return () => {
       unsubscribeAuth();
-      if (unsubscribeTickets) unsubscribeTickets();
       if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
     };
   }, [pushNotification]);
+
+  // ─── Уведомления по изменениям заявок ────────────────────────────────────
+  // Раньше здесь была ВТОРАЯ подписка на всю коллекцию tickets: та же история
+  // заявок скачивалась второй раз за сессию и вторично оплачивалась (Firestore
+  // считает чтения по документам и не знает, что оба запроса из одной вкладки).
+  // Теперь берём готовый список из TicketContext и сравниваем его с предыдущим —
+  // ровно то, что этот код и делал, только без своей загрузки.
+  useEffect(() => {
+    if (!notifyEnabledRef.current || !tickets) return;
+
+    // temp_ — оптимистичные заявки, ещё не подтверждённые сервером. Они исчезнут,
+    // получив настоящий id, и дали бы автору ложное «новая заявка».
+    const current = {};
+    tickets.forEach(t => {
+      if (!String(t.id).startsWith('temp_')) current[t.id] = t;
+    });
+
+    // Первый увиденный список — только запоминаем, не уведомляем.
+    if (prevTicketsRef.current === null) {
+      prevTicketsRef.current = current;
+      return;
+    }
+
+    const prev = prevTicketsRef.current;
+    const addedIds = Object.keys(current).filter(id => !prev[id]);
+
+    // Заявки в реальном времени приходят поштучно. Десяток разом — это не работа
+    // сотрудников, а догрузка с сервера поверх холодного кеша: молча принимаем
+    // новый список за базу сравнения, иначе посыпался бы шквал «новая заявка».
+    if (addedIds.length > BULK_SYNC_THRESHOLD) {
+      prevTicketsRef.current = current;
+      return;
+    }
+
+    addedIds.forEach(id => {
+      const ticket = current[id];
+      if (!emailCanSeeClub(currentEmailRef.current, ticket.club)) return;
+      pushNotification(
+        EVENT_TYPES.NEW_TICKET,
+        '🆕 Новая заявка',
+        `"${ticket.title || 'Без названия'}"`,
+        { ticketId: ticket.id, ticketTitle: ticket.title, club: ticket.club, authorEmail: ticket.createdByEmail || '' }
+      );
+    });
+
+    Object.keys(current).forEach(id => {
+      const oldTicket = prev[id];
+      if (!oldTicket) return; // новая — уже обработана выше
+      const ticket = current[id];
+      if (!emailCanSeeClub(currentEmailRef.current, ticket.club)) return;
+
+      // ── Статус изменился ──
+      if (oldTicket.status !== ticket.status && ticket.status) {
+        const statusInfo = STATUS_LABELS[ticket.status] || { label: ticket.status, icon: '🔔', color: '#7D6FB3' };
+        pushNotification(
+          EVENT_TYPES.STATUS_CHANGE,
+          `${statusInfo.icon} ${statusInfo.label}`,
+          `Заявка: "${ticket.title || 'Без названия'}"`,
+          { ticketId: ticket.id, ticketTitle: ticket.title, status: ticket.status, club: ticket.club, authorEmail: ticket.lastActionBy || '' }
+        );
+      }
+
+      // ── Новый комментарий / сообщение ──
+      const oldComments = oldTicket.comments || [];
+      const newComments = ticket.comments || [];
+      if (newComments.length > oldComments.length) {
+        newComments.slice(oldComments.length).forEach(comment => {
+          const hasFile = !!comment.attachment;
+          const hasText = comment.text && comment.text.trim().length > 0;
+
+          const commentMeta = { ticketId: ticket.id, ticketTitle: ticket.title, author: comment.author, authorEmail: comment.authorEmail || '', club: ticket.club };
+          if (hasFile && hasText) {
+            pushNotification(
+              EVENT_TYPES.FILE_ATTACHED,
+              `📎 Сообщение с файлом`,
+              `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
+              commentMeta
+            );
+          } else if (hasFile) {
+            pushNotification(
+              EVENT_TYPES.FILE_ATTACHED,
+              `📎 Прикреплён файл`,
+              `В заявке "${ticket.title || 'Без названия'}" — ${comment.attachment.name || 'файл'}`,
+              commentMeta
+            );
+          } else if (hasText) {
+            pushNotification(
+              EVENT_TYPES.NEW_MESSAGE,
+              `💬 Новое сообщение`,
+              `В заявке "${ticket.title || 'Без названия'}": ${comment.text.slice(0, 60)}${comment.text.length > 60 ? '…' : ''}`,
+              commentMeta
+            );
+          }
+        });
+      }
+    });
+
+    prevTicketsRef.current = current;
+  }, [tickets, pushNotification]);
 
   // ─── Scheduled reminders: ping the server inside notification windows ────
   // Covers: checklists 5 min before shifts, daily check-in 6:30, monitors &
