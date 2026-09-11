@@ -3262,7 +3262,10 @@ const MerchPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateSale} data-sheet-scroll className="p-5 space-y-4 overflow-y-auto">
+            {/* Нижняя панель навигации (fixed, z-index 200) перекрывает шторку (z-50):
+                без отступа кнопка «Провести чек» оказывается под ней и недоступна */}
+            <form onSubmit={handleCreateSale} data-sheet-scroll className="p-5 space-y-4 overflow-y-auto"
+              style={isMobile ? { paddingBottom: 'calc(64px + env(safe-area-inset-bottom) + 20px)' } : undefined}>
               
               <div className="bg-[var(--bg-primary)] rounded-2xl border border-[var(--border)] overflow-hidden">
                 {/* Product image banner */}

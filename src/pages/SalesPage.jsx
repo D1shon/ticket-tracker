@@ -388,7 +388,18 @@ const SalesPage = () => {
           <div style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
             borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 14, boxShadow: 'var(--shadow-card)',
-            ...(isMobile ? { width: '100%', maxHeight: '88vh', overflowY: 'auto', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' } : {}),
+            ...(isMobile ? {
+              width: '100%',
+              // dvh, а не vh: на iOS vh считается по высоте БЕЗ панелей браузера,
+              // из-за чего низ шторки уезжает за пределы видимой области
+              maxHeight: '88dvh',
+              overflowY: 'auto',
+              // Нижняя панель навигации (position:fixed, z-index 200) рисуется поверх
+              // шторки и перекрывает её низ. Без этого отступа кнопка «Провести продажу»
+              // оказывается под панелью, и до неё невозможно добраться.
+              paddingBottom: 'calc(64px + env(safe-area-inset-bottom) + 14px)',
+              borderLeft: 'none', borderRight: 'none', borderBottom: 'none',
+            } : {}),
           }}>
             <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 10 }}>Оформить</div>
 
