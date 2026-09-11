@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Heart, Plus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer, Package } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, query, orderBy, where, getDocs, setDoc
+  doc, serverTimestamp, query, orderBy, where, getDocs
 } from 'firebase/firestore';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { isMobileDevice } from '../lib/isMobile';
@@ -112,123 +112,6 @@ const getEmployeesWithShifts = async (club, date) => {
   } catch { return []; }
 };
 
-// ── «Сейчас на ресепшене»: тот же учёт, что и у полотенец — принято утром,
-// осталось вечером (вручную), отдали (считается автоматически). Остаток
-// переносится на завтра как «было вчера».
-const inputStRecep = (mobile) => ({
-  background: 'var(--bg-hover)', border: '1px solid var(--border)',
-  borderRadius: mobile ? 10 : 8, padding: mobile ? '12px 10px' : '7px 10px',
-  fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', outline: 'none',
-  width: mobile ? 86 : 76, textAlign: 'center', fontVariantNumeric: 'tabular-nums', boxSizing: 'border-box',
-});
-
-const ReceptionStatCell = ({ label, value, color }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-    <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: 'center' }}>{label}</span>
-    <span style={{ fontSize: 24, fontWeight: 900, color: color || 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-      {value ?? <span style={{ opacity: 0.25, fontWeight: 500, fontSize: 18 }}>—</span>}
-    </span>
-  </div>
-);
-
-const ReceptionOp = ({ symbol }) => (
-  <span style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 300, alignSelf: 'flex-end', paddingBottom: 4, opacity: 0.5 }}>{symbol}</span>
-);
-
-const ReceptionDayCard = ({ date, club, record, prevCarry, prevShortage, isToday, canEdit, onSave, isMobile }) => {
-  const isFirstDay = prevCarry === null;
-  const [received,    setReceived]    = useState('');
-  const [totalManual, setTotalManual] = useState('');
-  const [actualCount, setActualCount] = useState('');
-
-  useEffect(() => {
-    if (record?.received    != null) setReceived(String(record.received));
-    if (record?.totalManual != null) setTotalManual(String(record.totalManual));
-    if (record?.actualCount != null) setActualCount(String(record.actualCount));
-  }, [record?.received, record?.totalManual, record?.actualCount]);
-
-  const num = (v) => (v === '' ? null : Number(v));
-  const rc = num(received), tm = num(totalManual), ac = num(actualCount);
-  const total = isFirstDay ? (tm ?? rc) : (prevCarry !== null && rc !== null) ? prevCarry + rc : rc;
-  const given = (total !== null && ac !== null) ? total - ac : null;
-
-  const saveAll = () => onSave(date, { received: rc, totalManual: tm, actualCount: ac });
-  const dateLabel = format(new Date(date + 'T12:00:00'), 'd MMMM yyyy', { locale: ru });
-
-  return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid ' + (isToday ? 'rgba(125,111,179,0.35)' : 'var(--border)'),
-      borderRadius: 16, padding: isMobile ? '12px 14px' : '16px 20px',
-      boxShadow: isToday ? '0 4px 24px rgba(125,111,179,0.08)' : 'none',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)' }}>{dateLabel}</span>
-        {isToday && <span style={{ fontSize: 9, fontWeight: 800, background: 'var(--accent-purple)', color: '#fff', padding: '2px 8px', borderRadius: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>сегодня</span>}
-        {isFirstDay && <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(85,128,168,0.15)', color: '#5580A8', padding: '2px 8px', borderRadius: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>первый день</span>}
-        {prevShortage === -1 && (
-          <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#B06A6A', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <AlertTriangle size={10} /> Вчера не заполнили
-          </span>
-        )}
-      </div>
-
-      {/* Утро */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Утром — запас на день</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          {isFirstDay ? (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Принято</span>
-                {canEdit ? (
-                  <input type="number" min="0" value={received} onChange={e => setReceived(e.target.value)} onBlur={saveAll} style={inputStRecep(isMobile)} />
-                ) : <ReceptionStatCell label="" value={rc} />}
-              </div>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', alignSelf: 'flex-end', paddingBottom: 6 }}>всего утром:</span>
-              {canEdit ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: '#5580A8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Всего утром</span>
-                  <input type="number" min="0" value={totalManual} onChange={e => setTotalManual(e.target.value)} onBlur={saveAll} style={{ ...inputStRecep(isMobile), border: '1px solid #5580A8' }} />
-                </div>
-              ) : <ReceptionStatCell label="Всего утром" value={total} color="#5F9C81" />}
-            </>
-          ) : (
-            <>
-              <ReceptionStatCell label="Было вчера" value={prevCarry} color="#818cf8" />
-              <ReceptionOp symbol="+" />
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Принято</span>
-                {canEdit ? (
-                  <input type="number" min="0" value={received} onChange={e => setReceived(e.target.value)} onBlur={saveAll} style={inputStRecep(isMobile)} />
-                ) : <ReceptionStatCell label="" value={rc} />}
-              </div>
-              <ReceptionOp symbol="=" />
-              <ReceptionStatCell label="Всего утром" value={total} color="#5F9C81" />
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Вечер */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Вечером — итог</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <ReceptionStatCell label="Всего утром" value={total} color="#5F9C81" />
-          <ReceptionOp symbol="−" />
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 70 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Осталось вечером</span>
-            {canEdit ? (
-              <input type="number" min="0" value={actualCount} onChange={e => setActualCount(e.target.value)} onBlur={saveAll} style={{ ...inputStRecep(isMobile), border: '1px solid rgba(129,140,248,0.5)' }} />
-            ) : <ReceptionStatCell label="" value={ac} color="#818cf8" />}
-          </div>
-          <ReceptionOp symbol="=" />
-          <ReceptionStatCell label="Отдали" value={given} color="#C08F4F" />
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const HRMonitorsPage = () => {
   const { user } = useTickets();
   const isChef    = user?.role === 'chef' || user?.role === 'viewer';
@@ -273,10 +156,6 @@ const HRMonitorsPage = () => {
   const [deliveryNote,   setDeliveryNote]   = useState('');
   const [deliveryDate,   setDeliveryDate]   = useState(new Date().toISOString().slice(0, 10));
   const [addingDelivery, setAddingDelivery] = useState(false);
-
-  // «Сейчас на ресепшене» — тот же учёт, что у полотенец: принято утром,
-  // осталось вечером (вручную), отдали (авто), остаток переносится на завтра.
-  const [receptionRecords, setReceptionRecords] = useState({}); // date -> record
 
   const canSeeActivity = isChef || user?.role === 'manager';
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -420,73 +299,6 @@ const HRMonitorsPage = () => {
       toast.error('Не удалось удалить запись');
     }
   };
-
-  // Reception records subscription — day-card модель, как у полотенец
-  useEffect(() => {
-    if (!activeClub) return;
-    const q = query(collection(db, 'hr_monitor_reception_records'), where('club', '==', activeClub));
-    return onSnapshot(q, snap => {
-      const map = {};
-      snap.docs.forEach(d => { map[d.data().date] = { docId: d.id, ...d.data() }; });
-      setReceptionRecords(map);
-    }, err => console.error('[hr_monitor_reception_records]', err));
-  }, [activeClub]);
-
-  const todayReceptionStr = format(new Date(), 'yyyy-MM-dd');
-
-  const receptionDatesToShow = useMemo(() => {
-    const set = new Set([todayReceptionStr]);
-    Object.keys(receptionRecords).forEach(d => set.add(d));
-    return [...set].sort((a, b) => b.localeCompare(a));
-  }, [receptionRecords, todayReceptionStr]);
-
-  // Перенос: «осталось вечером» вчера = «было» сегодня
-  const getReceptionPrevCarry = useCallback((date) => {
-    const [y, m, d] = date.split('-').map(Number);
-    const prevDate = format(subDays(new Date(y, m - 1, d), 1), 'yyyy-MM-dd');
-    const prev = receptionRecords[prevDate];
-    if (!prev) return null;
-    return prev.actualCount ?? null;
-  }, [receptionRecords]);
-
-  const getReceptionPrevShortage = useCallback((date) => {
-    const [y, m, d] = date.split('-').map(Number);
-    const prevDate = format(subDays(new Date(y, m - 1, d), 1), 'yyyy-MM-dd');
-    const prev = receptionRecords[prevDate];
-    if (!prev) return null;
-    return prev.actualCount == null ? -1 : null;
-  }, [receptionRecords]);
-
-  const handleSaveReception = useCallback(async (date, fields) => {
-    if (!activeClub) return;
-    const prevCarry = getReceptionPrevCarry(date);
-    const isFirstDay = prevCarry === null;
-    const rc = fields.received ?? null;
-    const tm = fields.totalManual ?? null;
-    const ac = fields.actualCount ?? null;
-    const total = isFirstDay ? (tm ?? rc) : (prevCarry !== null && rc !== null) ? prevCarry + rc : rc;
-    const given = (total !== null && ac !== null) ? total - ac : null;
-
-    const docId = `${date}_${activeClub.replace(/\s+/g, '_')}`;
-    try {
-      await setDoc(doc(db, 'hr_monitor_reception_records', docId), {
-        date, club: activeClub,
-        received: rc, totalManual: tm, actualCount: ac, given,
-      }, { merge: true });
-      if (ac !== null) {
-        pushNotify({
-          title: '❤️ Пульсометры на ресепшене',
-          body: `${activeClub} за ${date}: всего ${total ?? '—'}, осталось ${ac}${given !== null ? `, отдали ${given}` : ''}`,
-          club: activeClub,
-          excludeEmail: user?.email || '',
-          url: '/hr-monitors',
-          tag: `hrm-recep-${date}-${activeClub}`,
-        });
-      }
-    } catch (e) {
-      toast.error('Не удалось сохранить');
-    }
-  }, [activeClub, getReceptionPrevCarry, user]);
 
   useEffect(() => {
     const close = () => setOpenDropdown(null);
@@ -708,7 +520,6 @@ const HRMonitorsPage = () => {
           ...( !isAdmin ? [{ id: 'history',  label: 'История',    icon: History }] : [] ),
           ...( canSeeActivity ? [{ id: 'activity', label: 'Активность', icon: Activity }] : [] ),
           { id: 'delivery',  label: 'Поставка',    icon: Package },
-          { id: 'reception', label: 'Сейчас на ресепшене', icon: Heart },
         ].map(tab => {
           const active = activeTab === tab.id;
           return (
@@ -1357,57 +1168,6 @@ const HRMonitorsPage = () => {
                 })}
               </div>
             )}
-          </div>
-        );
-      })()}
-
-      {/* ── Сейчас на ресепшене: принято / отдали / осталось (как у полотенец) ── */}
-      {activeTab === 'reception' && (() => {
-        const todayRec   = receptionRecords[todayReceptionStr];
-        const todayCarry = getReceptionPrevCarry(todayReceptionStr);
-        const todayRc    = todayRec?.received ?? null;
-        const todayTm    = todayRec?.totalManual ?? null;
-        const todayAc    = todayRec?.actualCount ?? null;
-        const todayIsFirst = todayCarry === null;
-        const todayTotal = todayIsFirst ? (todayTm ?? todayRc) : (todayCarry !== null && todayRc !== null) ? todayCarry + todayRc : todayRc;
-        const todayGiven = (todayTotal !== null && todayAc !== null) ? todayTotal - todayAc : null;
-
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-            {/* Today summary strip */}
-            {todayTotal !== null && (
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {[
-                  { label: 'Всего',   value: todayTotal, color: '#5F9C81', bg: 'rgba(95,156,129,0.08)' },
-                  { label: 'Осталось', value: todayAc,   color: '#818cf8', bg: 'rgba(129,140,248,0.08)' },
-                  { label: 'Отдали',  value: todayGiven, color: '#C08F4F', bg: 'rgba(192,143,79,0.08)' },
-                ].filter(s => s.value !== null).map(s => (
-                  <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.color}30`, borderRadius: 12, padding: '10px 18px', minWidth: 100 }}>
-                    <div style={{ fontSize: 22, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: s.color, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Day cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {receptionDatesToShow.map(date => (
-                <ReceptionDayCard
-                  key={date}
-                  date={date}
-                  club={activeClub}
-                  record={receptionRecords[date]}
-                  prevCarry={getReceptionPrevCarry(date)}
-                  prevShortage={getReceptionPrevShortage(date)}
-                  isToday={date === todayReceptionStr}
-                  canEdit={canEdit}
-                  onSave={handleSaveReception}
-                  isMobile={isMobile}
-                />
-              ))}
-            </div>
           </div>
         );
       })()}
