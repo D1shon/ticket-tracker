@@ -136,6 +136,39 @@ const NAV_GROUPS = [
   { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/leads', '/assistant', '/ai-chat'] },
 ];
 
+/* ─── Мобильная шторка «Ещё»: подписи плиток и секции по умолчанию ─── */
+const MOBILE_META = {
+  '/schedule':    { sub: 'смены и зарплата', sect: 1 },
+  '/checklists':  { sub: 'проверки и отчёт дня', sect: 1 },
+  '/news':        { sub: 'обновления и анонсы', sect: 1 },
+  '/attendance':  { sub: 'отметки прихода', sect: 1 },
+  '/shift-board': { sub: 'записи смены', sect: 1 },
+  '/tickets':     { sub: 'задачи с таймером', sect: 1 },
+  '/merch':       { sub: 'мерч: склад и учёт', sect: 2 },
+  '/sales':       { sub: 'продажа мерча', sect: 2 },
+  '/hr-monitors': { sub: 'проверка датчиков', sect: 2 },
+  '/first-aid':   { sub: 'состав и остатки', sect: 2 },
+  '/towels':      { sub: 'учёт полотенец', sect: 2 },
+  '/lost-items':  { sub: 'находки и возвраты', sect: 2 },
+  '/calendar':    { sub: 'оплаты, ТО, подрядчики', sect: 2 },
+  '/instudio':    { sub: 'техника — разработчикам', sect: 2 },
+  '/club-visits': { sub: 'посещения атлетов', sect: 2 },
+  '/reviews':     { sub: '2ГИС и другие', sect: 2 },
+  '/qr-reviews':  { sub: 'QR-стойки в залах', sect: 2 },
+  '/leads':       { sub: 'лиды WhatsApp', sect: 2 },
+  '/dashboard':   { sub: 'сводка и метрики', sect: 2 },
+  '/archive':     { sub: 'закрытые заявки', sect: 2 },
+  '/calls':       { sub: 'видеосвязь', sect: 3 },
+  '/guidebook':   { sub: 'база знаний', sect: 3 },
+  '/injury-protocol': { sub: 'действия при травмах', sect: 3 },
+  '/policy':      { sub: 'правила платформы', sect: 3 },
+  '/assistant':   { sub: 'ИИ по гайдбуку', sect: 3 },
+  '/ai-chat':     { sub: 'ИИ-чат без ограничений', sect: 3 },
+  '/staff':       { sub: 'аккаунты МОП', sect: 3 },
+  '/settings':    { sub: 'профиль и push', sect: 3 },
+};
+const MOBILE_SECTIONS = [[1, 'Каждый день'], [2, 'Работа клуба'], [3, 'Прочее']];
+
 const useNavGroups = () => {
   const [openGroups, setOpenGroups] = useState(() => {
     try { return JSON.parse(localStorage.getItem('hj_nav_groups') || '{}'); } catch { return {}; }
@@ -650,6 +683,147 @@ const MobileNav = () => {
   // Всё остальное — в «Ещё»
   const secondaryItems = allowedNav.filter(n => !mainTabPaths.includes(n.path));
 
+  // ── Персональная раскладка «Ещё» — ТА ЖЕ, что в левом меню десктопа
+  // (user_prefs/{email}.navLayout): настроил на одном устройстве — работает везде.
+  // По умолчанию — привычные секции «Каждый день / Работа клуба / Прочее».
+  const navPathsM = allowedNav.map(n => n.path);
+  const byPathM = Object.fromEntries(allowedNav.map(n => [n.path, n]));
+  const defaultRowsM = (() => {
+    const rows = [];
+    MOBILE_SECTIONS.forEach(([sect, label]) => {
+      const items = secondaryItems.filter(i => (MOBILE_META[i.path]?.sect ?? 3) === sect).map(i => i.path);
+      if (items.length) rows.push({ type: 'group', id: `m${sect}`, label, items });
+    });
+    return rows;
+  })();
+  const { rows: rowsM, save: saveM, reset: resetM, isCustom: isCustomM } = useNavLayout(user, navPathsM, defaultRowsM);
+
+  // ── Перетаскивание плиток ДЛИННЫМ НАЖАТИЕМ (~0.4с): двигай между секциями,
+  // удержи над плиткой/заголовком ~1.5с — объединение. Длинное нажатие на
+  // заголовок секции — переименовать. Нативные touch-слушатели на плитке:
+  // preventDefault глушит скролл, stopPropagation — свайп-закрытие шторки. ──
+  const tileNodes = useRef(new Map()); // key → {el, target, mergeable}
+  const registerTile = (key, target, mergeable) => (el) => {
+    if (el) tileNodes.current.set(key, { el, target, mergeable });
+    else tileNodes.current.delete(key);
+  };
+  const [dragKeyM, setDragKeyM] = useState(null);
+  const [dropHintM, setDropHintMState] = useState(null);
+  const dropHintMRef = useRef(null);
+  const setDropHintM = (h) => { dropHintMRef.current = h; setDropHintMState(h); };
+  const [ghostM, setGhostM] = useState(null);
+  const mergeTimerM = useRef(null);
+  const suppressTapRef = useRef(false);
+  const keyOfM = (t) => t.kind === 'group' ? 'g:' + t.id : 'i:' + t.path;
+  const clearMergeM = () => { if (mergeTimerM.current) { clearTimeout(mergeTimerM.current.t); mergeTimerM.current = null; } };
+
+  const beginTilePress = (e, drag, label) => {
+    const el = e.currentTarget;
+    const t0 = e.touches[0];
+    const st = { armed: false, moved: false, startX: t0.clientX, startY: t0.clientY };
+    const cleanup = () => {
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+    const pressTimer = setTimeout(() => {
+      st.armed = true;
+      try { navigator.vibrate && navigator.vibrate(30); } catch {}
+      setDragKeyM(drag);
+      setGhostM({ x: st.startX, y: st.startY, label });
+    }, 400);
+    const onMove = (ev) => {
+      const t = ev.touches[0];
+      if (!st.armed) {
+        // палец поехал до долгого нажатия — это обычный скролл
+        if (Math.abs(t.clientX - st.startX) + Math.abs(t.clientY - st.startY) > 10) { clearTimeout(pressTimer); cleanup(); }
+        return;
+      }
+      ev.preventDefault();
+      ev.stopPropagation();
+      st.moved = true;
+      setGhostM({ x: t.clientX, y: t.clientY, label });
+      let found = null;
+      for (const [key, info] of tileNodes.current) {
+        const r = info.el.getBoundingClientRect();
+        if (t.clientY >= r.top && t.clientY <= r.bottom && t.clientX >= r.left && t.clientX <= r.right) { found = { key, info, rect: r }; break; }
+      }
+      if (!found || keyOfM(drag) === found.key) { clearMergeM(); setDropHintM(null); return; }
+      const rx = (t.clientX - found.rect.left) / Math.max(found.rect.width, 1);
+      const canMerge = found.info.mergeable && drag.kind === 'item';
+      const inMiddle = canMerge && rx > 0.3 && rx < 0.7;
+      const cur = dropHintMRef.current;
+      if (inMiddle) {
+        if (cur?.key === found.key && cur.mode === 'into') return;
+        if (mergeTimerM.current?.key !== found.key) {
+          clearMergeM();
+          const key = found.key;
+          mergeTimerM.current = { key, t: setTimeout(() => setDropHintM({ key, mode: 'into' }), 1500) };
+        }
+      } else if (mergeTimerM.current) {
+        clearMergeM();
+      }
+      const mode = rx < 0.5 ? 'before' : 'after';
+      if (!inMiddle || cur?.mode !== 'into') {
+        if (!cur || cur.key !== found.key || cur.mode !== mode) setDropHintM({ key: found.key, mode });
+      }
+    };
+    const onEnd = () => {
+      clearTimeout(pressTimer);
+      cleanup();
+      if (st.armed) {
+        // после долгого нажатия клик-навигацию глушим
+        suppressTapRef.current = true;
+        setTimeout(() => { suppressTapRef.current = false; }, 400);
+        const hint = dropHintMRef.current;
+        const info = hint ? tileNodes.current.get(hint.key) : null;
+        if (st.moved && hint && info) {
+          const makeLabel = () => window.prompt('Название новой группы:', 'Группа');
+          const next = applyDrop(rowsM, drag, info.target, hint.mode, makeLabel);
+          if (next !== rowsM) saveM(next);
+        }
+      }
+      clearMergeM(); setDragKeyM(null); setDropHintM(null); setGhostM(null);
+    };
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+  };
+
+  // Длинное нажатие на заголовок секции — переименовать
+  const beginHeaderPress = (e, row) => {
+    const el = e.currentTarget;
+    const t0 = e.touches[0];
+    let moved = false;
+    const cleanup = () => {
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+    const timer = setTimeout(() => {
+      if (moved) return;
+      const v = window.prompt('Название группы:', row.label);
+      if (v && v.trim()) saveM(rowsM.map(r => r.type === 'group' && r.id === row.id ? { ...r, label: v.trim() } : r));
+    }, 500);
+    const onMove = (ev) => {
+      const t = ev.touches[0];
+      if (Math.abs(t.clientX - t0.clientX) + Math.abs(t.clientY - t0.clientY) > 10) { moved = true; clearTimeout(timer); cleanup(); }
+    };
+    const onEnd = () => { clearTimeout(timer); cleanup(); };
+    el.addEventListener('touchmove', onMove, { passive: true });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+  };
+
+  const hintStyleM = (target) => {
+    const h = dropHintM;
+    if (!h || h.key !== keyOfM(target)) return {};
+    if (h.mode === 'into') return { outline: '2px solid var(--accent-purple)', outlineOffset: '-2px', background: 'rgba(125,111,179,0.12)', borderRadius: 14 };
+    return h.mode === 'before'
+      ? { boxShadow: 'inset 3px 0 0 0 var(--accent-purple)', borderRadius: 14 }
+      : { boxShadow: 'inset -3px 0 0 0 var(--accent-purple)', borderRadius: 14 };
+  };
+
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
   const handleTabClick = (path) => {
@@ -932,38 +1106,8 @@ const MobileNav = () => {
             </div>
 
             {(() => {
-              // ── Новый визуал «Ещё»: плитки с подписями по секциям ──
-              const META = {
-                '/schedule':    { sub: 'смены и зарплата', sect: 1 },
-                '/checklists':  { sub: 'проверки и отчёт дня', sect: 1 },
-                '/news':        { sub: 'обновления и анонсы', sect: 1 },
-                '/attendance':  { sub: 'отметки прихода', sect: 1 },
-                '/shift-board': { sub: 'записи смены', sect: 1 },
-                '/tickets':     { sub: 'задачи с таймером', sect: 1 },
-                '/merch':       { sub: 'мерч: склад и учёт', sect: 2 },
-                '/sales':       { sub: 'продажа мерча', sect: 2 },
-                '/hr-monitors': { sub: 'проверка датчиков', sect: 2 },
-                '/first-aid':   { sub: 'состав и остатки', sect: 2 },
-                '/towels':      { sub: 'учёт полотенец', sect: 2 },
-                '/lost-items':  { sub: 'находки и возвраты', sect: 2 },
-                '/calendar':    { sub: 'оплаты, ТО, подрядчики', sect: 2 },
-                '/instudio':    { sub: 'техника — разработчикам', sect: 2 },
-                '/club-visits': { sub: 'посещения атлетов', sect: 2 },
-                '/reviews':     { sub: '2ГИС и другие', sect: 2 },
-                '/qr-reviews':  { sub: 'QR-стойки в залах', sect: 2 },
-                '/leads':       { sub: 'лиды WhatsApp', sect: 2 },
-                '/dashboard':   { sub: 'сводка и метрики', sect: 2 },
-                '/archive':     { sub: 'закрытые заявки', sect: 2 },
-                '/calls':       { sub: 'видеосвязь', sect: 3 },
-                '/guidebook':   { sub: 'база знаний', sect: 3 },
-                '/injury-protocol': { sub: 'действия при травмах', sect: 3 },
-                '/policy':      { sub: 'правила платформы', sect: 3 },
-                '/assistant':   { sub: 'ИИ по гайдбуку', sect: 3 },
-                '/ai-chat':     { sub: 'ИИ-чат без ограничений', sect: 3 },
-                '/staff':       { sub: 'аккаунты МОП', sect: 3 },
-                '/settings':    { sub: 'профиль и push', sect: 3 },
-              };
-              const SECTIONS = [[1, 'Каждый день'], [2, 'Работа клуба'], [3, 'Прочее']];
+              // ── Плитки с подписями; секции — из персональной раскладки rowsM ──
+              const META = MOBILE_META;
 
               const Tile = ({ item }) => {
                 const active = isActive(item.path);
@@ -972,9 +1116,10 @@ const MobileNav = () => {
                 const accent = isAl ? '#B06A6A' : isNews ? '#5F9C81' : 'var(--accent-purple)';
                 return (
                   <button
-                    onClick={() => handleTabClick(item.path)}
+                    onClick={() => { if (suppressTapRef.current) return; handleTabClick(item.path); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                      width: '100%', boxSizing: 'border-box',
                       background: active ? 'rgba(125,111,179,0.08)' : 'var(--bg-hover)',
                       border: `1px solid ${active ? 'rgba(125,111,179,0.4)' : 'var(--border)'}`,
                       borderRadius: 14, padding: '11px 12px', cursor: 'pointer', position: 'relative', minWidth: 0,
@@ -1012,19 +1157,85 @@ const MobileNav = () => {
                 );
               }
 
-              return SECTIONS.map(([sect, label]) => {
-                const items = secondaryItems.filter(i => (META[i.path]?.sect ?? 3) === sect);
-                if (!items.length) return null;
+              // ── Рендер по персональной раскладке: группы → секции, плитки
+              // перетаскиваются длинным нажатием (обёртка регистрирует цель) ──
+              const visible = new Set(secondaryItems.map(i => i.path));
+              const TileWrap = ({ item }) => {
+                const target = { kind: 'item', path: item.path };
                 return (
-                  <div key={sect} style={{ padding: '0 16px 12px' }}>
-                    <div style={{ fontSize: 9.5, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em', margin: '4px 2px 8px' }}>{label}</div>
+                  <div
+                    ref={registerTile(keyOfM(target), target, true)}
+                    onTouchStart={(e) => beginTilePress(e, target, item.label)}
+                    style={{ opacity: dragKeyM && keyOfM(dragKeyM) === keyOfM(target) ? 0.4 : 1, ...hintStyleM(target) }}
+                  >
+                    <Tile item={item} />
+                  </div>
+                );
+              };
+
+              const out = [];
+              let buf = [];
+              const flush = (k) => {
+                if (!buf.length) return;
+                out.push(
+                  <div key={`top-${k}`} style={{ padding: '0 16px 12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {items.map(item => <Tile key={item.path} item={item} />)}
+                      {buf.map(item => <TileWrap key={item.path} item={item} />)}
                     </div>
                   </div>
                 );
+                buf = [];
+              };
+              rowsM.forEach((row, idx) => {
+                if (row.type === 'group') {
+                  flush(idx);
+                  const items = (row.items || []).map(p => byPathM[p]).filter(i => i && visible.has(i.path));
+                  if (!items.length) return;
+                  const gTarget = { kind: 'group', id: row.id };
+                  out.push(
+                    <div key={row.id} style={{ padding: '0 16px 12px' }}>
+                      <div
+                        ref={registerTile(keyOfM(gTarget), gTarget, true)}
+                        onTouchStart={(e) => beginHeaderPress(e, row)}
+                        style={{ fontSize: 9.5, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em', margin: '4px 0 8px', padding: '4px 2px', ...hintStyleM(gTarget) }}
+                      >{row.label}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        {items.map(item => <TileWrap key={item.path} item={item} />)}
+                      </div>
+                    </div>
+                  );
+                } else if (visible.has(row.path) && byPathM[row.path]) {
+                  buf.push(byPathM[row.path]);
+                }
               });
+              flush('end');
+              return out;
             })()}
+
+            {/* «Призрак» перетаскиваемой плитки + подсказка */}
+            {ghostM && (
+              <div style={{
+                position: 'fixed', left: Math.max(8, ghostM.x - 60), top: ghostM.y - 60, zIndex: 9999,
+                pointerEvents: 'none', padding: '8px 14px', borderRadius: 12,
+                background: 'var(--bg-card)', border: '1px solid var(--accent-purple)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)', fontSize: 13, fontWeight: 800,
+                color: 'var(--text-primary)', whiteSpace: 'nowrap',
+              }}>
+                {ghostM.label}
+              </div>
+            )}
+
+            {/* Сброс персональной раскладки */}
+            {isCustomM && !moreSearch && (
+              <div style={{ padding: '0 16px 4px' }}>
+                <button
+                  onClick={() => { if (window.confirm('Вернуть стандартный порядок вкладок?')) resetM(); }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 12px', borderRadius: 12, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  <RotateCcw size={13} /> Сбросить меню
+                </button>
+              </div>
+            )}
 
             <div style={{ margin: '8px 24px 0' }}>
               <DailyReport compact />
