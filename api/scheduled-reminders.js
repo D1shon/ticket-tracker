@@ -29,17 +29,16 @@ function dueReminders(alm) {
     due.push({ id: `${dateStr}_checkin`, title: '✅ Чекин', body: 'Произведите чекин — отметьтесь в приложении', club: null, url: '/scan', roles: ['manager', 'admin'] })
   }
 
-  // 2. Shift checklists — 5 minutes before each shift
+  // 2. Shift checklists — 5 minutes before each shift.
+  // ДЕРЖАТЬ В СИНХРОНЕ с src/data/checklistData.js (getShiftsForDate):
+  // 2026-09 дневная (11:30/14:00) и вечерняя (16:30) смены убраны из чек-листов.
   const shifts = weekend
     ? [
         { id: 'morning', name: 'Утренняя смена', time: '9:00',  min: 540 },
-        { id: 'day',     name: 'Дневная смена',  time: '14:00', min: 840 },
         { id: 'evening', name: 'Вечерняя смена', time: '19:00', min: 1140 },
       ]
     : [
         { id: 'morning', name: 'Утренняя смена', time: '6:30',  min: 390 },
-        { id: 'day',     name: 'Дневная смена',  time: '11:30', min: 690 },
-        { id: 'evening', name: 'Вечерняя смена', time: '16:30', min: 990 },
         { id: 'night',   name: 'Ночная смена',   time: '21:30', min: 1290 },
       ]
   // Чек-листы — функция менеджеров, админам эти пуши не нужны
