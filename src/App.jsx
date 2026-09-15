@@ -1,6 +1,6 @@
 import React from 'react';
 import { isMobileDevice } from './lib/isMobile';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { TicketProvider, useTickets } from './store/TicketContext';
 import { SERVICE_REPORT_EMAILS } from './lib/access';
 import { ScheduleProvider } from './store/ScheduleContext';
@@ -154,6 +154,7 @@ const NotificationCorner = () => (
 
 const ProtectedLayout = ({ children, allowedRoles, allowedEmails, allowClubAdmin }) => {
   const { user, loading } = useTickets();
+  const location = useLocation();
   const [isMobile, setIsMobile] = React.useState(() => isMobileDevice());
 
   React.useEffect(() => {
@@ -178,7 +179,13 @@ const ProtectedLayout = ({ children, allowedRoles, allowedEmails, allowClubAdmin
   const emailOk = !allowedEmails || allowedEmails.map(e => e.toLowerCase()).includes((user.email || '').toLowerCase());
   // Доступ для админов конкретного клуба (напр. чек-листы у админов Europe City)
   const clubAdminOk = allowClubAdmin && user.role === 'admin' && (user.club || '').toUpperCase() === allowClubAdmin.toUpperCase();
-  const roleOk = clubAdminOk || !allowedRoles || allowedRoles.includes(user.role);
+  // Персональные перекрытия из Настроек: tabsExtra открывает вкладку сверх роли,
+  // tabsHidden закрывает даже разрешённую ролью (кроме /settings — их не отнимаем)
+  const pathMatch = (p) => location.pathname === p || location.pathname.startsWith(p + '/');
+  const tabsExtraOk = Array.isArray(user.tabsExtra) && user.tabsExtra.some(pathMatch);
+  const tabsHiddenBlock = location.pathname !== '/settings'
+    && Array.isArray(user.tabsHidden) && user.tabsHidden.some(pathMatch);
+  const roleOk = !tabsHiddenBlock && (tabsExtraOk || clubAdminOk || !allowedRoles || allowedRoles.includes(user.role));
   if (!roleOk || !emailOk) {
     const fallback = user.role === 'admin' ? '/schedule'
       : user.role === 'marketing' ? '/merch'

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { NAV_ITEMS, navAllowed, baseNavAllowed } from '../lib/navAccess';
 import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users, FileText } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { useNavigate } from 'react-router-dom';
@@ -315,6 +316,11 @@ const SettingsPage = () => {
             <UserPlus size={15} /> Создать
           </button>
         </div>
+      )}
+
+      {/* Сотрудники и доступы — полное управление аккаунтами (ТОЛЬКО Дильшат) */}
+      {(user?.email || '').toLowerCase() === 'dilshat.r@hj.fit' && (
+        <StaffAccessPanel appUsers={appUsers} isMobile={isMobile} myEmail={(user?.email || '').toLowerCase()} />
       )}
 
       {/* мобайл: всё в одну колонку, секции — компактные карточки */}
@@ -1022,6 +1028,226 @@ const SettingsPage = () => {
               Новый сотрудник получит роль <b style={{ color: 'var(--accent-purple)' }}>ADMIN</b>{isManagerRole ? <> клуба <b style={{ color: 'var(--accent-purple)' }}>{user?.club}</b></> : null}.
               Вход — просто по почте, без пароля. Чекин будет работать сразу после первого входа.
             </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Сотрудники и доступы: добавление аккаунтов любой роли + поштучный доступ
+// к вкладкам (tabsExtra/tabsHidden в app_users). Видит только Дильшат. ───────
+const ACCESS_ROLES = [
+  { id: 'manager',    label: 'Менеджер',    needsClub: true },
+  { id: 'admin',      label: 'Администратор', needsClub: true },
+  { id: 'rop',        label: 'РОП',         needsClub: true },
+  { id: 'mop',        label: 'МОП',         needsClub: true },
+  { id: 'komdir',     label: 'Ком-Дир',     needsClub: false },
+  { id: 'marketing',  label: 'Маркетинг',   needsClub: false },
+  { id: 'viewer',     label: 'Наблюдатель', needsClub: false },
+  { id: 'tech',       label: 'Техник',      needsClub: false },
+  { id: 'lostviewer', label: 'Утерянные вещи (просмотр)', needsClub: false },
+];
+const ROLE_LABEL = Object.fromEntries(ACCESS_ROLES.map(r => [r.id, r.label]));
+const ACCESS_CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+
+const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [form, setForm] = useState({ email: '', name: '', role: 'admin', club: '4YOU' });
+  const [saving, setSaving] = useState(false);
+  const [editUser, setEditUser] = useState(null); // {email, profile} — редактор вкладок
+  const [draftTabs, setDraftTabs] = useState({}); // path -> bool (эффективный доступ)
+
+  // Общий список: USER_ROLES (код + смерженные динамики) + пометки из app_users.
+  // «Зашит в код» = есть в USER_ROLES, а его app_users-док (если есть) без role —
+  // такие доки хранят только перекрытия вкладок/revoked.
+  const users = useMemo(() => {
+    const map = {};
+    Object.entries(USER_ROLES).forEach(([email, p]) => {
+      if (!email.includes('@')) return;
+      map[email] = { email, role: p.role, club: p.club || null, displayName: p.displayName || email.split('@')[0], mop: !!p.mop, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: true, revoked: false };
+    });
+    Object.entries(appUsers || {}).forEach(([emailRaw, p]) => {
+      const e = emailRaw.toLowerCase();
+      if (map[e]) {
+        map[e].revoked = !!p.revoked;
+        if (Array.isArray(p.tabsExtra)) map[e].tabsExtra = p.tabsExtra;
+        if (Array.isArray(p.tabsHidden)) map[e].tabsHidden = p.tabsHidden;
+        if (p.role) map[e].isStatic = false; // док с ролью = динамический аккаунт
+      } else {
+        map[e] = { email: e, role: p.role || 'admin', club: p.club || null, displayName: p.displayName || e.split('@')[0], mop: !!p.mop, revoked: !!p.revoked, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: false };
+      }
+    });
+    const list = Object.values(map);
+    list.sort((a, b) => (a.club || 'ЯЯ').localeCompare(b.club || 'ЯЯ', 'ru') || (a.displayName || '').localeCompare(b.displayName || '', 'ru'));
+    const query = q.trim().toLowerCase();
+    return query
+      ? list.filter(u => (u.displayName || '').toLowerCase().includes(query) || u.email.includes(query) || (u.club || '').toLowerCase().includes(query))
+      : list;
+  }, [appUsers, q]);
+
+  const addUser = async () => {
+    const email = form.email.trim().toLowerCase();
+    if (!email.includes('@')) { toast.error('Укажите корректный email'); return; }
+    if (email in USER_ROLES && !(appUsers || {})[email]) { toast.error('Такой сотрудник уже есть'); return; }
+    const roleDef = ACCESS_ROLES.find(r => r.id === form.role);
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'app_users', email), {
+        role: form.role === 'mop' ? 'rop' : form.role,
+        mop: form.role === 'mop',
+        club: roleDef?.needsClub ? form.club : null,
+        displayName: form.name.trim() || email.split('@')[0],
+        addedBy: myEmail,
+        createdAtISO: new Date().toISOString(),
+      }, { merge: true });
+      toast.success(`${form.name.trim() || email} добавлен(а): ${ROLE_LABEL[form.role]}${roleDef?.needsClub ? ' · ' + form.club : ''}`);
+      setForm({ email: '', name: '', role: 'admin', club: '4YOU' });
+    } catch { toast.error('Не удалось добавить'); }
+    finally { setSaving(false); }
+  };
+
+  const removeUser = async (u) => {
+    if (u.email === myEmail) return;
+    if (u.isStatic) {
+      // revoke в рантайме работает только для зашитых АДМИНОВ; остальные роли — только через код
+      if (u.role !== 'admin') { toast.error('Эта роль зашита в код — попросите Клода убрать аккаунт'); return; }
+      if (!window.confirm(`${u.displayName} зашит(а) в код — отключить доступ (revoke)?`)) return;
+      try { await setDoc(doc(db, 'app_users', u.email), { revoked: true, revokedBy: myEmail, revokedAtISO: new Date().toISOString() }, { merge: true }); toast.success('Доступ отключён'); } catch { toast.error('Ошибка'); }
+    } else {
+      if (!window.confirm(`Удалить аккаунт ${u.displayName} (${u.email})?`)) return;
+      try { await deleteDoc(doc(db, 'app_users', u.email)); toast.success('Удалён'); } catch { toast.error('Ошибка'); }
+    }
+  };
+
+  // ── Редактор доступа к вкладкам ──
+  const openTabsEditor = (u) => {
+    const eff = {};
+    NAV_ITEMS.forEach(({ path }) => { eff[path] = navAllowed(u, path); });
+    setDraftTabs(eff);
+    setEditUser(u);
+  };
+  const saveTabs = async () => {
+    if (!editUser) return;
+    // Разница с базой роли → tabsExtra / tabsHidden
+    const base = { role: editUser.role, club: editUser.club, mop: editUser.mop, email: editUser.email };
+    const tabsExtra = [], tabsHidden = [];
+    NAV_ITEMS.forEach(({ path }) => {
+      const baseOn = baseNavAllowed(base, path);
+      const want = !!draftTabs[path];
+      if (want && !baseOn) tabsExtra.push(path);
+      if (!want && baseOn) tabsHidden.push(path);
+    });
+    try {
+      await setDoc(doc(db, 'app_users', editUser.email), {
+        tabsExtra, tabsHidden,
+        tabsEditedBy: myEmail, tabsEditedAtISO: new Date().toISOString(),
+      }, { merge: true });
+      toast.success('Доступ к вкладкам обновлён');
+      setEditUser(null);
+    } catch { toast.error('Не удалось сохранить'); }
+  };
+
+  const roleBadge = (u) => u.mop ? 'МОП' : (ROLE_LABEL[u.role] || u.role);
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '18px 20px', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }} onClick={() => setOpen(v => !v)}>
+        <div style={{ width: 44, height: 44, borderRadius: 13, background: 'rgba(125,111,179,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Shield size={22} style={{ color: 'var(--accent-purple)' }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>Сотрудники и доступы</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Добавление аккаунтов любой роли и настройка вкладок каждому</div>
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent-purple)' }}>{open ? 'Свернуть ▲' : 'Открыть ▼'}</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 16 }}>
+          {/* Добавление сотрудника */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr 1fr 1fr auto', gap: 8, marginBottom: 14 }}>
+            <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@почта.com"
+              style={{ padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, outline: 'none' }} />
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Имя"
+              style={{ padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, outline: 'none' }} />
+            <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+              style={{ padding: '10px 8px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, outline: 'none' }}>
+              {ACCESS_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+            <select value={form.club} onChange={e => setForm(f => ({ ...f, club: e.target.value }))}
+              disabled={!ACCESS_ROLES.find(r => r.id === form.role)?.needsClub}
+              style={{ padding: '10px 8px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, outline: 'none', opacity: ACCESS_ROLES.find(r => r.id === form.role)?.needsClub ? 1 : 0.4 }}>
+              {ACCESS_CLUBS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <button onClick={addUser} disabled={saving} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+              <UserPlus size={14} /> Добавить
+            </button>
+          </div>
+
+          {/* Поиск + список */}
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск по имени, почте или клубу…"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 600, outline: 'none', marginBottom: 10 }} />
+          <div style={{ maxHeight: 420, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {users.map(u => (
+              <div key={u.email} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, background: 'var(--bg-hover)', border: '1px solid var(--border)', opacity: u.revoked ? 0.45 : 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    {u.displayName}
+                    <span style={{ fontSize: 9, fontWeight: 900, background: 'rgba(125,111,179,0.14)', color: 'var(--accent-purple)', padding: '2px 7px', borderRadius: 6, textTransform: 'uppercase' }}>{roleBadge(u)}</span>
+                    {u.club && <span style={{ fontSize: 9, fontWeight: 900, background: 'var(--bg-card)', color: 'var(--text-secondary)', padding: '2px 7px', borderRadius: 6, border: '1px solid var(--border)' }}>{u.club}</span>}
+                    {(u.tabsExtra?.length || u.tabsHidden?.length) ? <span title="Доступ к вкладкам изменён" style={{ fontSize: 9, fontWeight: 900, background: 'rgba(192,143,79,0.14)', color: '#C08F4F', padding: '2px 7px', borderRadius: 6 }}>вкладки ✎</span> : null}
+                    {u.revoked && <span style={{ fontSize: 9, fontWeight: 900, color: '#B06A6A' }}>отключён</span>}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}{u.isStatic ? ' · зашит в код' : ''}</div>
+                </div>
+                <button onClick={() => openTabsEditor(u)} title="Доступ к вкладкам" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 11px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
+                  <Sliders size={12} /> Вкладки
+                </button>
+                {u.email !== myEmail && (
+                  <button onClick={() => removeUser(u)} title={u.isStatic ? 'Отключить доступ' : 'Удалить аккаунт'} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 5, lineHeight: 0, opacity: 0.5, flexShrink: 0 }}>
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Редактор доступа к вкладкам */}
+      {editUser && (
+        <div onClick={() => setEditUser(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 460, maxHeight: '84vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>Доступ к вкладкам</div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>{editUser.displayName} · {roleBadge(editUser)}{editUser.club ? ' · ' + editUser.club : ''}</div>
+              </div>
+              <button onClick={() => setEditUser(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={17} /></button>
+            </div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 10 }}>
+              Галочка = вкладка видна. Отличия от стандартного набора роли помечаются автоматически.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 4 }}>
+              {NAV_ITEMS.filter(n => n.path !== '/settings').map(({ path, label }) => {
+                const on = !!draftTabs[path];
+                const baseOn = baseNavAllowed({ role: editUser.role, club: editUser.club, mop: editUser.mop, email: editUser.email }, path);
+                const changed = on !== baseOn;
+                return (
+                  <label key={path} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 10, cursor: 'pointer', background: changed ? 'rgba(192,143,79,0.08)' : 'transparent', border: '1px solid ' + (changed ? 'rgba(192,143,79,0.3)' : 'transparent') }}>
+                    <input type="checkbox" checked={on} onChange={e => setDraftTabs(d => ({ ...d, [path]: e.target.checked }))} style={{ width: 16, height: 16, accentColor: 'var(--accent-purple)' }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? 'var(--text-primary)' : 'var(--text-muted)' }}>{label}</span>
+                    {changed && <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 900, color: '#C08F4F' }}>{baseOn ? 'скрыта' : 'добавлена'}</span>}
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button onClick={() => setEditUser(null)} style={{ padding: '11px 18px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase' }}>Отмена</button>
+              <button onClick={saveTabs} style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase' }}>Сохранить</button>
+            </div>
           </div>
         </div>
       )}

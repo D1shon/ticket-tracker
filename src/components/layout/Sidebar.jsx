@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { isMobileDevice } from '../../lib/isMobile';
 import useSheetDrag from '../../lib/useSheetDrag';
 import useNavLayout, { applyDrop } from '../../lib/useNavLayout';
+import { navAllowed } from '../../lib/navAccess';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Ticket, CheckSquare, Calendar, CalendarDays,
@@ -215,34 +216,8 @@ const DesktopSidebar = () => {
     return `${Math.floor(d / 86400)} д назад`;
   };
 
-  const VIEWER_HIDDEN = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads', '/ai-chat']);
-
-  const allowedNav = ALL_NAV.filter(item => {
-    if (item.path === '/staff') return showStaffNav(user); // только реальный РОП; у шефа — в Настройках
-    // Техник (tech): только Чек-листы и InStudio, по всем клубам
-    if (user?.role === 'tech') return item.path === '/checklists' || item.path === '/instudio';
-    // Наблюдатель «Утерянные вещи»: только эта вкладка, просмотр
-    if (user?.role === 'lostviewer') return item.path === '/lost-items' || item.path === '/merch';
-    if (user?.role === 'admin') {
-      // Чек-листы — только админам Europe City
-      if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
-    }
-    if (user?.role === 'marketing') {
-      return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
-    }
-    if (user?.role === 'komdir' || user?.role === 'rop') {
-      // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
-      if (item.path === '/shift-board') return true;
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
-    }
-    if (user?.role === 'viewer') {
-      return !VIEWER_HIDDEN.has(item.path);
-    }
-    // У менеджеров «Соглашение» живёт в Настройках
-    if (user?.role === 'manager' && (item.path === '/policy' || item.path === '/qr-reviews')) return false;
-    return true;
-  });
+  // Единые правила доступа (роль + персональные перекрытия из Настроек) — src/lib/navAccess.js
+  const allowedNav = ALL_NAV.filter(item => navAllowed(user, item.path));
 
   // Группировка шторками — только у шефов и менеджеров
   const useGrouping = user?.role === 'chef' || user?.role === 'manager';
@@ -645,34 +620,8 @@ const MobileNav = () => {
     return `${Math.floor(d / 86400)} д`;
   };
 
-  const VIEWER_HIDDEN_M = new Set(['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads', '/ai-chat']);
-
-  const allowedNav = ALL_NAV.filter(item => {
-    if (item.path === '/staff') return showStaffNav(user); // только реальный РОП; у шефа — в Настройках
-    // Техник (tech): только Чек-листы и InStudio, по всем клубам
-    if (user?.role === 'tech') return item.path === '/checklists' || item.path === '/instudio';
-    // Наблюдатель «Утерянные вещи»: только эта вкладка, просмотр
-    if (user?.role === 'lostviewer') return item.path === '/lost-items' || item.path === '/merch';
-    if (user?.role === 'admin') {
-      // Чек-листы — только админам Europe City
-      if (item.path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
-      return item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio' || item.path === '/schedule' || item.path === '/sales' || item.path === '/settings' || item.path === '/guidebook' || item.path === '/injury-protocol' || item.path === '/policy' || item.path === '/hr-monitors' || item.path === '/first-aid' || item.path === '/towels' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/lost-items' || item.path === '/news' || item.path === '/leads' || item.path === '/assistant';
-    }
-    if (user?.role === 'marketing') {
-      return item.path === '/merch' || item.path === '/policy' || item.path === '/shift-board' || item.path === '/calendar' || item.path === '/instudio';
-    }
-    if (user?.role === 'komdir' || user?.role === 'rop') {
-      // Передача смены — видна всем в отделе, включая Ком-Дира, РОП и МОП
-      if (item.path === '/shift-board') return true;
-      return item.path === '/news' || item.path === '/merch' || item.path === '/policy' || item.path === '/settings' || item.path === '/reviews' || item.path === '/qr-reviews' || item.path === '/leads' || item.path === '/lost-items' || item.path === '/assistant' || item.path === '/attendance' || item.path === '/club-visits' || item.path === '/calendar' || item.path === '/instudio';
-    }
-    if (user?.role === 'viewer') {
-      return !VIEWER_HIDDEN_M.has(item.path);
-    }
-    // У менеджеров «Соглашение» живёт в Настройках
-    if (user?.role === 'manager' && (item.path === '/policy' || item.path === '/qr-reviews')) return false;
-    return true;
-  });
+  // Единые правила доступа (роль + персональные перекрытия из Настроек) — src/lib/navAccess.js
+  const allowedNav = ALL_NAV.filter(item => navAllowed(user, item.path));
 
   // ── Новый формат: Главная · [2 главных раздела роли] · (+) · Ещё ──
   // Кандидаты в главные табы по приоритету; берём первые два доступных роли

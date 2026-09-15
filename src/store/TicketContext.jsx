@@ -106,6 +106,7 @@ export const USER_ROLES = {
 const DYNAMIC_USERS_CACHE_KEY = 'dynamic_users_v1';
 const dynamicUserKeys = new Set();
 const revokedStaticKeys = new Set();
+const staticPatchedKeys = new Set(); // статики с перекрытием доступа к вкладкам (tabsExtra/tabsHidden)
 // Snapshot of the hardcoded whitelist, taken before any dynamic data is merged —
 // used to restore a static account if its revocation is later removed.
 const STATIC_USER_ROLES = { ...USER_ROLES };
@@ -119,6 +120,10 @@ export function applyDynamicUsers(usersMap) {
   for (const key of [...revokedStaticKeys]) {
     if (STATIC_USER_ROLES[key]) USER_ROLES[key] = STATIC_USER_ROLES[key];
     revokedStaticKeys.delete(key);
+  }
+  for (const key of [...staticPatchedKeys]) {
+    if (STATIC_USER_ROLES[key]) USER_ROLES[key] = STATIC_USER_ROLES[key];
+    staticPatchedKeys.delete(key);
   }
 
   for (const [email, profile] of Object.entries(usersMap)) {
@@ -135,17 +140,29 @@ export function applyDynamicUsers(usersMap) {
       continue;
     }
 
-    // A dynamic entry never overrides a hardcoded account
-    if (key in STATIC_USER_ROLES) continue;
-    // Разрешённые роли для динамических аккаунтов: admin (по умолчанию), rop и manager
-    // (manager добавлен 2026-08-31 — повышение Дины/EUROPE CITY до менеджера).
+    const tabsExtra = Array.isArray(profile.tabsExtra) ? profile.tabsExtra : [];
+    const tabsHidden = Array.isArray(profile.tabsHidden) ? profile.tabsHidden : [];
+
+    // Зашитый в код аккаунт: роль/клуб из кода неприкосновенны, но из Настроек
+    // можно ПЕРЕКРЫВАТЬ доступ к вкладкам (tabsExtra/tabsHidden в его app_users-доке)
+    if (key in STATIC_USER_ROLES) {
+      if (tabsExtra.length || tabsHidden.length) {
+        USER_ROLES[key] = { ...STATIC_USER_ROLES[key], tabsExtra, tabsHidden };
+        staticPatchedKeys.add(key);
+      }
+      continue;
+    }
+    // Разрешённые роли для динамических аккаунтов — все, КРОМЕ chef (шефы только в коде,
+    // чтобы запись в открытую коллекцию app_users не давала полный доступ).
     // МОП создаётся как rop с флагом mop — те же права, но без создания аккаунтов.
-    const ALLOWED_DYN_ROLES = ['admin', 'rop', 'manager'];
+    const ALLOWED_DYN_ROLES = ['admin', 'rop', 'manager', 'komdir', 'marketing', 'viewer', 'tech', 'lostviewer'];
     USER_ROLES[key] = {
       role: ALLOWED_DYN_ROLES.includes(profile.role) ? profile.role : 'admin',
       club: profile.club || null,
       displayName: profile.displayName || key.split('@')[0],
       mop: !!profile.mop,
+      tabsExtra,
+      tabsHidden,
     };
     dynamicUserKeys.add(key);
   }
@@ -352,6 +369,9 @@ export const TicketProvider = ({ children }) => {
         club,
         clubs,
         mop: registered.mop || false,
+        // Персональные перекрытия доступа к вкладкам (редактируются шефом в Настройках)
+        tabsExtra: registered.tabsExtra || [],
+        tabsHidden: registered.tabsHidden || [],
       };
     }
 
