@@ -1058,6 +1058,8 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
   const [saving, setSaving] = useState(false);
   const [editUser, setEditUser] = useState(null); // {email, profile} — редактор вкладок
   const [draftTabs, setDraftTabs] = useState({}); // path -> bool (эффективный доступ)
+  const [roleUser, setRoleUser] = useState(null); // сотрудник в модалке «Повысить»
+  const [roleDraft, setRoleDraft] = useState({ role: 'manager', club: '4YOU' });
 
   // Общий список: USER_ROLES (код + смерженные динамики) + пометки из app_users.
   // «Зашит в код» = есть в USER_ROLES, а его app_users-док (если есть) без role —
@@ -1119,6 +1121,37 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
       if (!window.confirm(`Удалить аккаунт ${u.displayName} (${u.email})?`)) return;
       try { await deleteDoc(doc(db, 'app_users', u.email)); toast.success('Удалён'); } catch { toast.error('Ошибка'); }
     }
+  };
+
+  // ── Повышение / смена роли ──
+  const openRoleEditor = (u) => {
+    if (u.isStatic && u.role === 'chef') { toast.error('Роль шефа меняется только в коде'); return; }
+    const uiRole = u.mop ? 'mop' : u.role;
+    setRoleDraft({ role: ACCESS_ROLES.some(r => r.id === uiRole) ? uiRole : 'manager', club: u.club || '4YOU' });
+    setRoleUser(u);
+  };
+  const saveRole = async () => {
+    if (!roleUser) return;
+    const def = ACCESS_ROLES.find(r => r.id === roleDraft.role);
+    const realRole = roleDraft.role === 'mop' ? 'rop' : roleDraft.role;
+    const isMop = roleDraft.role === 'mop';
+    const club = def?.needsClub ? roleDraft.club : null;
+    try {
+      if (roleUser.isStatic) {
+        // Зашитый аккаунт: роль из кода не трогаем, кладём перекрытие
+        await setDoc(doc(db, 'app_users', roleUser.email), {
+          roleOverride: realRole, mopOverride: isMop, clubOverride: club,
+          roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
+        }, { merge: true });
+      } else {
+        await setDoc(doc(db, 'app_users', roleUser.email), {
+          role: realRole, mop: isMop, club,
+          roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
+        }, { merge: true });
+      }
+      toast.success(`${roleUser.displayName}: теперь ${ROLE_LABEL[roleDraft.role]}${club ? ' · ' + club : ''}`);
+      setRoleUser(null);
+    } catch { toast.error('Не удалось изменить роль'); }
   };
 
   // ── Редактор доступа к вкладкам ──
@@ -1202,6 +1235,9 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}{u.isStatic ? ' · зашит в код' : ''}</div>
                 </div>
+                <button onClick={() => openRoleEditor(u)} title="Повысить / сменить роль" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 11px', borderRadius: 10, border: '1px solid rgba(95,156,129,0.4)', background: 'rgba(95,156,129,0.08)', color: '#5F9C81', fontSize: 11, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
+                  <Pencil size={12} /> Роль
+                </button>
                 <button onClick={() => openTabsEditor(u)} title="Доступ к вкладкам" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 11px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
                   <Sliders size={12} /> Вкладки
                 </button>
@@ -1212,6 +1248,46 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Модалка «Повысить / сменить роль» */}
+      {roleUser && (
+        <div onClick={() => setRoleUser(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 400, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>Повысить / сменить роль</div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)' }}>{roleUser.displayName} · сейчас: {roleBadge(roleUser)}{roleUser.club ? ' · ' + roleUser.club : ''}</div>
+              </div>
+              <button onClick={() => setRoleUser(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={17} /></button>
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Новая роль</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
+              {ACCESS_ROLES.map(r => (
+                <button key={r.id} onClick={() => setRoleDraft(d => ({ ...d, role: r.id }))}
+                  style={{
+                    padding: '9px 10px', borderRadius: 11, fontSize: 12, fontWeight: 800, cursor: 'pointer', textAlign: 'left',
+                    border: '1px solid ' + (roleDraft.role === r.id ? 'var(--accent-purple)' : 'var(--border)'),
+                    background: roleDraft.role === r.id ? 'var(--accent-purple)' : 'var(--bg-hover)',
+                    color: roleDraft.role === r.id ? '#fff' : 'var(--text-secondary)',
+                  }}>{r.label}</button>
+              ))}
+            </div>
+            {ACCESS_ROLES.find(r => r.id === roleDraft.role)?.needsClub && (
+              <>
+                <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Клуб</div>
+                <select value={roleDraft.club} onChange={e => setRoleDraft(d => ({ ...d, club: e.target.value }))}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, outline: 'none', marginBottom: 12 }}>
+                  {ACCESS_CLUBS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setRoleUser(null)} style={{ padding: '11px 18px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase' }}>Отмена</button>
+              <button onClick={saveRole} style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', background: '#5F9C81', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase' }}>Применить</button>
+            </div>
           </div>
         </div>
       )}

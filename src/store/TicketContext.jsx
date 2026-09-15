@@ -142,20 +142,30 @@ export function applyDynamicUsers(usersMap) {
 
     const tabsExtra = Array.isArray(profile.tabsExtra) ? profile.tabsExtra : [];
     const tabsHidden = Array.isArray(profile.tabsHidden) ? profile.tabsHidden : [];
+    // Разрешённые роли из app_users — все, КРОМЕ chef (шефы только в коде,
+    // чтобы запись в открытую коллекцию app_users не давала полный доступ).
+    // МОП создаётся как rop с флагом mop — те же права, но без создания аккаунтов.
+    const ALLOWED_DYN_ROLES = ['admin', 'rop', 'manager', 'komdir', 'marketing', 'viewer', 'tech', 'lostviewer'];
 
-    // Зашитый в код аккаунт: роль/клуб из кода неприкосновенны, но из Настроек
-    // можно ПЕРЕКРЫВАТЬ доступ к вкладкам (tabsExtra/tabsHidden в его app_users-доке)
+    // Зашитый в код аккаунт: из Настроек можно перекрывать доступ к вкладкам
+    // (tabsExtra/tabsHidden) и ПОВЫШАТЬ/менять роль (roleOverride/clubOverride).
+    // Шефа из кода понизить нельзя, и повысить ДО шефа тоже нельзя.
     if (key in STATIC_USER_ROLES) {
-      if (tabsExtra.length || tabsHidden.length) {
-        USER_ROLES[key] = { ...STATIC_USER_ROLES[key], tabsExtra, tabsHidden };
+      const st = STATIC_USER_ROLES[key];
+      const patch = {};
+      if (tabsExtra.length) patch.tabsExtra = tabsExtra;
+      if (tabsHidden.length) patch.tabsHidden = tabsHidden;
+      if (profile.roleOverride && st.role !== 'chef' && ALLOWED_DYN_ROLES.includes(profile.roleOverride)) {
+        patch.role = profile.roleOverride;
+        patch.mop = !!profile.mopOverride;
+        if (profile.clubOverride !== undefined) patch.club = profile.clubOverride;
+      }
+      if (Object.keys(patch).length) {
+        USER_ROLES[key] = { ...st, ...patch };
         staticPatchedKeys.add(key);
       }
       continue;
     }
-    // Разрешённые роли для динамических аккаунтов — все, КРОМЕ chef (шефы только в коде,
-    // чтобы запись в открытую коллекцию app_users не давала полный доступ).
-    // МОП создаётся как rop с флагом mop — те же права, но без создания аккаунтов.
-    const ALLOWED_DYN_ROLES = ['admin', 'rop', 'manager', 'komdir', 'marketing', 'viewer', 'tech', 'lostviewer'];
     USER_ROLES[key] = {
       role: ALLOWED_DYN_ROLES.includes(profile.role) ? profile.role : 'admin',
       club: profile.club || null,
