@@ -711,7 +711,9 @@ const MobileNav = () => {
   const [dropHintM, setDropHintMState] = useState(null);
   const dropHintMRef = useRef(null);
   const setDropHintM = (h) => { dropHintMRef.current = h; setDropHintMState(h); };
-  const [ghostM, setGhostM] = useState(null);
+  const [ghostM, setGhostM] = useState(null); // {x, y, label} — только монтирование
+  const ghostElRef = useRef(null);            // позиция обновляется НАПРЯМУЮ через DOM (без перерисовок)
+  const rectCacheRef = useRef([]);            // координаты плиток снимаются один раз при захвате
   const mergeTimerM = useRef(null);
   const suppressTapRef = useRef(false);
   const keyOfM = (t) => t.kind === 'group' ? 'g:' + t.id : 'i:' + t.path;
@@ -729,6 +731,11 @@ const MobileNav = () => {
     const pressTimer = setTimeout(() => {
       st.armed = true;
       try { navigator.vibrate && navigator.vibrate(30); } catch {}
+      // Глушим жест закрытия шторки на время перетаскивания и возвращаем её на место
+      document.body.dataset.hjTileDrag = '1';
+      if (sheetRef.current) { sheetRef.current.style.transition = 'transform 0.15s ease'; sheetRef.current.style.transform = 'translateY(0)'; }
+      // Координаты плиток — один раз (при перетаскивании раскладка не меняется)
+      rectCacheRef.current = [...tileNodes.current].map(([key, info]) => ({ key, info, rect: info.el.getBoundingClientRect() }));
       setDragKeyM(drag);
       setGhostM({ x: st.startX, y: st.startY, label });
     }, 400);
@@ -742,10 +749,13 @@ const MobileNav = () => {
       ev.preventDefault();
       ev.stopPropagation();
       st.moved = true;
-      setGhostM({ x: t.clientX, y: t.clientY, label });
+      // «Призрак» двигаем напрямую через DOM — setState на каждый пиксель лагает
+      if (ghostElRef.current) {
+        ghostElRef.current.style.left = Math.max(8, t.clientX - 60) + 'px';
+        ghostElRef.current.style.top = (t.clientY - 60) + 'px';
+      }
       let found = null;
-      for (const [key, info] of tileNodes.current) {
-        const r = info.el.getBoundingClientRect();
+      for (const { key, info, rect: r } of rectCacheRef.current) {
         if (t.clientY >= r.top && t.clientY <= r.bottom && t.clientX >= r.left && t.clientX <= r.right) { found = { key, info, rect: r }; break; }
       }
       if (!found || keyOfM(drag) === found.key) { clearMergeM(); setDropHintM(null); return; }
@@ -771,6 +781,7 @@ const MobileNav = () => {
     const onEnd = () => {
       clearTimeout(pressTimer);
       cleanup();
+      delete document.body.dataset.hjTileDrag;
       if (st.armed) {
         // после долгого нажатия клик-навигацию глушим
         suppressTapRef.current = true;
@@ -1212,9 +1223,9 @@ const MobileNav = () => {
               return out;
             })()}
 
-            {/* «Призрак» перетаскиваемой плитки + подсказка */}
+            {/* «Призрак» перетаскиваемой плитки (позиция обновляется через ref) */}
             {ghostM && (
-              <div style={{
+              <div ref={ghostElRef} style={{
                 position: 'fixed', left: Math.max(8, ghostM.x - 60), top: ghostM.y - 60, zIndex: 9999,
                 pointerEvents: 'none', padding: '8px 14px', borderRadius: 12,
                 background: 'var(--bg-card)', border: '1px solid var(--accent-purple)',

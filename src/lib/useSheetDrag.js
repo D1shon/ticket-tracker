@@ -21,6 +21,17 @@ export default function useSheetDrag(sheetRef, open, onClose) {
       startY = e.touches[0].clientY;
     };
     const onMove = (e) => {
+      // Идёт перетаскивание плитки меню (длинное нажатие) — шторку не трогаем
+      // и возвращаем на место, если она успела сдвинуться до длинного нажатия
+      if (document.body.dataset.hjTileDrag) {
+        if (dragging) {
+          el.style.transition = 'transform 0.15s ease';
+          el.style.transform = 'translateY(0)';
+          dragging = false;
+        }
+        tracking = false;
+        return;
+      }
       if (!tracking) return;
       const dy = e.touches[0].clientY - startY;
       if (!dragging) {
