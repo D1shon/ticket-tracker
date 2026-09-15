@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { NAV_ITEMS, navAllowed, baseNavAllowed } from '../lib/navAccess';
 import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users, FileText } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
@@ -1252,8 +1253,9 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
         </div>
       )}
 
-      {/* Модалка «Повысить / сменить роль» */}
-      {roleUser && (
+      {/* Модалка «Повысить / сменить роль» — через портал: fixed внутри
+          анимированного контейнера страницы позиционируется неверно */}
+      {roleUser && ReactDOM.createPortal(
         <div onClick={() => setRoleUser(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 400, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
@@ -1289,11 +1291,12 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
               <button onClick={saveRole} style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', background: '#5F9C81', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase' }}>Применить</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Редактор доступа к вкладкам */}
-      {editUser && (
+      {/* Редактор доступа к вкладкам — тоже порталом в body */}
+      {editUser && ReactDOM.createPortal(
         <div onClick={() => setEditUser(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 460, maxHeight: '84vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
@@ -1325,7 +1328,8 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
               <button onClick={saveTabs} style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase' }}>Сохранить</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
