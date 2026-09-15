@@ -406,7 +406,11 @@ const SalesPage = () => {
               borderLeft: 'none', borderRight: 'none', borderBottom: 'none',
             } : {}),
           }}>
-            <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 10 }}>Оформить</div>
+            {/* Шапка — как в модалке Склада */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+              <ShoppingCart size={16} style={{ color: '#34d399', flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', fontStyle: 'italic', letterSpacing: '0.06em' }}>Оформить продажу</span>
+            </div>
 
             {selectedProduct ? (
               <>
@@ -423,125 +427,143 @@ const SalesPage = () => {
                       <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 650, marginTop: 6 }}>Нет фото</span>
                     </div>
                   )}
-                  <div style={{ padding: '10px 12px' }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedProduct.name}</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>В наличии: <b style={{ color: selectedProduct.stock <= 3 ? '#C08F4F' : 'var(--text-primary)' }}>{selectedProduct.stock} шт</b></span>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: accentColor }}>{(selectedProduct.salePrice || 0).toLocaleString()} ₸</span>
+                  <div style={{ padding: '12px 14px' }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-purple)' }}>
+                      {[selectedProduct.category, selectedProduct.club || activeClub].filter(Boolean).join(' • ')}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', marginTop: 3 }}>{selectedProduct.name}</div>
+                    <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 9 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-secondary)' }}>Цена:</span>
+                        <span style={{ fontSize: 13, fontWeight: 900, color: '#34d399' }}>{(selectedProduct.salePrice || 0).toLocaleString()} ₸</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-secondary)' }}>В наличии:</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: selectedProduct.stock <= 3 ? '#C08F4F' : 'var(--text-primary)' }}>{selectedProduct.stock} шт</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Qty */}
-                {/* Мобильный: кнопки ± не меньше 40px под палец */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                  {/* Размерная сетка: выбор размера обязателен */}
-                  {selectedProduct.sizes && Object.keys(selectedProduct.sizes).length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', width: '100%', marginBottom: 8 }}>
+                {/* Тип продажи — как в модалке Склада */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Тип продажи</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button type="button" onClick={() => setIsFree(false)}
+                      style={{
+                        padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
+                        border: `1px solid ${!isFree ? '#10b981' : 'var(--border)'}`,
+                        background: !isFree ? '#10b981' : 'var(--bg-hover)',
+                        color: !isFree ? '#fff' : 'var(--text-secondary)',
+                      }}>Платная продажа</button>
+                    <button type="button" onClick={() => setIsFree(true)}
+                      style={{
+                        padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
+                        border: `1px solid ${isFree ? '#f97316' : 'var(--border)'}`,
+                        background: isFree ? '#f97316' : 'var(--bg-hover)',
+                        color: isFree ? '#fff' : 'var(--text-secondary)',
+                      }}>🎁 Бесплатно / Бартер</button>
+                  </div>
+                </div>
+
+                {/* Кто покупает */}
+                {!isFree && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Кто покупает?</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <button type="button" onClick={() => { setBuyerType('client'); setCustomPrice(String(selectedProduct.salePrice || 0)); }}
+                        style={{
+                          padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
+                          border: `1px solid ${buyerType === 'client' ? 'var(--accent-purple)' : 'var(--border)'}`,
+                          background: buyerType === 'client' ? 'var(--accent-purple)' : 'var(--bg-hover)',
+                          color: buyerType === 'client' ? '#fff' : 'var(--text-secondary)',
+                        }}>Клиент</button>
+                      <button type="button" onClick={() => { setBuyerType('employee'); setCustomPrice(String(selectedProduct.employeePrice || selectedProduct.salePrice || 0)); }}
+                        style={{
+                          padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
+                          border: `1px solid ${buyerType === 'employee' ? 'var(--accent-purple)' : 'var(--border)'}`,
+                          background: buyerType === 'employee' ? 'var(--accent-purple)' : 'var(--bg-hover)',
+                          color: buyerType === 'employee' ? '#fff' : 'var(--text-secondary)',
+                        }}>Сотрудник</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Причина списания (бесплатная выдача) */}
+                {isFree && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Причина списания</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {FREE_REASONS.map(r => (
+                        <button key={r} type="button" onClick={() => setFreeReason(r)}
+                          style={{
+                            padding: '7px 12px', borderRadius: 10, fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.15s',
+                            border: `1px solid ${freeReason === r ? '#f97316' : 'var(--border)'}`,
+                            background: freeReason === r ? '#f97316' : 'var(--bg-hover)',
+                            color: freeReason === r ? '#fff' : 'var(--text-secondary)',
+                          }}>{r}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Размер — для товаров с размерной сеткой */}
+                {selectedProduct.sizes && Object.keys(selectedProduct.sizes).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Размер</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {['XS','S','M','L','XL','XXL','3XL'].filter(sz => (selectedProduct.sizes[sz] || 0) > 0).map(sz => (
-                        <button key={sz} onClick={() => setSaleSize(sz)} style={{
-                          minHeight: 40, padding: '0 14px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 900,
+                        <button key={sz} type="button" onClick={() => setSaleSize(sz)} style={{
+                          minHeight: 40, padding: '0 14px', borderRadius: 12, cursor: 'pointer', fontSize: 12, fontWeight: 900, transition: 'all 0.15s',
                           border: saleSize === sz ? '1px solid var(--accent-purple)' : '1px solid var(--border)',
                           background: saleSize === sz ? 'var(--accent-purple)' : 'var(--bg-hover)',
                           color: saleSize === sz ? '#fff' : 'var(--text-primary)',
                         }}>{sz} <span style={{ opacity: 0.7, fontWeight: 700 }}>·{selectedProduct.sizes[sz]}</span></button>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Кол-во / Цена / Оплата — сетка как в Складе */}
+                <div style={{ display: 'grid', gridTemplateColumns: isFree ? '1fr' : '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Кол-во (шт)</div>
+                    <input type="number" min="1" max={selectedProduct.stock} value={qty}
+                      onChange={e => setQty(Math.max(1, Math.min(selectedProduct.stock, parseInt(e.target.value) || 1)))}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', outline: 'none' }} />
+                  </div>
+                  {!isFree && (
+                    <>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Цена (₸/шт)</div>
+                        <input type="number" min="0" value={customPrice} onChange={e => setCustomPrice(e.target.value)}
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 14, fontWeight: 800, color: '#34d399', outline: 'none' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Оплата</div>
+                        <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 8px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)', outline: 'none', height: 42 }}>
+                          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                    </>
                   )}
-                  <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 16, fontWeight: 700, cursor: 'pointer', color: 'var(--text-primary)', flexShrink: 0 }}>−</button>
-                  <input type="number" min="1" max={selectedProduct.stock} value={qty}
-                    onChange={e => setQty(Math.max(1, Math.min(selectedProduct.stock, parseInt(e.target.value) || 1)))}
-                    style={{ flex: 1, textAlign: 'center', padding: '6px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', outline: 'none', minWidth: 0 }} />
-                  <button onClick={() => setQty(q => Math.min(selectedProduct.stock, q + 1))} style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 16, fontWeight: 700, cursor: 'pointer', color: 'var(--text-primary)', flexShrink: 0 }}>+</button>
                 </div>
 
-                {/* Free toggle */}
-                <button onClick={() => setIsFree(v => !v)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
-                    padding: '8px 12px', borderRadius: 10, border: `1px solid ${isFree ? '#C08F4F' : 'var(--border)'}`,
-                    background: isFree ? 'rgba(192,143,79,0.08)' : 'var(--bg-hover)',
-                    color: isFree ? '#C08F4F' : 'var(--text-secondary)',
-                    cursor: 'pointer', fontSize: 11, fontWeight: 800, transition: 'all 0.15s',
-                  }}>
-                  <Gift size={13} />
-                  {isFree ? '🎁 Бесплатно / Бартер' : 'Платная продажа'}
-                </button>
-
-                {/* Buyer Type (Client/Employee) Switcher */}
-                {!isFree && (
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                    <button type="button" onClick={() => { setBuyerType('client'); setCustomPrice(String(selectedProduct.salePrice || 0)); }}
-                      style={{
-                        flex: 1, padding: '6px', borderRadius: 9, fontSize: 10, fontWeight: 800,
-                        border: `1px solid ${buyerType === 'client' ? accentColor : 'var(--border)'}`,
-                        background: buyerType === 'client' ? `${accentColor}12` : 'var(--bg-hover)',
-                        color: buyerType === 'client' ? accentColor : 'var(--text-secondary)',
-                        cursor: 'pointer', transition: 'all 0.15s',
-                      }}>Клиент</button>
-                    <button type="button" onClick={() => { setBuyerType('employee'); setCustomPrice(String(selectedProduct.employeePrice || selectedProduct.salePrice || 0)); }}
-                      style={{
-                        flex: 1, padding: '6px', borderRadius: 9, fontSize: 10, fontWeight: 800,
-                        border: `1px solid ${buyerType === 'employee' ? accentColor : 'var(--border)'}`,
-                        background: buyerType === 'employee' ? `${accentColor}12` : 'var(--bg-hover)',
-                        color: buyerType === 'employee' ? accentColor : 'var(--text-secondary)',
-                        cursor: 'pointer', transition: 'all 0.15s',
-                      }}>Сотрудник</button>
-                  </div>
-                )}
-
-                {/* Free reason OR payment method */}
-                {isFree ? (
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
-                    {FREE_REASONS.map(r => (
-                      <button key={r} onClick={() => setFreeReason(r)}
-                        style={{
-                          padding: '5px 10px', borderRadius: 8, fontSize: 10, fontWeight: 800,
-                          border: `1px solid ${freeReason === r ? '#C08F4F' : 'var(--border)'}`,
-                          background: freeReason === r ? 'rgba(192,143,79,0.12)' : 'var(--bg-hover)',
-                          color: freeReason === r ? '#C08F4F' : 'var(--text-secondary)',
-                          cursor: 'pointer',
-                        }}>{r}</button>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
-                    {PAYMENT_METHODS.map(m => (
-                      <button key={m} onClick={() => setPaymentMethod(m)}
-                        style={{
-                          flex: 1, padding: '6px 4px', borderRadius: 9, fontSize: 10, fontWeight: 800,
-                          border: `1px solid ${paymentMethod === m ? accentColor : 'var(--border)'}`,
-                          background: paymentMethod === m ? `${accentColor}12` : 'var(--bg-hover)',
-                          color: paymentMethod === m ? accentColor : 'var(--text-secondary)',
-                          cursor: 'pointer',
-                        }}>{m}</button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Custom price editing (if not free) */}
-                {!isFree && (
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 4 }}>Редактировать цену (₸ за шт)</div>
-                    <input type="number" min="0" value={customPrice} onChange={e => setCustomPrice(e.target.value)}
-                      style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, fontWeight: 800, color: 'var(--text-primary)', outline: 'none' }} />
-                  </div>
-                )}
-
                 {/* Buyer name input */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 4 }}>
-                    {buyerType === 'employee' ? 'Имя сотрудника' : 'Имя клиента (необязательно)'}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 6 }}>
+                    {!isFree && buyerType === 'employee' ? 'Имя сотрудника' : 'Имя клиента (необязательно)'}
                   </div>
-                  <input type="text" placeholder={buyerType === 'employee' ? 'Иван И.' : 'Аскар А.'} value={buyerName} onChange={e => setBuyerName(e.target.value)}
-                    style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 12, color: 'var(--text-primary)', outline: 'none' }} />
+                  <input type="text" placeholder={!isFree && buyerType === 'employee' ? 'Иван И.' : 'Аскар А.'} value={buyerName} onChange={e => setBuyerName(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', outline: 'none' }} />
                 </div>
 
                 {/* Comments / Notes */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 4 }}>Комментарий к продаже</div>
-                  <textarea rows="2" placeholder="Укажите детали..." value={notes} onChange={e => setNotes(e.target.value)}
-                    style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 11, color: 'var(--text-primary)', outline: 'none', resize: 'none' }} />
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.07em', marginBottom: 6 }}>Комментарий к продаже</div>
+                  <textarea rows="2" placeholder="Укажите детали (например: скидка, вычет из зп и т.д.)" value={notes} onChange={e => setNotes(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', outline: 'none', resize: 'none' }} />
                 </div>
 
                 {/* Salesperson selector */}
@@ -599,10 +621,10 @@ const SalesPage = () => {
                   </div>
                 )}
 
-                {/* Total */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 10, marginBottom: 10 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Итого</span>
-                  <span style={{ fontSize: 18, fontWeight: 950, color: isFree ? '#C08F4F' : accentColor }}>
+                {/* Итого — как в модалке Склада */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 12, marginBottom: 12 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Итого к оплате:</span>
+                  <span style={{ fontSize: 20, fontWeight: 950, color: isFree ? '#f97316' : '#34d399' }}>
                     {isFree ? '🎁 0 ₸' : `${saleTotal.toLocaleString()} ₸`}
                   </span>
                 </div>
@@ -614,23 +636,24 @@ const SalesPage = () => {
                   </div>
                 )}
 
-                {/* Мобильный: кнопки действий выше 40px */}
-                <div style={{ display: 'flex', gap: 7 }}>
+                {/* Кнопки — как в модалке Склада: Отмена + зелёная Провести чек */}
+                <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => { setSelectedProduct(null); setQty(1); setIsFree(false); }}
-                    style={{ padding: isMobile ? '12px 16px' : '9px 12px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                    <X size={13} />
+                    style={{ padding: isMobile ? '13px 20px' : '11px 18px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, fontWeight: 800, textTransform: 'uppercase' }}>
+                    Отмена
                   </button>
                   <button onClick={handleSubmit} disabled={submitting || qty > selectedProduct.stock}
                     style={{
-                      flex: 1, padding: isMobile ? '13px 9px' : '9px', borderRadius: 11, border: 'none',
-                      background: submitting ? 'var(--bg-hover)' : isFree ? '#C08F4F' : accentColor,
+                      flex: 1, padding: isMobile ? '13px 9px' : '11px', borderRadius: 14, border: 'none',
+                      background: submitting ? 'var(--bg-hover)' : isFree ? '#f97316' : '#10b981',
                       color: submitting ? 'var(--text-muted)' : '#fff',
                       cursor: submitting ? 'not-allowed' : 'pointer',
-                      fontSize: 11, fontWeight: 900, textTransform: 'uppercase',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      boxShadow: submitting ? 'none' : '0 6px 18px rgba(16,185,129,0.25)',
                     }}>
-                    {isFree ? <Gift size={13} /> : <Check size={13} />}
-                    {submitting ? 'Ждите...' : isFree ? 'Выдать бесплатно' : 'Провести продажу'}
+                    {isFree ? <Gift size={14} /> : <Check size={14} />}
+                    {submitting ? 'Ждите...' : isFree ? 'Выдать бесплатно' : 'Провести чек'}
                   </button>
                 </div>
               </>
