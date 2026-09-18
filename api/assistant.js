@@ -239,6 +239,25 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // ── Ветка: прокси публичного API отзывов 2ГИС (дёргает облачная рутина —
+  // её egress-прокси блокирует public-api.reviews.2gis.com, а Vercel ходит свободно).
+  // POST {gisReviews: '<branchId>'} → сырой JSON ответа 2ГИС как есть.
+  if (req.body?.gisReviews !== undefined) {
+    const bid = String(req.body.gisReviews || '').replace(/\D/g, '')
+    if (!bid) return res.status(400).json({ error: 'branchId required' })
+    const GIS_KEY = '6e7e1929-4ea9-4a5d-8c05-d601860389bd'
+    try {
+      const url = `https://public-api.reviews.2gis.com/2.0/branches/${bid}/reviews`
+        + `?limit=${Math.min(Number(req.body.limit) || 20, 50)}&is_advertiser=false&sort_by=date_edited&key=${GIS_KEY}&locale=ru_KZ`
+      const r = await fetch(url)
+      if (!r.ok) return res.status(r.status).json({ error: `2GIS API: ${r.status}` })
+      return res.json(await r.json())
+    } catch (e) {
+      console.error('gisReviews proxy error:', e.message)
+      return res.status(502).json({ error: e.message })
+    }
+  }
+
   // ── Ветка: классификатор лидов по смыслу (дёргает wa-bridge). fail-open → {lead:true} ──
   if (req.body?.classifyLead !== undefined) {
     const text = String(req.body.classifyLead || '').trim().slice(0, 1000)
