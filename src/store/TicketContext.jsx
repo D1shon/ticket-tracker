@@ -158,6 +158,7 @@ export function applyDynamicUsers(usersMap) {
       if (profile.roleOverride && st.role !== 'chef' && ALLOWED_DYN_ROLES.includes(profile.roleOverride)) {
         patch.role = profile.roleOverride;
         patch.mop = !!profile.mopOverride;
+        patch.dev = !!profile.devOverride;
         if (profile.clubOverride !== undefined) patch.club = profile.clubOverride;
       }
       if (Object.keys(patch).length) {
@@ -171,6 +172,7 @@ export function applyDynamicUsers(usersMap) {
       club: profile.club || null,
       displayName: profile.displayName || key.split('@')[0],
       mop: !!profile.mop,
+      dev: !!profile.dev, // Разработчик: tech + права команды разработки в InStudio
       tabsExtra,
       tabsHidden,
     };
@@ -379,6 +381,7 @@ export const TicketProvider = ({ children }) => {
         club,
         clubs,
         mop: registered.mop || false,
+        dev: registered.dev || false,
         // Персональные перекрытия доступа к вкладкам (редактируются шефом в Настройках)
         tabsExtra: registered.tabsExtra || [],
         tabsHidden: registered.tabsHidden || [],

@@ -1047,6 +1047,9 @@ const ACCESS_ROLES = [
   { id: 'marketing',  label: 'Маркетинг',   needsClub: false },
   { id: 'viewer',     label: 'Наблюдатель', needsClub: false },
   { id: 'tech',       label: 'Техник',      needsClub: false },
+  // Разработчик = tech (InStudio/чек-листы/настройки по всем клубам) + флаг dev:
+  // права команды разработки в InStudio (брать заявки, статусы, приоритеты)
+  { id: 'dev',        label: 'Разработчик', needsClub: false },
   { id: 'lostviewer', label: 'Утерянные вещи (просмотр)', needsClub: false },
 ];
 const ROLE_LABEL = Object.fromEntries(ACCESS_ROLES.map(r => [r.id, r.label]));
@@ -1069,7 +1072,7 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     const map = {};
     Object.entries(USER_ROLES).forEach(([email, p]) => {
       if (!email.includes('@')) return;
-      map[email] = { email, role: p.role, club: p.club || null, displayName: p.displayName || email.split('@')[0], mop: !!p.mop, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: true, revoked: false };
+      map[email] = { email, role: p.role, club: p.club || null, displayName: p.displayName || email.split('@')[0], mop: !!p.mop, dev: !!p.dev, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: true, revoked: false };
     });
     Object.entries(appUsers || {}).forEach(([emailRaw, p]) => {
       const e = emailRaw.toLowerCase();
@@ -1079,7 +1082,7 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
         if (Array.isArray(p.tabsHidden)) map[e].tabsHidden = p.tabsHidden;
         if (p.role) map[e].isStatic = false; // док с ролью = динамический аккаунт
       } else {
-        map[e] = { email: e, role: p.role || 'admin', club: p.club || null, displayName: p.displayName || e.split('@')[0], mop: !!p.mop, revoked: !!p.revoked, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: false };
+        map[e] = { email: e, role: p.role || 'admin', club: p.club || null, displayName: p.displayName || e.split('@')[0], mop: !!p.mop, dev: !!p.dev, revoked: !!p.revoked, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: false };
       }
     });
     const list = Object.values(map);
@@ -1098,8 +1101,9 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     setSaving(true);
     try {
       await setDoc(doc(db, 'app_users', email), {
-        role: form.role === 'mop' ? 'rop' : form.role,
+        role: form.role === 'mop' ? 'rop' : form.role === 'dev' ? 'tech' : form.role,
         mop: form.role === 'mop',
+        dev: form.role === 'dev',
         club: roleDef?.needsClub ? form.club : null,
         displayName: form.name.trim() || email.split('@')[0],
         addedBy: myEmail,
@@ -1127,26 +1131,27 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
   // ── Повышение / смена роли ──
   const openRoleEditor = (u) => {
     if (u.isStatic && u.role === 'chef') { toast.error('Роль шефа меняется только в коде'); return; }
-    const uiRole = u.mop ? 'mop' : u.role;
+    const uiRole = u.dev ? 'dev' : u.mop ? 'mop' : u.role;
     setRoleDraft({ role: ACCESS_ROLES.some(r => r.id === uiRole) ? uiRole : 'manager', club: u.club || '4YOU' });
     setRoleUser(u);
   };
   const saveRole = async () => {
     if (!roleUser) return;
     const def = ACCESS_ROLES.find(r => r.id === roleDraft.role);
-    const realRole = roleDraft.role === 'mop' ? 'rop' : roleDraft.role;
+    const realRole = roleDraft.role === 'mop' ? 'rop' : roleDraft.role === 'dev' ? 'tech' : roleDraft.role;
     const isMop = roleDraft.role === 'mop';
+    const isDev = roleDraft.role === 'dev';
     const club = def?.needsClub ? roleDraft.club : null;
     try {
       if (roleUser.isStatic) {
         // Зашитый аккаунт: роль из кода не трогаем, кладём перекрытие
         await setDoc(doc(db, 'app_users', roleUser.email), {
-          roleOverride: realRole, mopOverride: isMop, clubOverride: club,
+          roleOverride: realRole, mopOverride: isMop, devOverride: isDev, clubOverride: club,
           roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
         }, { merge: true });
       } else {
         await setDoc(doc(db, 'app_users', roleUser.email), {
-          role: realRole, mop: isMop, club,
+          role: realRole, mop: isMop, dev: isDev, club,
           roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
         }, { merge: true });
       }
@@ -1183,7 +1188,7 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     } catch { toast.error('Не удалось сохранить'); }
   };
 
-  const roleBadge = (u) => u.mop ? 'МОП' : (ROLE_LABEL[u.role] || u.role);
+  const roleBadge = (u) => u.dev ? 'Разработчик' : u.mop ? 'МОП' : (ROLE_LABEL[u.role] || u.role);
 
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '18px 20px', marginBottom: 24 }}>

@@ -92,7 +92,8 @@ const InStudioPage = () => {
   const canSeeAllClubs = ['chef', 'komdir', 'viewer', 'marketing', 'tech'].includes(user?.role) || !userClub;
   // Брать заявки в работу, менять статусы и приоритеты может команда разработки и Дильшат
   const DEV_EMAILS = ['iliyas.s@hj.fit', 'madiyar.a@hj.fit', 'roman.v@hj.fit', 'nurali.m@hj.fit', 'dilshat.r@hj.fit'];
-  const isDev = DEV_EMAILS.includes(myEmail);
+  // user.dev — роль «Разработчик», выдаётся шефом в Настройках («Сотрудники и доступы»)
+  const isDev = DEV_EMAILS.includes(myEmail) || user?.dev === true;
 
   const [tickets, setTickets] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
