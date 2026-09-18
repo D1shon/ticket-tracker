@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { getFirestore, doc, setDoc, updateDoc, collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PROFILE_DIR = path.join(ROOT, 'profile');
@@ -278,6 +278,64 @@ async function main() {
       }
     } catch {}
   }, 30 * 60 * 1000);
+
+  // ── Мониторинг НОВЫХ отзывов 2ГИС (перенесён из облачной рутины 2026-09-18:
+  // egress-политика облака заблокировала и public-api 2ГИС, и наш Vercel-домен,
+  // а с ноутбука оба доступны). Каждые 3 часа: публичный API отзывов →
+  // сравнение с gis_seen/{club} → push команде клуба (chef/komdir всегда,
+  // manager/rop своего клуба). Первый прогон по клубу только запоминает.
+  const GIS_KEY = '6e7e1929-4ea9-4a5d-8c05-d601860389bd';
+  const REVIEW_BRANCHES = {
+    '4YOU': '70000001105005291', 'COLIBRI': '70000001085349944', 'VILLA': '70000001102000129',
+    'NURLY ORDA': '70000001055382008', 'PROMENADE': '70000001099794659',
+  };
+  const checkNewReviews = async () => {
+    try {
+      const tokSnap = await getDocs(collection(db, 'push_tokens'));
+      const toks = tokSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      for (const [club, bid] of Object.entries(REVIEW_BRANCHES)) {
+        let json;
+        try {
+          const res = await fetch(`https://public-api.reviews.2gis.com/2.0/branches/${bid}/reviews?limit=20&is_advertiser=false&sort_by=date_edited&key=${GIS_KEY}&locale=ru_KZ`);
+          if (!res.ok) { log('отзывы', club, 'api', res.status); continue; }
+          json = await res.json();
+        } catch (e) { log('отзывы', club, 'err', e.message); continue; }
+        const reviews = json.reviews || [];
+        if (!reviews.length) continue;
+        const dt = r => r.date_edited || r.date_created || '';
+        const newest = reviews.map(dt).filter(Boolean).sort().slice(-1)[0] || '';
+        const key = club.split(' ').join('');
+        const seenRef = doc(db, 'gis_seen', key);
+        const seenSnap = await getDoc(seenRef);
+        if (!seenSnap.exists()) {
+          await setDoc(seenRef, { lastISO: newest, updatedAtISO: new Date().toISOString() });
+          log('отзывы', club, 'first-run', newest);
+          continue;
+        }
+        const lastSeen = seenSnap.data().lastISO || '';
+        const fresh = reviews.filter(r => dt(r) > lastSeen);
+        if (fresh.length) {
+          const tokens = toks
+            .filter(t => t.role === 'chef' || t.role === 'komdir' || ((t.role === 'manager' || t.role === 'rop') && (t.club || '').toUpperCase() === club))
+            .map(t => t.id);
+          if (tokens.length) {
+            for (const rv of fresh.slice(0, 5)) {
+              const rating = rv.rating != null ? rv.rating + '/5 ' : '';
+              const txt = (rv.text || '').slice(0, 90);
+              await fetch('https://ticket-tracker-inky.vercel.app/api/send-push', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: '💬 Новый отзыв 2ГИС · ' + club, body: rating + txt, url: '/reviews', tag: 'gis-' + key, tokens }),
+              }).catch(e => log('отзывы push err', e.message));
+            }
+          }
+          log('отзывы', club, 'новых', fresh.length, 'токенов', tokens.length);
+        }
+        await setDoc(seenRef, { lastISO: newest, updatedAtISO: new Date().toISOString() });
+      }
+    } catch (e) { log('отзывы sweep err', e.message); }
+  };
+  setTimeout(checkNewReviews, 60 * 1000);
+  setInterval(checkNewReviews, 3 * 60 * 60 * 1000);
 
   onSnapshot(query(collection(db, 'review_replies'), where('status', '==', 'pending')), snap => {
     snap.docChanges().forEach(ch => {
