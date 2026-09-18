@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
-import { MonitorSmartphone, Plus, X, User, Clock, RotateCw, Play, Trash2, MessageSquare, Paperclip, Send, Timer, Pencil } from 'lucide-react';
+import { MonitorSmartphone, Plus, X, User, Clock, RotateCw, Play, Trash2, MessageSquare, Paperclip, Send, Timer, Pencil, LayoutGrid, List } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { useTickets } from '../store/TicketContext';
@@ -101,6 +101,12 @@ const InStudioPage = () => {
   const [saving, setSaving] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState('ALL');
   const [clubFilter, setClubFilter] = useState('ALL');
+  // Десктоп: фильтр по статусу + вид «колонки/список» (выбор запоминается)
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('hj_instudio_view') || 'kanban'; } catch { return 'kanban'; }
+  });
+  const changeView = (v) => { setViewMode(v); try { localStorage.setItem('hj_instudio_view', v); } catch {} };
 
   // Мобильный режим: канбан → лента чипов-статусов + вертикальный список
   const [isMobile, setIsMobile] = useState(() => isMobileDevice());
@@ -157,6 +163,15 @@ const InStudioPage = () => {
       .forEach(t => { (m[t.status] || m.new).push(t); });
     return m;
   }, [visibleTickets, priorityFilter]);
+
+  // Вид «список»: одна лента по дате (свежие сверху), с учётом фильтра статуса
+  const flatList = useMemo(
+    () => visibleTickets.filter(t =>
+      (priorityFilter === 'ALL' || t.priority === priorityFilter) &&
+      (statusFilter === 'ALL' || (t.status || 'new') === statusFilter)
+    ),
+    [visibleTickets, priorityFilter, statusFilter]
+  );
 
   const handleCreate = async () => {
     if (!form.title.trim()) return toast.error('Укажите заголовок');
@@ -328,14 +343,21 @@ const InStudioPage = () => {
   // Поля формы: на мобильном 16px, чтобы iOS не зумил страницу при фокусе
   const mInput = isMobile ? { ...inputStyle, fontSize: 16 } : inputStyle;
 
-  // Карточка заявки — одна и та же для десктопного канбана и мобильного списка
-  const renderTicketCard = (t) => {
+  // Карточка заявки — одна и та же для десктопного канбана и мобильного списка.
+  // showStatus — бейдж статуса в виде «список», где нет колонок-подсказок
+  const renderTicketCard = (t, showStatus = false) => {
     const pr = PRIORITIES.find(p => p.id === t.priority);
     const wt = workTime(t);
     const comments = t.comments || [];
+    const st = showStatus ? STATUSES.find(s => s.id === (t.status || 'new')) : null;
     return (
       <div key={t.id} onClick={() => { setSelectedId(t.id); setChatText(''); setChatPhotos([]); setEditingIdx(null); setEditingText(''); }} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: isMobile ? '12px 13px' : '11px 12px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+          {st && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9.5, fontWeight: 800, color: st.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: st.color }} /> {st.label}
+            </span>
+          )}
           <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>{t.club}</span>
           {pr && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9.5, fontWeight: 800, color: pr.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -470,8 +492,48 @@ const InStudioPage = () => {
         ))}
       </div>
 
+      {/* Десктоп: фильтр по статусу + переключатель вида «колонки/список» */}
+      {!isMobile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', flexShrink: 0 }}>Статус:</span>
+          {[{ id: 'ALL', label: 'Все', color: 'var(--text-secondary)' }, ...STATUSES].map(st => (
+            <button
+              key={st.id}
+              onClick={() => setStatusFilter(st.id)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, cursor: 'pointer',
+                fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap',
+                border: statusFilter === st.id ? `1px solid ${st.id === 'ALL' ? 'var(--text-secondary)' : st.color + '66'}` : '1px solid var(--border)',
+                background: statusFilter === st.id ? 'var(--bg-hover)' : 'transparent',
+                color: statusFilter === st.id ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {st.id !== 'ALL' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: st.color }} />}
+              {st.label}
+              <span style={{ opacity: 0.6, fontWeight: 700 }}>
+                {st.id === 'ALL'
+                  ? STATUSES.reduce((n, s) => n + byStatus[s.id].length, 0)
+                  : byStatus[st.id].length}
+              </span>
+            </button>
+          ))}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 3 }}>
+            {[{ id: 'kanban', icon: LayoutGrid, title: 'Колонки по статусам' }, { id: 'list', icon: List, title: 'Списком, как в Заявках' }].map(v => (
+              <button key={v.id} onClick={() => changeView(v.id)} title={v.title} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                fontSize: 11, fontWeight: 800,
+                background: viewMode === v.id ? 'var(--bg-hover)' : 'transparent',
+                color: viewMode === v.id ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}>
+                <v.icon size={13} /> {v.id === 'kanban' ? 'Колонки' : 'Список'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Мобильный: лента чипов-статусов + вертикальный список выбранного статуса.
-          Десктоп: канбан 4 колонок как раньше */}
+          Десктоп: канбан по статусам или единый список (как в Заявках) */}
       {isMobile ? (
         <>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
@@ -503,9 +565,19 @@ const InStudioPage = () => {
             )}
           </div>
         </>
+      ) : viewMode === 'list' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {flatList.length === 0 ? (
+            <div style={{ padding: '28px 10px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 14 }}>
+              По выбранным фильтрам заявок нет
+            </div>
+          ) : (
+            flatList.map(t => renderTicketCard(t, true))
+          )}
+        </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: 12, alignItems: 'start' }}>
-          {STATUSES.map(st => (
+          {STATUSES.filter(st => statusFilter === 'ALL' || st.id === statusFilter).map(st => (
             <div key={st.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', borderBottom: '1px solid var(--border)' }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: st.color }} />
