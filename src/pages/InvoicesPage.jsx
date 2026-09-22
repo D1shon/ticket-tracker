@@ -66,7 +66,7 @@ const InvoicesPage = () => {
   const [saving, setSaving] = useState(false);
   const [photoView, setPhotoView] = useState(null);
   const [isMobile, setIsMobile] = useState(() => isMobileDevice());
-  const [form, setForm] = useState({ workDesc: '', workDate: new Date().toISOString().slice(0, 10), amount: '', photos: [] });
+  const [form, setForm] = useState({ workDesc: '', workDate: new Date().toISOString().slice(0, 10), amount: '', photos: [], club: myClub || '4YOU' });
   const cleanedRef = useRef(false);
 
   useEffect(() => {
@@ -159,7 +159,8 @@ const InvoicesPage = () => {
     if (form.photos.reduce((n, p) => n + p.length, 0) > 900 * 1024) {
       return toast.error('Вложения слишком большие — оставьте не больше одного PDF или уберите лишнее фото');
     }
-    const club = myClub || (isChef ? (clubFilter !== 'ALL' ? clubFilter : null) : null);
+    // Менеджер заперт на своём клубе; шеф выбирает клуб в форме
+    const club = isChef ? (form.club || '4YOU') : myClub;
     if (!club) return toast.error('Не определён клуб');
     setSaving(true);
     try {
@@ -181,7 +182,7 @@ const InvoicesPage = () => {
       });
       toast.success('Счёт отправлен на подтверждение');
       setShowAdd(false);
-      setForm({ workDesc: '', workDate: new Date().toISOString().slice(0, 10), amount: '', photos: [] });
+      setForm({ workDesc: '', workDate: new Date().toISOString().slice(0, 10), amount: '', photos: [], club: myClub || form.club || '4YOU' });
     } catch (e) { console.error(e); toast.error('Не удалось сохранить счёт'); }
     finally { setSaving(false); }
   };
@@ -240,14 +241,12 @@ const InvoicesPage = () => {
             {isChef ? 'Подтверждение счетов от клубов · хранятся 1 месяц' : `Клуб ${myClub || ''} · счёт подтверждает шеф · хранятся 1 месяц`}
           </p>
         </div>
-        {!isChef && (
-          <button onClick={() => setShowAdd(true)} style={{
-            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 10,
-            border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 800, cursor: 'pointer',
-          }}>
-            <Plus size={14} /> Загрузить счёт
-          </button>
-        )}
+        <button onClick={() => setShowAdd(true)} style={{
+          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 10,
+          border: '1px solid var(--accent-purple)', background: 'var(--accent-purple)', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer',
+        }}>
+          <Plus size={14} /> Загрузить счёт
+        </button>
       </div>
 
       {/* Фильтр по клубу — только шефу */}
@@ -370,11 +369,19 @@ const InvoicesPage = () => {
         <div onClick={() => setShowAdd(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 460, maxHeight: isMobile ? '92dvh' : '86vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>Счёт на оплату · {myClub}</div>
+              <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>Счёт на оплату{myClub ? ` · ${myClub}` : ''}</div>
               <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}><X size={18} /></button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {isChef && (
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 5 }}>Клуб *</div>
+                  <select value={form.club} onChange={e => setForm(f => ({ ...f, club: e.target.value }))} style={mInput}>
+                    {CLUBS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 5 }}>За какую работу счёт *</div>
                 <textarea value={form.workDesc} onChange={e => setForm(f => ({ ...f, workDesc: e.target.value }))} rows={3}
