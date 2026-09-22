@@ -4,7 +4,7 @@ import { ShoppingBag, Camera, Plus, Trash2, X, Check, Clock, Phone, User, Search
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -13,13 +13,14 @@ import { isMobileDevice } from '../lib/isMobile';
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 const MONTH_MS = 30 * 24 * 3600 * 1000;
 
-// Same compression as warehouse photos: 480px JPEG ≈ 25 KB
-const compressImageToBase64 = (file) => new Promise((resolve, reject) => {
+// В карточке списка живёт МИНИАТЮРА (~4 КБ), полное фото — в lost_item_photos/{id}
+// и грузится только по нажатию. Иначе подписка на клуб тянула до 10 МБ фото,
+// а дисковый кэш Firestore переполнял хранилище браузера (инцидент «всё тормозит»).
+const compressImageToBase64 = (file, MAX_SIZE = 480, quality = 0.65) => new Promise((resolve, reject) => {
   const img = new window.Image();
   const objectUrl = URL.createObjectURL(file);
   img.onload = () => {
     URL.revokeObjectURL(objectUrl);
-    const MAX_SIZE = 480;
     let { width, height } = img;
     if (width > MAX_SIZE || height > MAX_SIZE) {
       if (width > height) { height = Math.round((height * MAX_SIZE) / width); width = MAX_SIZE; }
@@ -29,7 +30,7 @@ const compressImageToBase64 = (file) => new Promise((resolve, reject) => {
     canvas.width = width;
     canvas.height = height;
     canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-    resolve(canvas.toDataURL('image/jpeg', 0.65));
+    resolve(canvas.toDataURL('image/jpeg', quality));
   };
   img.onerror = () => reject(new Error('Не удалось прочитать изображение'));
   img.src = objectUrl;
@@ -70,8 +71,20 @@ const LostItemsPage = () => {
   const [returnPhone, setReturnPhone] = useState('');
   const [returning, setReturning] = useState(false);
 
-  // Fullscreen photo preview
+  // Fullscreen photo preview: сразу показываем миниатюру из карточки,
+  // полное фото дотягиваем из lost_item_photos по id (если оно там есть)
   const [previewPhoto, setPreviewPhoto] = useState(null);
+  const previewIdRef = useRef(null);
+  const openPreview = async (item) => {
+    if (!item.photo) return;
+    previewIdRef.current = item.id;
+    setPreviewPhoto(item.photo);
+    try {
+      const snap = await getDoc(doc(db, 'lost_item_photos', item.id));
+      const full = snap.exists() ? snap.data().photo : null;
+      if (full && previewIdRef.current === item.id) setPreviewPhoto(full);
+    } catch {}
+  };
 
   // Per-club subscription — only the selected club's photos are downloaded
   useEffect(() => {
@@ -114,7 +127,11 @@ const LostItemsPage = () => {
     if (!file) return;
     if (!file.type.startsWith('image/')) return toast.error('Выберите фотографию');
     try {
-      setPhoto(await compressImageToBase64(file));
+      const [full, thumb] = await Promise.all([
+        compressImageToBase64(file, 480, 0.65),
+        compressImageToBase64(file, 140, 0.55),
+      ]);
+      setPhoto({ full, thumb });
     } catch {
       toast.error('Не удалось обработать фото');
     }
@@ -125,15 +142,19 @@ const LostItemsPage = () => {
     if (!photo) return toast.error('Сначала сфотографируйте вещь');
     setSaving(true);
     try {
-      await addDoc(collection(db, 'lost_items'), {
+      const ref = await addDoc(collection(db, 'lost_items'), {
         club: activeClub,
-        photo,
+        photo: photo.thumb, // в документе списка — только миниатюра
+        hasFullPhoto: true,
         note: note.trim() || '',
         status: 'stored',
         acceptedAtISO: new Date().toISOString(),
         acceptedBy: user?.displayName || user?.email || '',
         createdAt: serverTimestamp(),
       });
+      await setDoc(doc(db, 'lost_item_photos', ref.id), {
+        photo: photo.full, club: activeClub, createdAtISO: new Date().toISOString(),
+      }).catch(() => {}); // без полного фото останется миниатюра — не критично
       toast.success('Вещь принята на хранение');
       pushNotify({
         title: '🧳 Утерянная вещь принята',
@@ -197,6 +218,7 @@ const LostItemsPage = () => {
     if (!window.confirm('Удалить вещь? Это означает, что вещь утилизирована (выкинута).')) return;
     try {
       await deleteDoc(doc(db, 'lost_items', item.id));
+      deleteDoc(doc(db, 'lost_item_photos', item.id)).catch(() => {});
       toast.success('Вещь удалена (утилизирована)');
     } catch {
       toast.error('Не удалось удалить');
@@ -324,7 +346,7 @@ const LostItemsPage = () => {
                 padding: 10, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0,
               }}>
                 <div
-                  onClick={() => item.photo && setPreviewPhoto(item.photo)}
+                  onClick={() => openPreview(item)}
                   style={{ width: '100%', aspectRatio: '1 / 1', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-hover)', cursor: item.photo ? 'zoom-in' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {item.photo
@@ -379,7 +401,7 @@ const LostItemsPage = () => {
               }}>
                 {/* Thumbnail — tap to enlarge */}
                 <div
-                  onClick={() => item.photo && setPreviewPhoto(item.photo)}
+                  onClick={() => openPreview(item)}
                   style={{ width: 56, height: 56, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-hover)', flexShrink: 0, cursor: item.photo ? 'zoom-in' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {item.photo
@@ -442,9 +464,9 @@ const LostItemsPage = () => {
           Порталы в document.body: внутри animate-fade transform ломает
           position:fixed — на телефоне окно оказывалось внизу страницы */}
       {previewPhoto && ReactDOM.createPortal(
-        <div onClick={() => setPreviewPhoto(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'zoom-out' }}>
+        <div onClick={() => { previewIdRef.current = null; setPreviewPhoto(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'zoom-out' }}>
           <img src={previewPhoto} alt="" style={{ maxWidth: '100%', maxHeight: '90dvh', borderRadius: 16 }} />
-          <button onClick={() => setPreviewPhoto(null)} style={{ position: 'fixed', top: 'calc(16px + env(safe-area-inset-top))', right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 12, padding: 10, color: '#fff', cursor: 'pointer', lineHeight: 0 }}>
+          <button onClick={() => { previewIdRef.current = null; setPreviewPhoto(null); }} style={{ position: 'fixed', top: 'calc(16px + env(safe-area-inset-top))', right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 12, padding: 10, color: '#fff', cursor: 'pointer', lineHeight: 0 }}>
             <X size={18} />
           </button>
         </div>,
@@ -462,9 +484,9 @@ const LostItemsPage = () => {
 
             <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} style={{ display: 'none' }} />
 
-            {photo ? (
+            {photo?.full ? (
               <div style={{ position: 'relative' }}>
-                <img src={photo} alt="" style={{ width: '100%', borderRadius: 14, display: 'block' }} />
+                <img src={photo.full} alt="" style={{ width: '100%', borderRadius: 14, display: 'block' }} />
                 <button onClick={() => fileRef.current?.click()} style={{ position: 'absolute', bottom: 10, right: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
                   <Camera size={13} /> Переснять
                 </button>
