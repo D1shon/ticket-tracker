@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, initializeFirestore, memoryLocalCache } from "firebase/firestore";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCPAitt8EX3ialTb2-_1FQimmlpw5blFYk",
@@ -14,18 +14,19 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Кэш В ПАМЯТИ, а не на диске. Дисковый (persistentLocalCache) экономил чтения,
-// но складывал в хранилище браузера всё, на что подписано приложение — а там
-// base64 внутри документов: вложения заявок до 900 КБ (TicketContext.uploadFile)
-// и фото товаров в merch_products. Хранилище origin переполнялось, и запись
-// падала с «Quota exceeded» — в том числе транзакция продажи. Сброс кэша не
-// лечил: после перезагрузки всё скачивалось обратно за секунды.
-// Цена решения — больше чтений Firestore (тариф Blaze, блокировок нет) и нет
-// работы оффлайн. Вернуть дисковый кэш можно будет, когда вложения и фото
-// переедут в Storage, а подписки перестанут тянуть коллекции целиком.
+// Дисковый кэш: данные рендерятся мгновенно с диска, сеть досылает только
+// дельты (и чтения Firestore в разы дешевле). Его отключали 11.09 из-за
+// «Quota exceeded»: хранилище браузера переполняли 60 МБ base64-фото
+// в lost_items. 22.09 фото мигрированы в lost_item_photos (в документах
+// вещей остались миниатюры ~4 КБ), кэшируемый объём упал до единиц МБ —
+// кэш можно держать снова. Если «Quota exceeded» вернётся — искать НОВУЮ
+// коллекцию с тяжёлым base64 (замер: scratchpad/measure-collections.mjs),
+// а не откатывать кэш вслепую.
 let _db;
 try {
-  _db = initializeFirestore(app, { localCache: memoryLocalCache() });
+  _db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
 } catch {
   _db = getFirestore(app);
 }
