@@ -111,21 +111,54 @@ const InvoicesPage = () => {
     return c;
   }, [invoices, isChef, myClub, clubFilter]);
 
+  // Принимаем фото И PDF (счета обычно приходят PDF-файлами). PDF кладём как есть
+  // (лимит документа Firestore 1 МБ), картинки сжимаем. HEIC с iPhone браузер
+  // декодировать не умеет — говорим об этом прямо, а не молчим.
   const onPhoto = async (ev) => {
     const files = [...(ev.target.files || [])].slice(0, 3);
     for (const f of files) {
-      if (!f.type.startsWith('image/')) continue;
+      if (f.type === 'application/pdf') {
+        if (f.size > 700 * 1024) { toast.error(`PDF «${f.name}» больше 700 КБ — сфотографируйте счёт или сожмите файл`); continue; }
+        const data = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result); r.onerror = rej;
+          r.readAsDataURL(f);
+        }).catch(() => null);
+        if (data) setForm(prev => ({ ...prev, photos: [...prev.photos, data].slice(0, 3) }));
+        continue;
+      }
+      if (!f.type.startsWith('image/') ) { toast.error(`«${f.name}»: поддерживаются фото и PDF`); continue; }
       try {
         const b = await compressInvoicePhoto(f);
         setForm(prev => ({ ...prev, photos: [...prev.photos, b].slice(0, 3) }));
-      } catch { toast.error('Не удалось обработать фото'); }
+      } catch {
+        toast.error(/hei[cf]/i.test(f.type + f.name)
+          ? 'Формат HEIC не открывается в браузере — в настройках камеры iPhone выберите «Наиболее совместимые» или пришлите скриншот счёта'
+          : 'Не удалось обработать фото — попробуйте другой файл');
+      }
     }
     ev.target.value = '';
   };
 
+  const isPdf = (p) => typeof p === 'string' && p.startsWith('data:application/pdf');
+  const openAttachment = (p) => {
+    if (!isPdf(p)) { setPhotoView(p); return; }
+    try {
+      const b64 = p.slice(p.indexOf(',') + 1);
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { toast.error('Не удалось открыть PDF'); }
+  };
+
   const handleCreate = async () => {
     if (!form.workDesc.trim()) return toast.error('Опишите, за какую работу счёт');
-    if (form.photos.length === 0) return toast.error('Прикрепите фото счёта');
+    if (form.photos.length === 0) return toast.error('Прикрепите фото или PDF счёта');
+    // Лимит документа Firestore — 1 МБ: не даём собрать вложения тяжелее ~900 КБ
+    if (form.photos.reduce((n, p) => n + p.length, 0) > 900 * 1024) {
+      return toast.error('Вложения слишком большие — оставьте не больше одного PDF или уберите лишнее фото');
+    }
     const club = myClub || (isChef ? (clubFilter !== 'ALL' ? clubFilter : null) : null);
     if (!club) return toast.error('Не определён клуб');
     setSaving(true);
@@ -272,8 +305,13 @@ const InvoicesPage = () => {
               {/* Фото счёта */}
               {(inv.photos || []).length > 0 && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  {inv.photos.map((p, i) => (
-                    <img key={i} src={p} alt="счёт" onClick={() => setPhotoView(p)}
+                  {inv.photos.map((p, i) => isPdf(p) ? (
+                    <button key={i} onClick={() => openAttachment(p)} style={{ width: 84, height: 84, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-hover)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'var(--text-secondary)' }}>
+                      <Receipt size={20} />
+                      <span style={{ fontSize: 9.5, fontWeight: 900 }}>PDF</span>
+                    </button>
+                  ) : (
+                    <img key={i} src={p} alt="счёт" onClick={() => openAttachment(p)}
                       style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
                   ))}
                 </div>
@@ -357,11 +395,18 @@ const InvoicesPage = () => {
               </div>
 
               <div>
-                <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 6 }}>Фото счёта * (до 3, сжимаются автоматически)</div>
+                <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 6 }}>Фото или PDF счёта * (до 3, фото сжимаются сами)</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {form.photos.map((p, i) => (
                     <div key={i} style={{ position: 'relative' }}>
+                      {isPdf(p) ? (
+                        <div style={{ width: 74, height: 74, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'var(--text-secondary)' }}>
+                          <Receipt size={18} />
+                          <span style={{ fontSize: 9, fontWeight: 900 }}>PDF</span>
+                        </div>
+                      ) : (
                       <img src={p} alt="" style={{ width: 74, height: 74, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)' }} />
+                      )}
                       <button onClick={() => setForm(f => ({ ...f, photos: f.photos.filter((_, j) => j !== i) }))}
                         style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', border: 'none', background: 'var(--text-muted)', color: 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 0 }}>
                         <X size={11} />
@@ -371,8 +416,8 @@ const InvoicesPage = () => {
                   {form.photos.length < 3 && (
                     <label style={{ width: 74, height: 74, borderRadius: 10, border: '1.5px dashed var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'pointer', color: 'var(--text-muted)' }}>
                       <Camera size={18} />
-                      <span style={{ fontSize: 9, fontWeight: 800 }}>Фото</span>
-                      <input type="file" accept="image/*" multiple onChange={onPhoto} style={{ display: 'none' }} />
+                      <span style={{ fontSize: 9, fontWeight: 800 }}>Файл</span>
+                      <input type="file" accept="image/*,application/pdf" multiple onChange={onPhoto} style={{ display: 'none' }} />
                     </label>
                   )}
                 </div>
