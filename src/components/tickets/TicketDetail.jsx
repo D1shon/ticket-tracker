@@ -8,6 +8,7 @@ import {
 import { useTickets } from '../../store/TicketContext';
 import { formatAuthor } from '../../utils/formatters';
 import { isMobileDevice } from '../../lib/isMobile';
+import { useTicketReads } from '../../lib/ticketReads';
 
 // Preset reasons per action
 const PRESETS = {
@@ -210,6 +211,13 @@ const TicketDetail = () => {
 
   // Find real ticket from context (id from URL is always a string)
   const ticket = tickets?.find(t => String(t.id) === String(id));
+
+  // Открытая заявка = прочитанная: гасим точку «новые сообщения» на карточке.
+  // Срабатывает и на приход новых сообщений, пока заявка открыта.
+  const { markRead } = useTicketReads(user);
+  useEffect(() => {
+    if (ticket?.id) markRead(ticket);
+  }, [ticket?.id, ticket?.comments?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Local status override ───────────────────────────────────────────────
   // ticket comes from DEMO_TICKETS (static) when not found in Firebase.

@@ -4,6 +4,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, Clock, Play, CheckCircle, LayoutGrid, List, Columns, Timer, CircleDot, Pause, User, ChevronRight, CalendarClock, ShieldAlert } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
+import { useTicketReads } from '../lib/ticketReads';
+
+// Точка «есть непрочитанные сообщения» на карточке заявки
+const UnreadDot = () => (
+  <span title="Новые сообщения" style={{ width: 9, height: 9, borderRadius: '50%', background: '#E0655A', boxShadow: '0 0 0 3px rgba(224,101,90,0.22)', flexShrink: 0, display: 'inline-block' }} />
+);
 
 const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 const FILTERS    = ['ВСЕ', 'ЗАПЛАНИРОВАННЫЕ', 'В РАБОТЕ', 'ПАУЗА', 'ОЖИДАНИЕ', 'ЗАКРЫТО'];
@@ -110,6 +116,9 @@ const StatusTimer = ({ ticket }) => {
 // ─── Ticket card ──────────────────────────────────────────────────────────────
 const TicketCard = ({ ticket, columnId, isList = false, isNew = false }) => {
   const navigate  = useNavigate();
+  const { user } = useTickets();
+  const { isUnread } = useTicketReads(user);
+  const unread    = isUnread(ticket);
   const clubClass = clubColors[ticket.club] || 'badge-4you';
   const priority  = priorityLabels[ticket.priority] || priorityLabels.medium;
 
@@ -142,6 +151,7 @@ const TicketCard = ({ ticket, columnId, isList = false, isNew = false }) => {
           {ticket.subtitle && <p style={{ fontSize: 12, marginTop: 4, color: 'var(--text-muted)', fontWeight: 500 }}>{ticket.subtitle}</p>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {unread && <UnreadDot />}
           <StatusTimer ticket={ticket} />
           <span className={`badge ${priority.cls}`} style={{ padding: '4px 10px' }}>{priority.label}</span>
           <ChevronRight size={16} color="var(--text-muted)" />
@@ -170,7 +180,10 @@ const TicketCard = ({ ticket, columnId, isList = false, isNew = false }) => {
             </span>
           )}
         </div>
-        <div style={{ width: 4, height: 4, borderRadius: '50%', background: priority.color || '#555' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {unread && <UnreadDot />}
+          <div style={{ width: 4, height: 4, borderRadius: '50%', background: priority.color || '#555' }} />
+        </div>
       </div>
 
       <h3 style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)', marginBottom: 10, lineHeight: 1.4, letterSpacing: '-0.02em' }}>
@@ -206,6 +219,9 @@ const TicketCard = ({ ticket, columnId, isList = false, isNew = false }) => {
 // ─── Мобильная карточка заявки: заголовок, клуб, приоритет-точка, таймер, исполнитель ──
 const MobileTicketCard = ({ ticket, columnId, showStatus = false }) => {
   const navigate  = useNavigate();
+  const { user } = useTickets();
+  const { isUnread } = useTicketReads(user);
+  const unread    = isUnread(ticket);
   const clubClass = clubColors[ticket.club] || 'badge-4you';
   const priority  = priorityLabels[ticket.priority] || priorityLabels.medium;
   // Цвет точки приоритета берём из PRIORITIES (в priorityLabels цвета нет)
@@ -232,7 +248,10 @@ const MobileTicketCard = ({ ticket, columnId, showStatus = false }) => {
         {showStatus && col && (
           <span style={{ fontSize: 9, fontWeight: 800, color: col.color, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{col.label}</span>
         )}
-        <div title={priority.label} style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: pColor, flexShrink: 0 }} />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+          {unread && <UnreadDot />}
+          <div title={priority.label} style={{ width: 8, height: 8, borderRadius: '50%', background: pColor }} />
+        </div>
       </div>
 
       <h3 style={{ fontWeight: 800, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.35, letterSpacing: '-0.01em', margin: 0 }}>
