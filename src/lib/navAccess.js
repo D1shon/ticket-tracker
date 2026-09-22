@@ -28,6 +28,7 @@ export const NAV_ITEMS = [
   { path: '/staff',           label: 'Сотрудники (МОП)' },
   { path: '/calendar',        label: 'Календарь' },
   { path: '/instudio',        label: 'InStudio' },
+  { path: '/invoices',        label: 'Счета на оплату' },
   { path: '/club-visits',     label: 'Посещения' },
   { path: '/attendance',      label: 'Чекин' },
   { path: '/calls',           label: 'Созвоны' },
@@ -48,6 +49,9 @@ export function baseNavAllowed(user, path) {
   if (user?.role === 'tech') return path === '/checklists' || path === '/instudio' || path === '/settings';
   // Наблюдатель «Утерянные вещи»
   if (user?.role === 'lostviewer') return path === '/lost-items' || path === '/merch' || path === '/settings';
+  // Счета на оплату — менеджеры загружают, шеф подтверждает (до ролевых веток
+  // ниже, иначе viewer получил бы вкладку через «всё, кроме скрытого»)
+  if (path === '/invoices') return user?.role === 'manager' || user?.role === 'chef';
   if (user?.role === 'admin') {
     // Чек-листы — только админам Europe City
     if (path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';
