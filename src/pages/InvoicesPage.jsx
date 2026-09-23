@@ -200,6 +200,20 @@ const InvoicesPage = () => {
         ...(rejectNote !== null ? { rejectNote } : {}),
         updatedAt: serverTimestamp(),
       });
+      // Подтверждённый счёт — в очередь на отправку в HJ Fin (fin.herosjourney.kz).
+      // Отправитель подключится, когда команда HJ Fin даст API; очередь не чистится
+      // вместе со счетами, так что ничего не потеряется и уедет задним числом.
+      if (status === 'approved') {
+        addDoc(collection(db, 'hjfin_outbox'), {
+          invoiceId: inv.id,
+          club: inv.club, workDesc: inv.workDesc || '', workDateISO: inv.workDateISO || null,
+          amount: inv.amount ?? null, photos: inv.photos || [],
+          createdByName: inv.createdByName || '', createdByEmail: inv.createdByEmail || '',
+          invoiceCreatedAtISO: inv.createdAtISO || null,
+          approvedBy: myName, approvedAtISO: new Date().toISOString(),
+          status: 'pending', // pending → sent (проставит отправитель)
+        }).catch(e => console.error('[hjfin_outbox]', e));
+      }
       toast.success(status === 'approved' ? 'Счёт подтверждён' : 'Счёт отклонён');
       if (inv.createdByEmail && inv.createdByEmail !== myEmail) {
         pushNotify({
