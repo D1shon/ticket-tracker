@@ -28,7 +28,7 @@ export const NAV_ITEMS = [
   { path: '/staff',           label: 'Сотрудники (МОП)' },
   { path: '/calendar',        label: 'Календарь' },
   { path: '/instudio',        label: 'InStudio' },
-  { path: '/invoices',        label: 'Счета на оплату' },
+  { path: '/invoices',        label: 'Тренажеры' },
   { path: '/club-visits',     label: 'Посещения' },
   { path: '/attendance',      label: 'Чекин' },
   { path: '/calls',           label: 'Созвоны' },

@@ -10,7 +10,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search, Bot, Receipt
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search, Bot, Dumbbell
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -122,7 +122,7 @@ const ALL_NAV = [
   { icon: UserPlus,        label: 'Сотрудники',   path: '/staff',       primary: false },
   { icon: CalendarDays,    label: 'Календарь',   path: '/calendar',    primary: false },
   { icon: MonitorSmartphone, label: 'InStudio',  path: '/instudio',    primary: false },
-  { icon: Receipt,         label: 'Счета на оплату', path: '/invoices', primary: false },
+  { icon: Dumbbell,        label: 'Тренажеры',   path: '/invoices',    primary: false },
   { icon: BarChart2,       label: 'Посещения',   path: '/club-visits', primary: false },
   { icon: MapPin,          label: 'Чекин',       path: '/attendance',  primary: false },
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
@@ -154,7 +154,7 @@ const MOBILE_META = {
   '/lost-items':  { sub: 'находки и возвраты', sect: 2 },
   '/calendar':    { sub: 'оплаты, ТО, подрядчики', sect: 2 },
   '/instudio':    { sub: 'техника — разработчикам', sect: 2 },
-  '/invoices':    { sub: 'счета на подтверждение', sect: 2 },
+  '/invoices':    { sub: 'ремонт и счета на оплату', sect: 2 },
   '/club-visits': { sub: 'посещения атлетов', sect: 2 },
   '/reviews':     { sub: '2ГИС и другие', sect: 2 },
   '/qr-reviews':  { sub: 'QR-стойки в залах', sect: 2 },
