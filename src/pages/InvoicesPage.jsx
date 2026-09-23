@@ -154,6 +154,8 @@ const InvoicesPage = () => {
 
   const handleCreate = async () => {
     if (!form.workDesc.trim()) return toast.error('Опишите, за какую работу счёт');
+    const amountNum = Number(String(form.amount).replace(/\s/g, ''));
+    if (!form.amount.trim() || !amountNum) return toast.error('Укажите сумму счёта');
     if (form.photos.length === 0) return toast.error('Прикрепите фото или PDF счёта');
     // Лимит документа Firestore — 1 МБ: не даём собрать вложения тяжелее ~900 КБ
     if (form.photos.reduce((n, p) => n + p.length, 0) > 900 * 1024) {
@@ -168,7 +170,7 @@ const InvoicesPage = () => {
         club,
         workDesc: form.workDesc.trim(),
         workDateISO: form.workDate || null,
-        amount: form.amount ? Number(String(form.amount).replace(/\s/g, '')) || null : null,
+        amount: amountNum,
         photos: form.photos,
         status: 'pending',
         createdByName: myName, createdByEmail: myEmail,
@@ -395,9 +397,9 @@ const InvoicesPage = () => {
                     onClick={e => { try { e.target.showPicker(); } catch {} }} style={mInput} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 5 }}>Сумма, ₸</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 5 }}>Сумма, ₸ *</div>
                   <input type="text" inputMode="numeric" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value.replace(/[^\d\s]/g, '') }))}
-                    placeholder="Не обязательно" style={mInput} />
+                    placeholder="Например: 45 000" style={mInput} />
                 </div>
               </div>
 
