@@ -640,7 +640,7 @@ const InvoicesPage = () => {
               style={{ ...mInput, resize: 'vertical', minHeight: 68, fontFamily: 'inherit' }} />
           </div>
           <div>
-            <div style={labelStyle}>Фото тренажёра * (до 3)</div>
+            <div style={labelStyle}>Фото тренажёра * (минимум 1, можно до 3)</div>
             {photoPicker(pForm, setPForm, false)}
           </div>
           <button onClick={createProblem} disabled={saving} style={{
