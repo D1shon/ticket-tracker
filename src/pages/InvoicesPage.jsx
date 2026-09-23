@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Dumbbell, Receipt, Plus, X, Clock, Check, Ban, Trash2, User, Camera, Wrench } from 'lucide-react';
+import { Dumbbell, Receipt, Plus, X, Clock, Check, Ban, Trash2, User, Camera, Wrench, LayoutGrid, List, Archive } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { useTickets } from '../store/TicketContext';
@@ -11,30 +11,37 @@ import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 /*
- * Тренажеры — ремонт оборудования с двойным подтверждением шефа.
- * Флоу: менеджер заводит ПРОБЛЕМУ (фото тренажёра + описание) → шеф решает
- * «чинить или нет» → менеджер грузит СЧЁТ на оплату ремонта и отмечает, какие
- * одобренные проблемы он закрывает — они склеиваются в одну карточку счёта →
- * шеф подтверждает оплату (подтверждённый счёт уходит в очередь HJ Fin).
- * Коллекции: equip_problems (проблемы) + invoices (счета, problemIds[]).
- * Счета старше 31 дня чистятся вместе с их проблемами; открытые проблемы живут,
- * пока их не решат.
+ * Тренажеры — ремонт оборудования с двойным согласованием шефа.
+ * Флоу: менеджер отправляет проблему НА СОГЛАСОВАНИЕ (фото + описание) → шеф
+ * «Согласовать/Отклонить» → менеджер грузит счёт и отмечает, какие согласованные
+ * проблемы он закрывает (склеиваются в карточку счёта) → шеф подтверждает оплату
+ * (счёт уходит в очередь HJ Fin). Отклонённые живут в ОТДЕЛЬНОМ окошке, чтобы
+ * не засорять доску. Виды просмотра: колонки по этапам / единый список (как в
+ * Заявках), выбор запоминается. Коллекции: equip_problems + invoices.
  */
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
 
 const P_STATUSES = {
-  new:             { label: 'Ждёт решения: чинить?', color: '#b39a5e' },
-  repair_approved: { label: 'Ремонт одобрен',        color: '#7A94B8' },
-  rejected:        { label: 'Ремонт отклонён',       color: '#9c7d7d' },
+  new:             { label: 'На согласовании', color: '#b39a5e' },
+  repair_approved: { label: 'Согласовано',     color: '#7A94B8' },
+  rejected:        { label: 'Отклонено',       color: '#9c7d7d' },
 };
 const I_STATUSES = {
-  pending:  { label: 'Ждёт оплаты',          color: '#b39a5e' },
-  approved: { label: 'Оплата подтверждена',  color: '#7d9c87' },
-  rejected: { label: 'Счёт отклонён',        color: '#9c7d7d' },
+  pending:  { label: 'Ждёт оплаты', color: '#C08F4F' },
+  approved: { label: 'Оплачено',    color: '#7d9c87' },
+  rejected: { label: 'Отклонён',    color: '#9c7d7d' },
 };
 
-// Сжатие фото: до 1280px по большей стороне, JPEG 0.6 — читаемо и легко
+// Колонки доски: путь заявки слева направо
+const COLUMNS = [
+  { id: 'p_new',  label: 'На согласовании', color: '#b39a5e' },
+  { id: 'p_ok',   label: 'Ждёт счёта',      color: '#7A94B8' },
+  { id: 'i_wait', label: 'Ждёт оплаты',     color: '#C08F4F' },
+  { id: 'i_paid', label: 'Оплачено',        color: '#7d9c87' },
+];
+
+// Сжатие фото: до 1280px, JPEG 0.6 — читаемо и легко
 const compressPhoto = (file) => new Promise((resolve, reject) => {
   const img = new window.Image();
   const objectUrl = URL.createObjectURL(file);
@@ -73,9 +80,14 @@ const InvoicesPage = () => {
   const [clubFilter, setClubFilter] = useState('ALL'); // только для шефа
   const [showAddProblem, setShowAddProblem] = useState(false);
   const [showAddInvoice, setShowAddInvoice] = useState(false);
+  const [showRejected, setShowRejected] = useState(false);
   const [saving, setSaving] = useState(false);
   const [photoView, setPhotoView] = useState(null);
   const [isMobile, setIsMobile] = useState(() => isMobileDevice());
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('hj_equip_view') || 'kanban'; } catch { return 'kanban'; }
+  });
+  const changeView = (v) => { setViewMode(v); try { localStorage.setItem('hj_equip_view', v); } catch {} };
   const cleanedRef = useRef(false);
 
   const emptyProblem = { desc: '', photos: [], club: myClub || '4YOU' };
@@ -99,7 +111,7 @@ const InvoicesPage = () => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       list.sort((a, b) => (b.createdAtISO || '').localeCompare(a.createdAtISO || ''));
       setInvoices(list);
-      // Хранение месяц: старые счета чистим один раз за сессию
+      // Хранение месяц: старые счета чистим вместе с их проблемами, раз за сессию
       if (!cleanedRef.current) {
         cleanedRef.current = true;
         const cutoff = new Date(Date.now() - 31 * 24 * 3600 * 1000).toISOString();
@@ -114,33 +126,29 @@ const InvoicesPage = () => {
 
   const clubOk = (c) => isChef ? (clubFilter === 'ALL' || c === clubFilter) : c === myClub;
 
-  // Проблемы без счёта — отдельные карточки; прикреплённые к счёту живут внутри него
-  const openProblems = useMemo(
-    () => problems.filter(p => clubOk(p.club) && (p.status || 'new') !== 'invoiced')
-      .sort((a, b) => {
-        const w = (s) => s === 'new' ? 0 : s === 'repair_approved' ? 1 : 2;
-        return w(a.status || 'new') - w(b.status || 'new') || (b.createdAtISO || '').localeCompare(a.createdAtISO || '');
-      }),
-    [problems, isChef, myClub, clubFilter] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-  const visibleInvoices = useMemo(
-    () => invoices.filter(i => clubOk(i.club))
-      .sort((a, b) => {
-        const ap = (a.status || 'pending') === 'pending' ? 0 : 1;
-        const bp = (b.status || 'pending') === 'pending' ? 0 : 1;
-        return ap - bp || (b.createdAtISO || '').localeCompare(a.createdAtISO || '');
-      }),
-    [invoices, isChef, myClub, clubFilter] // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  const myProblems = useMemo(() => problems.filter(p => clubOk(p.club)), [problems, isChef, myClub, clubFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const myInvoices = useMemo(() => invoices.filter(i => clubOk(i.club)), [invoices, isChef, myClub, clubFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   const problemById = useMemo(() => Object.fromEntries(problems.map(p => [p.id, p])), [problems]);
 
-  // Одобренные к ремонту проблемы клуба — их можно закрыть загружаемым счётом
+  // Доска: отклонённые и прикреплённые к счетам проблемы в колонках не живут
+  const byColumn = useMemo(() => ({
+    p_new:  myProblems.filter(p => (p.status || 'new') === 'new'),
+    p_ok:   myProblems.filter(p => p.status === 'repair_approved'),
+    i_wait: myInvoices.filter(i => (i.status || 'pending') === 'pending'),
+    i_paid: myInvoices.filter(i => i.status === 'approved'),
+  }), [myProblems, myInvoices]);
+
+  const rejectedProblems = useMemo(() => myProblems.filter(p => p.status === 'rejected'), [myProblems]);
+  const rejectedInvoices = useMemo(() => myInvoices.filter(i => i.status === 'rejected'), [myInvoices]);
+  const rejectedCount = rejectedProblems.length + rejectedInvoices.length;
+
+  // Согласованные проблемы клуба — их закрывает загружаемый счёт
   const attachableProblems = useMemo(() => {
     const club = isChef ? iForm.club : myClub;
-    return problems.filter(p => p.club === club && (p.status || 'new') === 'repair_approved');
+    return problems.filter(p => p.club === club && p.status === 'repair_approved');
   }, [problems, isChef, myClub, iForm.club]);
 
-  // ── Фото: общий обработчик (фото сжимаются; в счёте разрешён и PDF ≤700КБ) ──
+  // ── Вложения ──
   const handleFiles = (setter, allowPdf) => async (ev) => {
     const files = [...(ev.target.files || [])].slice(0, 3);
     for (const f of files) {
@@ -179,7 +187,7 @@ const InvoicesPage = () => {
     } catch { toast.error('Не удалось открыть PDF'); }
   };
 
-  // ── Проблема тренажёра ──
+  // ── Проблема ──
   const createProblem = async () => {
     if (!pForm.desc.trim()) return toast.error('Опишите проблему тренажёра');
     if (pForm.photos.length === 0) return toast.error('Прикрепите фото тренажёра');
@@ -195,11 +203,11 @@ const InvoicesPage = () => {
         updatedAt: serverTimestamp(),
       });
       pushNotify({
-        title: '🏋️ Тренажёр: новая проблема · ' + club,
+        title: '🏋️ Тренажёр на согласование · ' + club,
         body: `${pForm.desc.trim().slice(0, 90)} — ${myName}`,
         roles: ['chef'], excludeEmail: myEmail, url: '/invoices', tag: 'equip',
       });
-      toast.success('Проблема отправлена шефу на решение');
+      toast.success('Отправлено на согласование');
       setShowAddProblem(false);
       setPForm({ ...emptyProblem, club });
     } catch (e) { console.error(e); toast.error('Не удалось сохранить'); }
@@ -208,17 +216,17 @@ const InvoicesPage = () => {
 
   const decideProblem = async (p, status) => {
     let note = null;
-    if (status === 'rejected') note = window.prompt('Почему не чиним (видно менеджеру):', '') || null;
+    if (status === 'rejected') note = window.prompt('Причина отклонения (видна менеджеру):', '') || null;
     try {
       await updateDoc(doc(db, 'equip_problems', p.id), {
         status, decidedBy: myName, decidedAtISO: new Date().toISOString(),
         ...(note !== null ? { rejectNote: note } : {}),
         updatedAt: serverTimestamp(),
       });
-      toast.success(status === 'repair_approved' ? 'Ремонт одобрен' : 'Ремонт отклонён');
+      toast.success(status === 'repair_approved' ? 'Согласовано' : 'Отклонено');
       if (p.createdByEmail && p.createdByEmail !== myEmail) {
         pushNotify({
-          title: status === 'repair_approved' ? '🔧 Ремонт одобрен — можно чинить' : '❌ Ремонт отклонён',
+          title: status === 'repair_approved' ? '✅ Согласовано — можно чинить' : '❌ Отклонено',
           body: `${p.club}: ${(p.desc || '').slice(0, 70)}${note ? ` · ${note.slice(0, 60)}` : ''}`,
           emails: [p.createdByEmail], url: '/invoices', tag: 'equip',
         });
@@ -227,12 +235,12 @@ const InvoicesPage = () => {
   };
 
   const deleteProblem = async (p) => {
-    if (!window.confirm('Удалить проблему?')) return;
-    try { await deleteDoc(doc(db, 'equip_problems', p.id)); toast.success('Удалена'); }
+    if (!window.confirm('Удалить?')) return;
+    try { await deleteDoc(doc(db, 'equip_problems', p.id)); toast.success('Удалено'); }
     catch { toast.error('Не удалось удалить'); }
   };
 
-  // ── Счёт на оплату ──
+  // ── Счёт ──
   const createInvoice = async () => {
     if (!iForm.workDesc.trim()) return toast.error('Опишите, за какую работу счёт');
     const amountNum = Number(String(iForm.amount).replace(/\s/g, ''));
@@ -257,7 +265,6 @@ const InvoicesPage = () => {
         createdAtISO: new Date().toISOString(),
         updatedAt: serverTimestamp(),
       });
-      // Выбранные проблемы прикрепляются к счёту и уходят из списка проблем
       await Promise.all(iForm.problemIds.map(pid =>
         updateDoc(doc(db, 'equip_problems', pid), { status: 'invoiced', invoiceId: ref.id, updatedAt: serverTimestamp() }).catch(() => {})
       ));
@@ -266,7 +273,7 @@ const InvoicesPage = () => {
         body: `${iForm.workDesc.trim().slice(0, 70)} · ${amountNum.toLocaleString('ru-RU')} ₸${iForm.problemIds.length ? ` · проблем: ${iForm.problemIds.length}` : ''} — ${myName}`,
         roles: ['chef'], excludeEmail: myEmail, url: '/invoices', tag: 'equip',
       });
-      toast.success('Счёт отправлен шефу на подтверждение оплаты');
+      toast.success('Счёт отправлен на согласование оплаты');
       setShowAddInvoice(false);
       setIForm({ ...emptyInvoice, club });
     } catch (e) { console.error(e); toast.error('Не удалось сохранить счёт'); }
@@ -282,8 +289,8 @@ const InvoicesPage = () => {
         ...(rejectNote !== null ? { rejectNote } : {}),
         updatedAt: serverTimestamp(),
       });
-      // Оплата подтверждена → очередь HJ Fin (fin.herosjourney.kz). Отправитель
-      // подключится, когда команда HJ Fin даст API; очередь переживает чистку счетов.
+      // Оплата подтверждена → очередь HJ Fin (fin.herosjourney.kz); отправитель
+      // подключится, когда команда HJ Fin даст API. Очередь переживает чистку счетов.
       if (status === 'approved') {
         addDoc(collection(db, 'hjfin_outbox'), {
           invoiceId: inv.id,
@@ -309,22 +316,20 @@ const InvoicesPage = () => {
 
   const canDeleteInvoice = (inv) => isChef || ((inv.createdByEmail || '').toLowerCase() === myEmail && (inv.status || 'pending') === 'pending');
   const removeInvoice = async (inv) => {
-    if (!window.confirm('Удалить счёт? Прикреплённые проблемы вернутся в список.')) return;
+    if (!window.confirm('Удалить счёт? Прикреплённые проблемы вернутся на доску.')) return;
     try {
       await deleteDoc(doc(db, 'invoices', inv.id));
-      // Проблемы возвращаются в «ремонт одобрен», чтобы не потерялись
       (inv.problemIds || []).forEach(pid =>
         updateDoc(doc(db, 'equip_problems', pid), { status: 'repair_approved', invoiceId: null }).catch(() => {})
       );
       toast.success('Счёт удалён');
     } catch { toast.error('Не удалось удалить'); }
   };
-
   const canDeleteProblem = (p) => isChef || ((p.createdByEmail || '').toLowerCase() === myEmail && (p.status || 'new') === 'new');
 
   const fmtDate = (iso) => { try { return format(new Date(iso), 'd MMM HH:mm', { locale: ru }); } catch { return ''; } };
-  const fmtWorkDate = (d) => { try { return format(new Date(d + 'T00:00:00'), 'd MMMM yyyy', { locale: ru }); } catch { return d || ''; } };
 
+  // ── Стили ──
   const chipStyle = (active) => ({
     padding: isMobile ? '8px 14px' : '7px 14px', borderRadius: isMobile ? 999 : 8, cursor: 'pointer',
     fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0,
@@ -333,24 +338,151 @@ const InvoicesPage = () => {
     color: active ? 'var(--text-primary)' : 'var(--text-muted)',
   });
   const actionBtn = (color, filled) => ({
-    display: 'inline-flex', alignItems: 'center', gap: 6, padding: isMobile ? '11px 16px' : '8px 15px', borderRadius: 9,
+    display: 'inline-flex', alignItems: 'center', gap: 6, padding: isMobile ? '11px 16px' : '8px 14px', borderRadius: 9,
     border: `1px solid ${color}55`, background: filled ? `${color}1a` : 'transparent', color,
-    fontSize: 11.5, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em',
+    fontSize: 11, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em',
   });
   const mInput = isMobile ? { ...inputStyle, fontSize: 16 } : inputStyle;
-  const sectionTitle = { fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', margin: '6px 0 0' };
 
-  const renderPhotos = (photos, size = 84) => (photos || []).length > 0 && (
-    <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+  const renderPhotos = (photos, size = 56) => (photos || []).length > 0 && (
+    <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
       {photos.map((p, i) => isPdf(p) ? (
-        <button key={i} onClick={() => openAttachment(p)} style={{ width: size, height: size, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-hover)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'var(--text-secondary)' }}>
-          <Receipt size={20} />
-          <span style={{ fontSize: 9.5, fontWeight: 900 }}>PDF</span>
+        <button key={i} onClick={() => openAttachment(p)} style={{ width: size, height: size, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-hover)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: 'var(--text-secondary)' }}>
+          <Receipt size={16} />
+          <span style={{ fontSize: 8.5, fontWeight: 900 }}>PDF</span>
         </button>
       ) : (
         <img key={i} src={p} alt="" onClick={() => openAttachment(p)}
-          style={{ width: size, height: size, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
+          style={{ width: size, height: size, objectFit: 'cover', borderRadius: 9, border: '1px solid var(--border)', cursor: 'zoom-in' }} />
       ))}
+    </div>
+  );
+
+  // Карточка проблемы (showStatus — в списке и окне отклонённых)
+  const renderProblem = (p, showStatus = false) => {
+    const st = P_STATUSES[p.status || 'new'];
+    return (
+      <div key={p.id} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '11px 13px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 5 }}>
+          {showStatus && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: st.color }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: st.color }} /> {st.label}
+            </span>
+          )}
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>{p.club}</span>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Тренажёр</span>
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{p.desc}</div>
+        {renderPhotos(p.photos)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+          <User size={10} /> {p.createdByName} · <Clock size={10} /> {fmtDate(p.createdAtISO)}
+          {p.decidedBy && p.status !== 'new' && <span>· {p.status === 'rejected' ? 'отклонил' : 'согласовал'} {p.decidedBy}</span>}
+        </div>
+        {p.rejectNote && p.status === 'rejected' && (
+          <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: '#9c7d7d', background: 'rgba(156,125,125,0.08)', border: '1px solid rgba(156,125,125,0.25)', borderRadius: 8, padding: '6px 10px' }}>
+            {p.rejectNote}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {isChef && (p.status || 'new') === 'new' && (
+            <>
+              <button onClick={() => decideProblem(p, 'repair_approved')} style={actionBtn('#7A94B8', true)}><Check size={12} /> Согласовать</button>
+              <button onClick={() => decideProblem(p, 'rejected')} style={actionBtn('#9c7d7d')}><Ban size={12} /> Отклонить</button>
+            </>
+          )}
+          {isChef && p.status === 'rejected' && (
+            <button onClick={() => decideProblem(p, 'repair_approved')} style={{ ...actionBtn('var(--text-secondary)'), border: '1px solid var(--border)', textTransform: 'none', letterSpacing: 0, fontWeight: 800 }}>↩ Всё-таки согласовать</button>
+          )}
+          {p.status === 'repair_approved' && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>отметьте её при загрузке счёта</span>
+          )}
+          {(canDeleteProblem(p) || (isChef && p.status === 'rejected')) && (
+            <button onClick={() => deleteProblem(p)} title="Удалить" style={{ marginLeft: 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.5 }}>
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Карточка счёта
+  const renderInvoice = (inv, showStatus = false) => {
+    const st = I_STATUSES[inv.status || 'pending'];
+    const attached = (inv.problemIds || []).map(pid => problemById[pid]).filter(Boolean);
+    return (
+      <div key={inv.id} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '11px 13px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 5 }}>
+          {showStatus && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: st.color }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: st.color }} /> {st.label}
+            </span>
+          )}
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>{inv.club}</span>
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Счёт</span>
+          {inv.amount != null && <span style={{ fontSize: 12.5, fontWeight: 900, color: 'var(--text-primary)' }}>{Number(inv.amount).toLocaleString('ru-RU')} ₸</span>}
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{inv.workDesc}</div>
+        {renderPhotos(inv.photos)}
+        {attached.length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {attached.map(p => (
+              <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 9, padding: '6px 8px' }}>
+                {(p.photos || [])[0] && !isPdf(p.photos[0]) && (
+                  <img src={p.photos[0]} alt="" onClick={() => openAttachment(p.photos[0])}
+                    style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 7, border: '1px solid var(--border)', cursor: 'zoom-in', flexShrink: 0 }} />
+                )}
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{p.desc}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+          <User size={10} /> {inv.createdByName} · <Clock size={10} /> {fmtDate(inv.createdAtISO)}
+          {inv.decidedBy && inv.status !== 'pending' && <span>· {inv.status === 'approved' ? 'подтвердил' : 'отклонил'} {inv.decidedBy}</span>}
+        </div>
+        {inv.rejectNote && inv.status === 'rejected' && (
+          <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: '#9c7d7d', background: 'rgba(156,125,125,0.08)', border: '1px solid rgba(156,125,125,0.25)', borderRadius: 8, padding: '6px 10px' }}>
+            {inv.rejectNote}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {isChef && (inv.status || 'pending') === 'pending' && (
+            <>
+              <button onClick={() => decideInvoice(inv, 'approved')} style={actionBtn('#7d9c87', true)}><Check size={12} /> Подтвердить оплату</button>
+              <button onClick={() => decideInvoice(inv, 'rejected')} style={actionBtn('#9c7d7d')}><Ban size={12} /> Отклонить</button>
+            </>
+          )}
+          {isChef && inv.status === 'rejected' && (
+            <button onClick={() => decideInvoice(inv, 'approved')} style={{ ...actionBtn('var(--text-secondary)'), border: '1px solid var(--border)', textTransform: 'none', letterSpacing: 0, fontWeight: 800 }}>↩ Всё-таки оплатить</button>
+          )}
+          {canDeleteInvoice(inv) && (
+            <button onClick={() => removeInvoice(inv)} title="Удалить" style={{ marginLeft: 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.5 }}>
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Единый список: сначала требующее действий, затем остальное, свежие сверху
+  const flatList = useMemo(() => {
+    const items = [
+      ...byColumn.p_new.map(p => ({ kind: 'p', ts: p.createdAtISO, weight: 0, it: p })),
+      ...byColumn.i_wait.map(i => ({ kind: 'i', ts: i.createdAtISO, weight: 0, it: i })),
+      ...byColumn.p_ok.map(p => ({ kind: 'p', ts: p.createdAtISO, weight: 1, it: p })),
+      ...byColumn.i_paid.map(i => ({ kind: 'i', ts: i.createdAtISO, weight: 2, it: i })),
+    ];
+    return items.sort((a, b) => a.weight - b.weight || (b.ts || '').localeCompare(a.ts || ''));
+  }, [byColumn]);
+
+  const clubSelect = (form, setter) => isChef && (
+    <div>
+      <div style={labelStyle}>Клуб *</div>
+      <select value={form.club} onChange={e => setter(f => ({ ...f, club: e.target.value }))} style={mInput}>
+        {CLUBS.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
     </div>
   );
 
@@ -382,18 +514,9 @@ const InvoicesPage = () => {
     </div>
   );
 
-  const clubSelect = (form, setter) => isChef && (
-    <div>
-      <div style={labelStyle}>Клуб *</div>
-      <select value={form.club} onChange={e => setter(f => ({ ...f, club: e.target.value }))} style={mInput}>
-        {CLUBS.map(c => <option key={c} value={c}>{c}</option>)}
-      </select>
-    </div>
-  );
-
-  const modalShell = (onClose, title, children) => ReactDOM.createPortal(
+  const modalShell = (onClose, title, children, wide = false) => ReactDOM.createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : 470, maxHeight: isMobile ? '92dvh' : '86vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: isMobile ? '100%' : (wide ? 640 : 470), maxHeight: isMobile ? '92dvh' : '86vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? '20px 20px 0 0' : 18, padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>{title}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}><X size={18} /></button>
@@ -405,7 +528,7 @@ const InvoicesPage = () => {
   );
 
   return (
-    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 40 }}>
+    <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 40 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -413,188 +536,100 @@ const InvoicesPage = () => {
         </div>
         <div>
           <h1 style={{ fontSize: 19, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>Тренажеры</h1>
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, margin: 0 }}>
-            Проблема → шеф решает «чинить?» → счёт → шеф подтверждает оплату{!isChef && myClub ? ` · клуб ${myClub}` : ''}
-          </p>
+          {!isChef && myClub && <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, margin: 0 }}>Клуб {myClub}</p>}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => { setPForm({ ...emptyProblem, club: myClub || pForm.club }); setShowAddProblem(true); }} style={{
             display: 'flex', alignItems: 'center', gap: 7, padding: '10px 16px', borderRadius: 10,
             border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 800, cursor: 'pointer',
           }}>
-            <Wrench size={14} /> Сообщить о проблеме
+            <Wrench size={14} /> Проблема
           </button>
           <button onClick={() => { setIForm({ ...emptyInvoice, club: myClub || iForm.club }); setShowAddInvoice(true); }} style={{
             display: 'flex', alignItems: 'center', gap: 7, padding: '10px 16px', borderRadius: 10,
             border: '1px solid var(--accent-purple)', background: 'var(--accent-purple)', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer',
           }}>
-            <Plus size={14} /> Загрузить счёт
+            <Plus size={14} /> Счёт
           </button>
         </div>
       </div>
 
-      {/* Фильтр по клубу — только шефу */}
-      {isChef && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', paddingBottom: isMobile ? 2 : 0 }}>
-          <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', flexShrink: 0 }}>Клуб:</span>
-          {['ALL', ...CLUBS].map(c => (
-            <button key={c} onClick={() => setClubFilter(c)} style={chipStyle(clubFilter === c)}>
-              {c === 'ALL' ? 'Все' : c}
-              <span style={{ marginLeft: 6, opacity: 0.6, fontWeight: 700 }}>
-                {c === 'ALL'
-                  ? problems.filter(p => (p.status || 'new') !== 'invoiced').length + invoices.length
-                  : problems.filter(p => p.club === c && (p.status || 'new') !== 'invoiced').length + invoices.filter(i => i.club === c).length}
-              </span>
-            </button>
+      {/* Клубы (шеф) + вид + отклонённые */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', paddingBottom: isMobile ? 2 : 0 }}>
+        {isChef && ['ALL', ...CLUBS].map(c => (
+          <button key={c} onClick={() => setClubFilter(c)} style={chipStyle(clubFilter === c)}>
+            {c === 'ALL' ? 'Все' : c}
+          </button>
+        ))}
+        <div style={{ marginLeft: isChef ? 'auto' : 0, display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <button onClick={() => setShowRejected(true)} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: isMobile ? '8px 14px' : '7px 14px', borderRadius: isMobile ? 999 : 8,
+            border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer',
+            fontSize: 11.5, fontWeight: 800, color: rejectedCount ? '#9c7d7d' : 'var(--text-muted)', whiteSpace: 'nowrap',
+          }}>
+            <Archive size={13} /> Отклонённые{rejectedCount ? ` · ${rejectedCount}` : ''}
+          </button>
+          {!isMobile && (
+            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 3 }}>
+              {[{ id: 'kanban', icon: LayoutGrid, label: 'Колонки' }, { id: 'list', icon: List, label: 'Список' }].map(v => (
+                <button key={v.id} onClick={() => changeView(v.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontSize: 11, fontWeight: 800,
+                  background: viewMode === v.id ? 'var(--bg-hover)' : 'transparent',
+                  color: viewMode === v.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                }}>
+                  <v.icon size={13} /> {v.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Доска / список */}
+      {!isMobile && viewMode === 'kanban' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, alignItems: 'start' }}>
+          {COLUMNS.map(col => (
+            <div key={col.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: col.color }} />
+                <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-secondary)' }}>{col.label}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: 'var(--text-muted)' }}>{byColumn[col.id].length}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, minHeight: 56 }}>
+                {byColumn[col.id].length === 0 && (
+                  <div style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>Пусто</div>
+                )}
+                {byColumn[col.id].map(it => col.id.startsWith('p') ? renderProblem(it) : renderInvoice(it))}
+              </div>
+            </div>
           ))}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {flatList.length === 0 ? (
+            <div style={{ padding: '28px 12px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 14 }}>
+              Пока пусто — «Проблема», если тренажёр сломался
+            </div>
+          ) : flatList.map(({ kind, it }) => kind === 'p' ? renderProblem(it, true) : renderInvoice(it, true))}
         </div>
       )}
 
-      {/* ── Проблемы тренажёров ── */}
-      <div style={sectionTitle}>Проблемы тренажёров · {openProblems.length}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {openProblems.length === 0 ? (
-          <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 14 }}>
-            Открытых проблем нет — «Сообщить о проблеме», если тренажёр сломался
-          </div>
-        ) : openProblems.map(p => {
-          const st = P_STATUSES[p.status || 'new'];
-          return (
-            <div key={p.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: isMobile ? '13px 14px' : '14px 16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 7 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: st.color }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: st.color }} /> {st.label}
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>{p.club}</span>
-              </div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{p.desc}</div>
-              {renderPhotos(p.photos)}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><User size={11} /> {p.createdByName}</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>· <Clock size={11} /> {fmtDate(p.createdAtISO)}</span>
-                {p.decidedBy && (p.status === 'repair_approved' || p.status === 'rejected') && (
-                  <span>· {p.status === 'repair_approved' ? 'одобрил' : 'отклонил'} {p.decidedBy}</span>
-                )}
-              </div>
-              {p.rejectNote && p.status === 'rejected' && (
-                <div style={{ marginTop: 7, fontSize: 11.5, fontWeight: 600, color: '#9c7d7d', background: 'rgba(156,125,125,0.08)', border: '1px solid rgba(156,125,125,0.25)', borderRadius: 9, padding: '7px 11px' }}>
-                  Причина: {p.rejectNote}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 7, marginTop: 11, flexWrap: 'wrap', alignItems: 'center' }}>
-                {isChef && (p.status || 'new') === 'new' && (
-                  <>
-                    <button onClick={() => decideProblem(p, 'repair_approved')} style={actionBtn('#7A94B8', true)}>
-                      <Wrench size={13} /> Чинить
-                    </button>
-                    <button onClick={() => decideProblem(p, 'rejected')} style={actionBtn('#9c7d7d')}>
-                      <Ban size={13} /> Не чинить
-                    </button>
-                  </>
-                )}
-                {isChef && p.status === 'rejected' && (
-                  <button onClick={() => decideProblem(p, 'repair_approved')} style={{ ...actionBtn('var(--text-secondary)'), border: '1px solid var(--border)', textTransform: 'none', letterSpacing: 0, fontWeight: 800 }}>↩ Всё-таки чинить</button>
-                )}
-                {p.status === 'repair_approved' && (
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)' }}>Ждёт счёта — при загрузке счёта отметьте эту проблему</span>
-                )}
-                {canDeleteProblem(p) && (
-                  <button onClick={() => deleteProblem(p)} title="Удалить" style={{ marginLeft: 'auto', padding: isMobile ? 10 : 6, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.55 }}>
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Окно отклонённых */}
+      {showRejected && modalShell(() => setShowRejected(false), 'Отклонённые', (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rejectedCount === 0 ? (
+            <div style={{ padding: '22px 10px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Отклонённых нет</div>
+          ) : (
+            <>
+              {rejectedProblems.map(p => renderProblem(p, true))}
+              {rejectedInvoices.map(i => renderInvoice(i, true))}
+            </>
+          )}
+        </div>
+      ), true)}
 
-      {/* ── Счета на оплату ── */}
-      <div style={sectionTitle}>Счета на оплату · {visibleInvoices.length}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {visibleInvoices.length === 0 ? (
-          <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 14 }}>
-            Счетов пока нет
-          </div>
-        ) : visibleInvoices.map(inv => {
-          const st = I_STATUSES[inv.status || 'pending'];
-          const attached = (inv.problemIds || []).map(pid => problemById[pid]).filter(Boolean);
-          return (
-            <div key={inv.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: isMobile ? '13px 14px' : '14px 16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 7 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: st.color }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: st.color }} /> {st.label}
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>{inv.club}</span>
-                {inv.amount != null && (
-                  <span style={{ fontSize: 12.5, fontWeight: 900, color: 'var(--text-primary)' }}>{Number(inv.amount).toLocaleString('ru-RU')} ₸</span>
-                )}
-              </div>
-
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{inv.workDesc}</div>
-              {inv.workDateISO && (
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 4 }}>Работа: {fmtWorkDate(inv.workDateISO)}</div>
-              )}
-              {renderPhotos(inv.photos)}
-
-              {/* Проблемы, которые закрывает этот счёт — «одно окошко» */}
-              {attached.length > 0 && (
-                <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Закрывает проблемы · {attached.length}</div>
-                  {attached.map(p => (
-                    <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
-                      {(p.photos || [])[0] && !isPdf(p.photos[0]) && (
-                        <img src={p.photos[0]} alt="" onClick={() => openAttachment(p.photos[0])}
-                          style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', cursor: 'zoom-in', flexShrink: 0 }} />
-                      )}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{p.desc}</div>
-                        <div style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--text-muted)', marginTop: 2 }}>{p.createdByName} · {fmtDate(p.createdAtISO)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><User size={11} /> {inv.createdByName}</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>· <Clock size={11} /> загружен {fmtDate(inv.createdAtISO)}</span>
-                {inv.decidedBy && inv.status !== 'pending' && (
-                  <span>· {inv.status === 'approved' ? 'подтвердил' : 'отклонил'} {inv.decidedBy} {fmtDate(inv.decidedAtISO)}</span>
-                )}
-              </div>
-              {inv.rejectNote && inv.status === 'rejected' && (
-                <div style={{ marginTop: 7, fontSize: 11.5, fontWeight: 600, color: '#9c7d7d', background: 'rgba(156,125,125,0.08)', border: '1px solid rgba(156,125,125,0.25)', borderRadius: 9, padding: '7px 11px' }}>
-                  Причина: {inv.rejectNote}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 7, marginTop: 11, flexWrap: 'wrap', alignItems: 'center' }}>
-                {isChef && (inv.status || 'pending') === 'pending' && (
-                  <>
-                    <button onClick={() => decideInvoice(inv, 'approved')} style={actionBtn('#7d9c87', true)}>
-                      <Check size={13} /> Подтвердить оплату
-                    </button>
-                    <button onClick={() => decideInvoice(inv, 'rejected')} style={actionBtn('#9c7d7d')}>
-                      <Ban size={13} /> Отклонить
-                    </button>
-                  </>
-                )}
-                {isChef && inv.status === 'rejected' && (
-                  <button onClick={() => decideInvoice(inv, 'approved')} style={{ ...actionBtn('var(--text-secondary)'), border: '1px solid var(--border)', textTransform: 'none', letterSpacing: 0, fontWeight: 800 }}>↩ Всё-таки оплатить</button>
-                )}
-                {canDeleteInvoice(inv) && (
-                  <button onClick={() => removeInvoice(inv)} title="Удалить" style={{ marginLeft: 'auto', padding: isMobile ? 10 : 6, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.55 }}>
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Модалка «Сообщить о проблеме» */}
+      {/* Модалка «Проблема» */}
       {showAddProblem && modalShell(() => setShowAddProblem(false), 'Проблема тренажёра' + (!isChef && myClub ? ` · ${myClub}` : ''), (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {clubSelect(pForm, setPForm)}
@@ -612,12 +647,12 @@ const InvoicesPage = () => {
             padding: '13px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff',
             fontSize: 12.5, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: saving ? 0.6 : 1,
           }}>
-            {saving ? 'Сохранение…' : 'Отправить шефу на решение'}
+            {saving ? 'Сохранение…' : 'Отправить на согласование'}
           </button>
         </div>
       ))}
 
-      {/* Модалка «Загрузить счёт» */}
+      {/* Модалка «Счёт» */}
       {showAddInvoice && modalShell(() => setShowAddInvoice(false), 'Счёт на оплату ремонта' + (!isChef && myClub ? ` · ${myClub}` : ''), (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {clubSelect(iForm, setIForm)}
@@ -640,12 +675,11 @@ const InvoicesPage = () => {
             </div>
           </div>
 
-          {/* Какие одобренные проблемы закрывает счёт */}
           <div>
             <div style={labelStyle}>Какие проблемы закрывает счёт</div>
             {attachableProblems.length === 0 ? (
               <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', padding: '8px 2px' }}>
-                Нет одобренных к ремонту проблем{isChef ? ' в этом клубе' : ''} — счёт можно загрузить и без привязки
+                Нет согласованных проблем{isChef ? ' в этом клубе' : ''} — счёт можно загрузить и без привязки
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -675,12 +709,12 @@ const InvoicesPage = () => {
             padding: '13px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff',
             fontSize: 12.5, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: saving ? 0.6 : 1,
           }}>
-            {saving ? 'Сохранение…' : 'Отправить на подтверждение оплаты'}
+            {saving ? 'Сохранение…' : 'Отправить на согласование оплаты'}
           </button>
         </div>
       ))}
 
-      {/* Просмотр фото на весь экран */}
+      {/* Просмотр фото */}
       {photoView && ReactDOM.createPortal(
         <div onClick={() => setPhotoView(null)} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14, cursor: 'zoom-out' }}>
           <img src={photoView} alt="" style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 10 }} />
