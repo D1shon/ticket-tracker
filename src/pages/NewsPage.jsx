@@ -8,6 +8,7 @@ import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, updateDoc, serv
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { getLang } from '../lib/liveTranslate';
 import ShiftBoardAnnounce from '../components/news/ShiftBoardAnnounce';
 import CalendarAnnounce from '../components/news/CalendarAnnounce';
 import InStudioAnnounce from '../components/news/InStudioAnnounce';
@@ -156,6 +157,38 @@ const NewsPage = () => {
       setPosts(list);
     }, err => console.error('[news_posts]', err));
   }, []);
+
+  // ── Перевод новостей на язык интерфейса (kk/en) ──
+  // Тексты новостей каждый раз новые, словарём их не покрыть — переводим машинно
+  // через /api/assistant и кешируем в самом посте (tr.kk / tr.en): каждый пост
+  // переводится один раз на всех. На русском языке ничего не происходит.
+  const uiLang = getLang();
+  const trText = (p) => (uiLang !== 'ru' && p.tr?.[uiLang]) ? p.tr[uiLang] : (p.text || '');
+  const translatingRef = useRef(new Set());
+  useEffect(() => {
+    if (uiLang === 'ru' || posts.length === 0) return;
+    const pending = posts
+      .filter(p => (p.text || '').trim() && !p.tr?.[uiLang] && !translatingRef.current.has(p.id))
+      .slice(0, 30); // свежие сверху; старьё переводим по мере надобности
+    if (pending.length === 0) return;
+    let dead = false;
+    (async () => {
+      for (const p of pending) {
+        if (dead) return;
+        translatingRef.current.add(p.id);
+        try {
+          const r = await fetch('/api/assistant', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ translateTo: uiLang, text: p.text }),
+          });
+          if (!r.ok) continue;
+          const { text } = await r.json();
+          if (text) await updateDoc(doc(db, 'news_posts', p.id), { [`tr.${uiLang}`]: text });
+        } catch {}
+      }
+    })();
+    return () => { dead = true; };
+  }, [uiLang, posts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Подтверждения «Ознакомлен» — нужны и сотруднику (состояние кнопки), и панели просмотров
   useEffect(() => {
@@ -496,7 +529,7 @@ const NewsPage = () => {
               {p.template && RICH_TEMPLATES[p.template] ? (
                 React.createElement(RICH_TEMPLATES[p.template])
               ) : p.text && (
-                <div style={{ fontSize: 13.5, color: 'var(--text-primary)', lineHeight: 1.6 }}>{renderNewsText(p.text)}</div>
+                <div data-notranslate style={{ fontSize: 13.5, color: 'var(--text-primary)', lineHeight: 1.6 }}>{renderNewsText(trText(p))}</div>
               )}
               {p.mediaNote && (
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 6 }}>{p.mediaNote}</div>
@@ -595,7 +628,7 @@ const NewsPage = () => {
               <button onClick={() => setSheetPostId(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, lineHeight: 0 }}><X size={18} /></button>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.45 }}>
-              {fmtDate(p.postedAtISO)}<br />«{(p.text || '').slice(0, 70)}{(p.text || '').length > 70 ? '…' : ''}»
+              {fmtDate(p.postedAtISO)}<br />«{trText(p).slice(0, 70)}{trText(p).length > 70 ? '…' : ''}»
             </div>
             {renderReaders(rs)}
           </div>

@@ -239,6 +239,35 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // ── Ветка: машинный перевод новостей на kk/en (дёргает NewsPage при
+  // казахском/английском языке интерфейса; результат кешируется в самом
+  // посте news_posts.tr.{lang}, так что каждый пост переводится один раз) ──
+  if (req.body?.translateTo !== undefined) {
+    const to = req.body.translateTo === 'en' ? 'en' : 'kk'
+    const text = String(req.body.text || '').trim().slice(0, 6000)
+    if (!text) return res.status(400).json({ error: 'text required' })
+    const k = process.env.GEMINI_API_KEY
+    if (!k) return res.status(500).json({ error: 'no key' })
+    try {
+      const langName = to === 'en' ? 'английский' : 'казахский (кириллица)'
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${k}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `Переведи текст новости фитнес-клуба на ${langName} язык. Сохрани эмодзи, форматирование, переносы строк и нумерацию. Не переводи названия клубов (4YOU, COLIBRI, VILLA, NURLY ORDA, PROMENADE, EUROPE CITY) и бренды (Hero's Journey, HJ Track, WhatsApp, InStudio). В ответе верни ТОЛЬКО перевод, без пояснений и кавычек.\n\n${text}` }] }],
+          generationConfig: { temperature: 0.2 },
+        }),
+      })
+      const j = await r.json()
+      const out = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      if (!out) return res.status(502).json({ error: 'empty translation' })
+      return res.json({ text: out })
+    } catch (e) {
+      console.error('translateTo error:', e.message)
+      return res.status(502).json({ error: e.message })
+    }
+  }
+
   // ── Ветка: прокси публичного API отзывов 2ГИС (дёргает облачная рутина —
   // её egress-прокси блокирует public-api.reviews.2gis.com, а Vercel ходит свободно).
   // POST {gisReviews: '<branchId>'} → сырой JSON ответа 2ГИС как есть.
