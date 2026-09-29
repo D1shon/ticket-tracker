@@ -3,6 +3,7 @@ import { isMobileDevice } from '../../lib/isMobile';
 import useSheetDrag from '../../lib/useSheetDrag';
 import useNavLayout, { applyDrop } from '../../lib/useNavLayout';
 import { navAllowed } from '../../lib/navAccess';
+import { getLang, setLang } from '../../lib/liveTranslate';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Ticket, CheckSquare, Calendar, CalendarDays,
@@ -132,6 +133,23 @@ const ALL_NAV = [
   { icon: FileText,        label: 'Соглашение',  path: '/policy',      primary: false },
   { icon: Settings,        label: 'Настройки',   path: '/settings',    primary: false },
 ];
+
+/* ─── Переключатель языка платформы (перевод поверх DOM, см. liveTranslate) ── */
+const LangSwitch = ({ style }) => {
+  const cur = getLang();
+  return (
+    <div data-notranslate style={{ display: 'flex', gap: 5, ...style }}>
+      {[['kk', 'ҚАЗ'], ['ru', 'РУС'], ['en', 'ENG']].map(([id, label]) => (
+        <button key={id} onClick={() => id !== cur && setLang(id)} style={{
+          flex: 1, padding: '7px 0', borderRadius: 10, cursor: 'pointer', fontSize: 11, fontWeight: 900, letterSpacing: '0.05em',
+          border: '1px solid ' + (cur === id ? 'var(--accent-purple)' : 'var(--border)'),
+          background: cur === id ? 'rgba(125,111,179,0.14)' : 'transparent',
+          color: cur === id ? 'var(--accent-purple)' : 'var(--text-muted)',
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+};
 
 /* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
 const NAV_GROUPS = [
@@ -526,6 +544,8 @@ const DesktopSidebar = () => {
           <span style={{ flex: 1 }}>{isDark ? 'Тёмная' : 'Светлая'}</span>
           <div className="theme-toggle-icon" />
         </button>
+
+        <LangSwitch style={{ margin: '8px 0 0' }} />
 
         <button 
           onClick={logout}
@@ -1221,6 +1241,10 @@ const MobileNav = () => {
                   : <><Sun size={15} style={{ color: '#FB8F41' }} /> Светлая</>
                 }
               </button>
+            </div>
+
+            <div style={{ margin: '12px 24px 0' }}>
+              <LangSwitch />
             </div>
 
             <div style={{ margin: '12px 24px 0', paddingTop: 12, display: 'flex', justifyContent: 'center' }}>

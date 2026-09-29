@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+import { initLiveTranslate } from './lib/liveTranslate'
 
 // ─── One-time cache migration ─────────────────────────────────────────────────
 // Clear old cache keys so stale demo/corrupted data doesn't block fresh Firebase data
@@ -28,3 +29,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
   </React.StrictMode>,
 )
+
+// Живой перевод интерфейса (каз/англ). На русском не делает НИЧЕГО.
+initLiveTranslate()
