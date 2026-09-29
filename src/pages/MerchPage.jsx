@@ -317,7 +317,11 @@ const MerchPage = () => {
   // ─── Firebase Subscriptions ────────────────────────────────────────────────
   useEffect(() => {
     setLoadingSales(true);
-    const qSales = query(collection(db, 'merch_sales'), orderBy('createdAt', 'desc'), limit(300));
+    // Вся история продаж, БЕЗ limit: с ростом сети «последние 300» стали
+    // обрезать историю (в сентябре 2026 из вида пропало всё старше 7.09,
+    // хотя в базе записи целы). Объём небольшой (~300 продаж/мес, документы
+    // лёгкие), а фильтры по клубу/датам работают на клиенте по полному списку.
+    const qSales = query(collection(db, 'merch_sales'), orderBy('createdAt', 'desc'));
     const unsubSales = onSnapshot(qSales, (snapshot) => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setSales(list);
@@ -328,7 +332,7 @@ const MerchPage = () => {
     });
 
     setLoadingHistory(true);
-    const qHistory = query(collection(db, 'merch_history'), orderBy('createdAt', 'desc'), limit(200));
+    const qHistory = query(collection(db, 'merch_history'), orderBy('createdAt', 'desc'), limit(500));
     const unsubHistory = onSnapshot(qHistory, (snapshot) => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setHistoryLogs(list);

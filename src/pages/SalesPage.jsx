@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { collection, query, onSnapshot, updateDoc, deleteDoc, doc, increment, serverTimestamp, where, runTransaction, orderBy, limit } from 'firebase/firestore';
+import { collection, query, onSnapshot, updateDoc, deleteDoc, doc, increment, serverTimestamp, where, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
@@ -76,7 +76,9 @@ const SalesPage = () => {
   }, [activeClub]);
 
   useEffect(() => {
-    const q = query(collection(db, 'merch_sales'), orderBy('createdAt', 'desc'), limit(200));
+    // Только сегодняшние продажи серверным фильтром: раньше «последние 200 по
+    // сети» в активный день могли не дотянуться до утренних продаж
+    const q = query(collection(db, 'merch_sales'), where('createdAt', '>=', new Date(new Date().setHours(0, 0, 0, 0))));
     const unsub = onSnapshot(q, snap => {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const list = snap.docs
@@ -84,7 +86,8 @@ const SalesPage = () => {
         .filter(s => {
           if (!s.createdAt?.seconds) return false;
           return format(new Date(s.createdAt.seconds * 1000), 'yyyy-MM-dd') === todayStr && s.qty > 0;
-        });
+        })
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setTodaySales(list);
     });
     return unsub;
