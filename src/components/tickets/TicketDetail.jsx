@@ -204,6 +204,22 @@ const ReasonPanel = ({ action, onConfirm, onCancel, compact = false }) => {
 };
 
 // ─── Main ───
+// Открыть файл-вложение (PDF и прочее): data:-ссылку браузер не открывает как
+// страницу («страница не может открыться»), поэтому конвертируем в blob;
+// обычные https-ссылки из Storage открываем как есть
+const openFileAttachment = (att) => {
+  if (!att?.url) return;
+  if (!att.url.startsWith('data:')) { window.open(att.url, '_blank', 'noopener'); return; }
+  try {
+    const b64 = att.url.slice(att.url.indexOf(',') + 1);
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: att.type || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { console.error('attachment open', e); }
+};
+
 const TicketDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -690,9 +706,13 @@ const TicketDetail = () => {
                         ) : (
                           <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.1)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                             <Paperclip size={14} color="#5580A8" />
-                            <a href={m.attachment.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#5580A8', textDecoration: 'none', wordBreak: 'break-all' }}>
+                            {/* data:-ссылки браузер не открывает как страницу — конвертируем в blob */}
+                            <button
+                              onClick={() => openFileAttachment(m.attachment)}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: '#5580A8', textAlign: 'left', wordBreak: 'break-all', textDecoration: 'underline' }}
+                            >
                               {m.attachment.name}
-                            </a>
+                            </button>
                           </div>
                         )}
                       </div>
