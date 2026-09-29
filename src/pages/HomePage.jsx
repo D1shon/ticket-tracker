@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Ticket, RefreshCw, CalendarDays, CheckSquare, ChevronRight, AlertTriangle, Wrench } from 'lucide-react';
+import { MapPin, Ticket, RefreshCw, CalendarDays, CheckSquare, ChevronRight, AlertTriangle, Wrench, GraduationCap, Sparkles } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useTickets } from '../store/TicketContext';
@@ -138,6 +138,39 @@ const HomePage = () => {
         <Chip value={issuesToday.length} label="Неиспр. сегодня" color={issuesToday.length > 0 ? '#B06A6A' : 'var(--text-primary)'} />
       </div>
 
+      {/* Админы: вместо задач по клубу — окно Академии (обучение в приоритете) */}
+      {user?.role === 'admin' ? (<>
+        <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Обучение</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {!checkinTime && (
+            <Card icon={MapPin} iconColor="#5F9C81" tag="Чекин" tagColor="#5F9C81" title="Вы ещё не отметились сегодня" sub="откройте чекин и отметьтесь по Wi-Fi клуба" to="/attendance" />
+          )}
+          <button onClick={() => navigate('/academy')} style={{
+            width: '100%', textAlign: 'left', cursor: 'pointer', position: 'relative', overflow: 'hidden',
+            borderRadius: 18, border: '1px solid rgba(125,111,179,0.35)',
+            background: 'linear-gradient(135deg, rgba(125,111,179,0.2) 0%, rgba(85,128,168,0.15) 60%, rgba(95,156,129,0.12) 100%)',
+            padding: '20px 18px',
+          }}>
+            <div style={{ position: 'absolute', top: -50, right: -50, width: 170, height: 170, borderRadius: '50%', background: 'radial-gradient(circle, rgba(125,111,179,0.25), transparent 70%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(125,111,179,0.18)', border: '1px solid rgba(125,111,179,0.4)', borderRadius: 999, padding: '4px 10px', marginBottom: 10 }}>
+                <Sparkles size={10} style={{ color: '#9d8fd6' }} />
+                <span style={{ fontSize: 8.5, fontWeight: 900, color: '#9d8fd6', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Академия</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ width: 44, height: 44, borderRadius: 13, background: 'linear-gradient(135deg, #7D6FB3, #5580A8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 6px 18px rgba(125,111,179,0.4)' }}>
+                  <GraduationCap size={22} style={{ color: '#fff' }} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1.25 }}>Пройти обучение</span>
+                  <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.5 }}>Курсы и тесты Hero&rsquo;s Journey — прямо в HJ Track</span>
+                </span>
+                <ChevronRight size={18} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
+              </div>
+            </div>
+          </button>
+        </div>
+      </>) : (<>
       {/* Сейчас важно */}
       <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Сейчас важно</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -169,6 +202,7 @@ const HomePage = () => {
           </div>
         )}
       </div>
+      </>)}
 
       {/* Техника */}
       {(user?.role !== 'tech') && (
