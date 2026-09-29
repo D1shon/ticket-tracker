@@ -1,13 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GraduationCap, ExternalLink, RotateCcw, ArrowLeft, BookOpen, Award, TrendingUp, Sparkles } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { isMobileDevice } from '../lib/isMobile';
 
 // Партнёрская обучающая платформа. Открывается прямо внутри HJ Track (iframe),
 // заходы и старты обучения пишем в academy_activity — видно, кто учится.
 const ACADEMY_URL = 'https://heros-journey-trainee.web.app';
+
+// SSO: наш сервер выпускает пропуск (custom token) проекта академии с должностью
+// и правами — академия входит по нему сама, без второго логина. Если сервер SSO
+// ещё не настроен (нет ключей академии) — тихо открываем академию как раньше.
+const fetchSsoToken = async (user) => {
+  try {
+    if (!auth.currentUser) return null;
+    const idToken = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/academy-token', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guestName: user?.displayName || '' }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.token || null;
+  } catch {
+    return null;
+  }
+};
+
+const academyUrlWithSso = (token) => token ? `${ACADEMY_URL}/#hjsso=${encodeURIComponent(token)}` : ACADEMY_URL;
 
 const logActivity = (user, type) => {
   const now = new Date();
@@ -48,15 +70,23 @@ const AcademyPage = () => {
     logActivity(user, 'page_visit');
   }, [user]);
 
-  const startTraining = () => {
+  const [ssoToken, setSsoToken] = useState(null);
+  const [ssoReady, setSsoReady] = useState(false); // токен получен (или SSO недоступно) — можно грузить iframe
+
+  const startTraining = async () => {
     logActivity(user, 'start_training');
     setIframeLoaded(false);
+    setSsoReady(false);
     setMode('embed');
+    const token = await fetchSsoToken(user);
+    setSsoToken(token);
+    setSsoReady(true);
   };
 
-  const openExternal = () => {
+  const openExternal = async () => {
     logActivity(user, 'open_external');
-    window.open(ACADEMY_URL, '_blank', 'noopener');
+    const token = ssoToken || await fetchSsoToken(user);
+    window.open(academyUrlWithSso(token), '_blank', 'noopener');
   };
 
   // ── Режим обучения: платформа во всю рабочую область ──
@@ -96,14 +126,23 @@ const AcademyPage = () => {
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>Загружаем академию…</span>
             </div>
           )}
-          <iframe
-            key={iframeKey}
-            src={ACADEMY_URL}
-            title="Hero's Journey Академия"
-            onLoad={() => setIframeLoaded(true)}
-            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-            allow="fullscreen; clipboard-write"
-          />
+          {ssoReady && (
+            <iframe
+              key={iframeKey}
+              src={academyUrlWithSso(ssoToken)}
+              title="Hero's Journey Академия"
+              onLoad={(e) => {
+                setIframeLoaded(true);
+                // Дублируем пропуск через postMessage — академия может забрать
+                // его любым из двух способов (fragment #hjsso= или сообщение)
+                if (ssoToken) {
+                  try { e.target.contentWindow.postMessage({ type: 'hj-sso', token: ssoToken }, ACADEMY_URL); } catch {}
+                }
+              }}
+              style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+              allow="fullscreen; clipboard-write"
+            />
+          )}
         </div>
       </div>
     );
