@@ -3,7 +3,7 @@ import { ShieldCheck, X, Clock, Users, Shield, History, ChevronDown, ClipboardLi
 import { format, addDays, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { collection, onSnapshot, query, where, doc, addDoc, Timestamp } from 'firebase/firestore';
-import { db, getStorageLazy } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
 
@@ -210,7 +210,9 @@ const AttendancePage = () => {
   }, [historyCheckins, opMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Вкладка «Фото касс»: фотоотчёты закрытия кассы (checkout_photos) ──
-  // Метаданные в Firestore, сами фото в Storage; крон удаляет их через 3 дня.
+  // Фото лежит base64 прямо в документе (photoData): Firebase Storage в проекте
+  // НЕ ВКЛЮЧЁН (бакета нет, любые загрузки падали 404 — фото «не приходили»).
+  // Крон cleanup-checkout-photos удаляет документы через 3 дня по expiresAt.
   const [checkoutPhotos, setCheckoutPhotos] = useState([]);
   const [photoUrls, setPhotoUrls] = useState({}); // docId -> download URL
   const [photoModal, setPhotoModal] = useState(null);
@@ -230,33 +232,24 @@ const AttendancePage = () => {
 
   useEffect(() => {
     if (viewMode !== 'photos' || checkoutPhotos.length === 0) return;
-    let dead = false;
-    (async () => {
-      const storage = await getStorageLazy();
-      const { ref: sRef, getDownloadURL } = await import('firebase/storage');
-      for (const p of checkoutPhotos) {
-        if (!p.storagePath || photoUrls[p.id]) continue;
-        try {
-          const url = await getDownloadURL(sRef(storage, p.storagePath));
-          if (dead) return;
-          setPhotoUrls(prev => ({ ...prev, [p.id]: url }));
-        } catch {} // файл уже удалён кроном очистки — карточку скроем
-      }
-    })();
-    return () => { dead = true; };
-  }, [viewMode, checkoutPhotos]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Фото приходит вместе с документом — просто раскладываем по id
+    setPhotoUrls(prev => {
+      const next = { ...prev };
+      checkoutPhotos.forEach(p => { if (p.photoData && !next[p.id]) next[p.id] = p.photoData; });
+      return next;
+    });
+  }, [viewMode, checkoutPhotos]);
 
   // ── Загрузка фото кассы (обязательно перед чекаутом) ─────────────
-  // Фото принимается сразу при выборе — чекаут не ждёт Storage.
-  // Перед загрузкой сжимаем через canvas: ~5 МБ → ~200 КБ.
+  // Фото принимается сразу при выборе; сжимаем canvas'ом (~5 МБ → ~150-250 КБ)
+  // и пишем base64 прямо в документ — Storage в проекте не включён.
   const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setPhotoPreviewUrl(URL.createObjectURL(file));
     (async () => {
       try {
-        // Сжатие через canvas
-        const compressedBlob = await new Promise((resolve) => {
+        const photoData = await new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
             const MAX = 1280;
@@ -265,25 +258,25 @@ const AttendancePage = () => {
             canvas.width = Math.round(img.width * scale);
             canvas.height = Math.round(img.height * scale);
             canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-            canvas.toBlob(resolve, 'image/jpeg', 0.75);
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
           };
+          img.onerror = () => reject(new Error('bad image'));
           img.src = URL.createObjectURL(file);
         });
-        const storage = await getStorageLazy();
-        const { ref, uploadBytes } = await import('firebase/storage');
-        const safeName = (user?.email || 'unknown').replace(/[^a-z0-9]/gi, '_');
-        const path = `checkout_photos/${safeName}_${Date.now()}.jpg`;
-        await uploadBytes(ref(storage, path), compressedBlob, { contentType: 'image/jpeg' });
         await addDoc(collection(db, 'checkout_photos'), {
           userId: user?.email || 'unknown',
           userName: user?.displayName || null,
           club: user?.club || null,
-          storagePath: path,
+          photoData,
           uploadedAt: Timestamp.now(),
           expiresAt: Timestamp.fromMillis(Date.now() + 3 * 24 * 60 * 60 * 1000),
         });
       } catch (err) {
         console.warn('checkout photo upload failed:', err.message);
+        // Фото не сохранилось — сбрасываем превью, чтобы админ снял заново,
+        // а не думал, что отчёт ушёл
+        setPhotoPreviewUrl(null);
+        alert('Фото не сохранилось — попробуйте ещё раз');
       }
     })();
   };
