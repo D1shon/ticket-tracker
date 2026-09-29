@@ -9,7 +9,7 @@ import { pushNotify } from '../lib/pushNotify';
 // Отзывы падают в qr_reviews → менеджеры читают, ИИ разбирает и ставит задачи.
 // Три языка (по умолчанию казахский, переключатель сверху); в БАЗУ зона пишется
 // каноническим русским значением — фильтры /reviews и ИИ-разбор не ломаются.
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 const ZONES = ['Сервис на ресепшне', 'Раздевалка', 'Локеры', 'Зал', 'Душевые', 'Вентиляция и кондиционирование', 'Чистота и порядок', 'Приложение', 'Другое'];
 
 const LANGS = [

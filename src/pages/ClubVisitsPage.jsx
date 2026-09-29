@@ -13,6 +13,7 @@ const CLUB_COLORS = {
   'HJ Villa':       '#5F9C81',
   'HJ Nurly Orda':  '#C08F4F',
   'HJ Europe City': '#B0688D',
+  'HJ Dubai': '#B05252',
   'HJ Promenade':   '#5F9C96',
 };
 
@@ -23,6 +24,7 @@ const CLUB_MAP = {
   'NURLY ORDA': 'HJ Nurly Orda',
   'PROMENADE':  'HJ Promenade',
   'EUROPE CITY': 'HJ Europe City',
+  'DUBAI': 'HJ Dubai',
 };
 
 const DOW_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];

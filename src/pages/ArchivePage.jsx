@@ -10,6 +10,7 @@ const clubColors = {
   'NURLY ORDA': 'badge-nurly',
   'PROMENADE': 'badge-promenade',
   'EUROPE CITY': 'badge-europe',
+  'DUBAI': 'badge-dubai',
   'PRIME': 'badge-prime',
 };
 
@@ -20,7 +21,7 @@ const priorityLabels = {
   low: { label: 'Низкий', cls: 'priority-low', color: '#5F9C81' },
 };
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 const ArchivePage = () => {
   const [search, setSearch] = useState('');

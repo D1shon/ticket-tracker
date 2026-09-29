@@ -11,7 +11,7 @@ const MANAGER_NAMES = ['Сания', 'Анастасия', 'Диас', 'Салт
 // Названия клубов в аналитике DWH (посещения)
 const DWH_CLUB = {
   '4YOU': 'HJ 4YOU', 'COLIBRI': 'HJ Colibri', 'VILLA': 'HJ Villa',
-  'NURLY ORDA': 'HJ Nurly Orda', 'PROMENADE': 'HJ Promenade', 'EUROPE CITY': 'HJ Europe City',
+  'NURLY ORDA': 'HJ Nurly Orda', 'PROMENADE': 'HJ Promenade', 'EUROPE CITY': 'HJ Europe City', 'DUBAI': 'HJ Dubai',
 };
 
 const Dashboard = () => {
@@ -236,6 +236,7 @@ const Dashboard = () => {
     getClubStats('NURLY ORDA', '#BF8055'),
     getClubStats('PROMENADE', '#5F9C96'),
     getClubStats('EUROPE CITY', '#B0688D'),
+    getClubStats('DUBAI', '#B05252'),
   ].filter(Boolean);
 
   const ticketAssignees = rawTickets
@@ -306,7 +307,7 @@ const Dashboard = () => {
 
         {!userClub && (
           <div className="flex items-center gap-2 bg-[var(--bg-card)] p-1.5 rounded-2xl border border-[var(--border)] shadow-2xl backdrop-blur-md overflow-x-auto max-w-full no-scrollbar flex-nowrap">
-            {['ВCE КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'].map(tab => (
+            {['ВCE КЛУБЫ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}

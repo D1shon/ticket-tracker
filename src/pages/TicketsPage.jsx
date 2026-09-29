@@ -11,10 +11,10 @@ const UnreadDot = () => (
   <span title="Новые сообщения" style={{ width: 9, height: 9, borderRadius: '50%', background: '#E0655A', boxShadow: '0 0 0 3px rgba(224,101,90,0.22)', flexShrink: 0, display: 'inline-block' }} />
 );
 
-const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS_TABS = ['ВСЕ', '4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 const FILTERS    = ['ВСЕ', 'ЗАПЛАНИРОВАННЫЕ', 'В РАБОТЕ', 'ПАУЗА', 'ОЖИДАНИЕ', 'ЗАКРЫТО'];
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 const PRIORITIES = [
   { id: 'critical', label: 'Критический', color: '#ff4444' },
   { id: 'high',     label: 'Высокий',     color: '#BF8055' },
@@ -41,7 +41,8 @@ const FILTER_TO_COL = {
 const clubColors = {
   '4YOU': 'badge-4you', 'COLIBRI': 'badge-colibri',
   'VILLA': 'badge-villa', 'NURLY ORDA': 'badge-nurly', 'PROMENADE': 'badge-promenade',
-  'EUROPE CITY': 'badge-europe'
+  'EUROPE CITY': 'badge-europe',
+  'DUBAI': 'badge-dubai'
 };
 const priorityLabels = {
   critical: { label: 'Критический', cls: 'priority-critical' },

@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
-const CLUB_COLORS = { '4YOU': '#5580A8', 'COLIBRI': '#9b5de5', 'VILLA': '#C08F4F', 'NURLY ORDA': '#5F9C81', 'PROMENADE': '#5F9C96', 'EUROPE CITY': '#B0688D' };
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
+const CLUB_COLORS = { '4YOU': '#5580A8', 'COLIBRI': '#9b5de5', 'VILLA': '#C08F4F', 'NURLY ORDA': '#5F9C81', 'PROMENADE': '#5F9C96', 'EUROPE CITY': '#B0688D', 'DUBAI': '#B05252' };
 
 const STATUS_META = {
   new:       { label: 'Новый',     color: '#5580A8' },

@@ -19,7 +19,7 @@ import { toast } from 'sonner';
  * Строгий приглушённый стиль. Хранение: instudio_tickets.
  */
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 const ZONES = ['Тренажёрный зал', 'Кардиозона', 'Групповой зал', 'Ресепшн', 'Раздевалки', 'Душевые', 'Сауна', 'Техпомещение', 'Вся студия'];
 

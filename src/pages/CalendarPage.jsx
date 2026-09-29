@@ -8,7 +8,7 @@ import { collection, onSnapshot, doc, runTransaction } from 'firebase/firestore'
 import { useTickets } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 const CalendarPage = () => {
   const navigate = useNavigate();

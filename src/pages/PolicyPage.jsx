@@ -11,6 +11,7 @@ const CLUBS = [
   { name: 'NURLY ORDA', color: '#5F9C81' },
   { name: 'PROMENADE',  color: '#5F9C96' },
   { name: 'EUROPE CITY', color: '#B0688D' },
+  { name: 'DUBAI', color: '#B05252' },
 ];
 
 function escapeRegex(str) {

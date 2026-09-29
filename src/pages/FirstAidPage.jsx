@@ -7,7 +7,7 @@ import { pushNotify } from '../lib/pushNotify';
 import { isMobileDevice } from '../lib/isMobile';
 import { toast } from 'sonner';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 // Модель данных:
 //   firstaid_catalog — ОБЩИЙ стандарт для всех клубов: название, фото, минимум, порядок.

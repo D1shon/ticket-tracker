@@ -12,7 +12,7 @@ import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { isMobileDevice } from '../lib/isMobile';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 // Сжатие фото (как в товарах/утерянных вещах): 480px JPEG ≈ 25 КБ
 const compressImageToBase64 = (file) => new Promise((resolve, reject) => {

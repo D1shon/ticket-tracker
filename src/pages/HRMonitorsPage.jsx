@@ -12,7 +12,7 @@ import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { isMobileDevice } from '../lib/isMobile';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 const STATUS_OPTIONS = [
   { value: 'working', label: 'Работает', color: '#5F9C81', bg: 'rgba(95,156,129,0.12)', icon: CheckCircle2 },

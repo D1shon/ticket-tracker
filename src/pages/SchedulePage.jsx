@@ -39,7 +39,7 @@ import { db, auth } from '../lib/firebase';
 
 const COMMISSION_RATE = 0.02; // 2% merch sales commission rate
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 const cleanName = (str) => (str || '').replace(/\s*\(.*?\)\s*/g, '').trim().toLowerCase();
 

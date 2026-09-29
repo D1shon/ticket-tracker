@@ -23,7 +23,7 @@ const EVENING_CHECKLIST = [
   'Сверить кассу, сфотографировать и отправить в чат',
 ];
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 // Роль/подпись сотрудника по email (для фильтров и бейджей в чекине)
 const roleInfoOf = (email) => USER_ROLES[(email || '').toLowerCase().trim()] || null;

@@ -20,7 +20,7 @@ import {
 
 // ГОЛОВНОЙ СКЛАД — центральное хранилище (не фитнес-клуб): существует только в
 // складском модуле (вкладка, товары, перемещения). В чекин/календарь/отзывы НЕ добавлять.
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'ГОЛОВНОЙ СКЛАД'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI', 'ГОЛОВНОЙ СКЛАД'];
 const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы', 'Блокноты', 'Ручки', 'Другое'];
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
 

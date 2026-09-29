@@ -323,7 +323,7 @@ export const ScheduleProvider = ({ children }) => {
     // данными предыдущего (ID детерминированы → setDoc перезаписывал правки).
     if (!employeesServerConfirmedRef.current) return;
 
-    const clubs = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+    const clubs = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
     // Find clubs that have no employees in the current month
     const emptyClubs = clubs.filter(club => {

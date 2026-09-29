@@ -20,7 +20,7 @@ import { toast } from 'sonner';
  * Заявках), выбор запоминается. Коллекции: equip_problems + invoices.
  */
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 const P_STATUSES = {
   new:             { label: 'На согласовании', color: '#b39a5e' },

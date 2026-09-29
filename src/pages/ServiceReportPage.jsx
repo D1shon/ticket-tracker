@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 const STOCK = [['ok', 'В норме', '#5F9C81'], ['low', 'Заканчивается', '#C08F4F'], ['out', 'Нет', '#B06A6A']];
 
 // Оценка 1–5: красная→зелёная

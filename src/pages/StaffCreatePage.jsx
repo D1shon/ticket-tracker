@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 // Создание аккаунтов МОП. МОП = роль 'rop' с флагом mop:true — те же права, что
 // у РОПа, но создавать аккаунты нельзя. Запись в app_users → сотрудник входит по
 // email и сам придумывает пароль при первом входе.
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const StaffCreatePage = () => {

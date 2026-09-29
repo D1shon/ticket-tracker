@@ -265,6 +265,7 @@ select.input-app {
 .badge-nurly   { background: rgba(125,111,179,0.1); color: var(--accent-purple); border: 1px solid rgba(125,111,179,0.2); }
 .badge-promenade { background: rgba(20,184,166,0.1); color: #5F9C96;            border: 1px solid rgba(20,184,166,0.2); }
 .badge-europe  { background: rgba(176,104,141,0.1); color: #B0688D;            border: 1px solid rgba(176,104,141,0.2); }
+.badge-dubai   { background: rgba(176,82,82,0.1);   color: #B05252;            border: 1px solid rgba(176,82,82,0.2); }
 .badge-prime   { background: rgba(176,106,106,0.1);  color: var(--accent-red);    border: 1px solid rgba(176,106,106,0.2); }
 
 /* Priority Badges */

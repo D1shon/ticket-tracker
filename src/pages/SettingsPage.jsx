@@ -17,6 +17,7 @@ const DEFAULT_POLICY_URLS = {
   'NURLY ORDA': 'https://herosjourney.kz/policy/nurlyorda',
   'PROMENADE': 'https://herosjourney.kz/policy/promenade',
   'EUROPE CITY': 'https://herosjourney.kz/policy/europecity',
+  'DUBAI': 'https://herosjourney.kz/policy/dubai',
 };
 
 const SettingsPage = () => {
@@ -269,6 +270,7 @@ const SettingsPage = () => {
     { name: 'NURLY ORDA', color: '#5F9C81' },
     { name: 'PROMENADE', color: '#5F9C96' },
     { name: 'EUROPE CITY', color: '#B0688D' },
+    { name: 'DUBAI', color: '#B05252' },
   ];
 
   // мобайл: переключатели крупнее (удобно пальцем)
@@ -1053,7 +1055,7 @@ const ACCESS_ROLES = [
   { id: 'lostviewer', label: 'Утерянные вещи (просмотр)', needsClub: false },
 ];
 const ROLE_LABEL = Object.fromEntries(ACCESS_ROLES.map(r => [r.id, r.label]));
-const ACCESS_CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const ACCESS_CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 
 const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
   const [open, setOpen] = useState(false);

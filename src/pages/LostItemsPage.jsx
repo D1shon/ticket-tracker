@@ -10,7 +10,7 @@ import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { isMobileDevice } from '../lib/isMobile';
 
-const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY'];
+const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 const MONTH_MS = 30 * 24 * 3600 * 1000;
 
 // В карточке списка живёт МИНИАТЮРА (~4 КБ), полное фото — в lost_item_photos/{id}
