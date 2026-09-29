@@ -33,14 +33,15 @@ export const NAV_ITEMS = [
   { path: '/attendance',      label: 'Чекин' },
   { path: '/calls',           label: 'Созвоны' },
   { path: '/guidebook',       label: 'Гайдбук' },
+  { path: '/academy',         label: 'Академия' },
   { path: '/injury-protocol', label: 'Регламент травм' },
   { path: '/policy',          label: 'Соглашение' },
   { path: '/settings',        label: 'Настройки' },
 ];
 
-const ADMIN_TABS = ['/shift-board', '/calendar', '/instudio', '/schedule', '/sales', '/settings', '/guidebook', '/injury-protocol', '/policy', '/hr-monitors', '/first-aid', '/towels', '/attendance', '/club-visits', '/lost-items', '/news', '/leads', '/assistant'];
-const MARKETING_TABS = ['/merch', '/policy', '/shift-board', '/calendar', '/instudio', '/settings'];
-const SALES_TABS = ['/news', '/merch', '/policy', '/settings', '/reviews', '/qr-reviews', '/leads', '/lost-items', '/assistant', '/attendance', '/club-visits', '/calendar', '/instudio'];
+const ADMIN_TABS = ['/shift-board', '/calendar', '/instudio', '/schedule', '/sales', '/settings', '/guidebook', '/injury-protocol', '/policy', '/hr-monitors', '/first-aid', '/towels', '/attendance', '/club-visits', '/lost-items', '/news', '/leads', '/assistant', '/academy'];
+const MARKETING_TABS = ['/merch', '/policy', '/shift-board', '/calendar', '/instudio', '/settings', '/academy'];
+const SALES_TABS = ['/news', '/merch', '/policy', '/settings', '/reviews', '/qr-reviews', '/leads', '/lost-items', '/assistant', '/attendance', '/club-visits', '/calendar', '/instudio', '/academy'];
 const VIEWER_HIDDEN_TABS = ['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads', '/ai-chat'];
 
 export function baseNavAllowed(user, path) {
