@@ -325,14 +325,16 @@ export const TicketProvider = ({ children }) => {
   useEffect(() => { allTicketsRef.current = tickets; }, [tickets]);
 
   // Keep the push token fresh for devices that already opted in
+  // (гостям-стажёрам рабочие пуши не нужны)
   useEffect(() => {
-    if (user?.email) refreshPushToken(user);
+    if (user?.email && user.role !== 'guest') refreshPushToken(user);
   }, [user?.email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync the self-edited display name from Firestore (survives re-login,
-  // works across devices)
+  // works across devices). Гостя пропускаем: у общего guest@hj.fit нет
+  // user_profiles, и фолбэк затирал бы введённое стажёром имя на «guest».
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user?.email || user.role === 'guest') return;
     const emailKey = user.email.toLowerCase().trim();
     return onSnapshot(doc(db, 'user_profiles', emailKey), snap => {
       const saved = snap.exists() ? (snap.data().displayName || null) : null;
@@ -413,7 +415,8 @@ export const TicketProvider = ({ children }) => {
 
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser && fbUser.isAnonymous && localStorage.getItem('hj_guest_session') === '1') {
-        setUser({ ...GUEST_USER, uid: fbUser.uid });
+        const guestName = localStorage.getItem('hj_guest_name') || GUEST_USER.displayName;
+        setUser({ ...GUEST_USER, displayName: guestName, uid: fbUser.uid });
         setLoading(false);
         return;
       }
@@ -543,22 +546,29 @@ export const TicketProvider = ({ children }) => {
     }
   };
 
-  // Гостевой вход для стажёров: без email и пароля
-  const loginAsGuest = async () => {
-    try { localStorage.setItem('hj_guest_session', '1'); } catch {}
+  // Гостевой вход для стажёров: без email и пароля, но с именем —
+  // оно подставляется в профиль и в отметки чекина
+  const loginAsGuest = async (fullName) => {
+    const name = (fullName || '').trim().replace(/\s+/g, ' ');
+    if (!name) throw new Error('Введите имя и фамилию');
+    try {
+      localStorage.setItem('hj_guest_session', '1');
+      localStorage.setItem('hj_guest_name', name);
+    } catch {}
     if (auth.currentUser?.isAnonymous) {
       // Анонимная сессия уже есть (например, после проверки email) —
       // onAuthStateChanged не сработает повторно, ставим юзера сами
-      setUser({ ...GUEST_USER, uid: auth.currentUser.uid });
+      setUser({ ...GUEST_USER, displayName: name, uid: auth.currentUser.uid });
     } else {
       await signInAnonymously(auth);
     }
-    toast.success('Добро пожаловать! Вы вошли как стажёр');
+    toast.success(`Добро пожаловать, ${name.split(' ')[0]}! Вы вошли как стажёр`);
   };
 
   const logout = () => {
     localStorage.removeItem('app_session_user');
     localStorage.removeItem('hj_guest_session');
+    localStorage.removeItem('hj_guest_name'); // общий телефон — имя не наследуем следующему
     signOut(auth).catch(() => {});
     setUser(null);
     toast.success('Вы вышли из системы');

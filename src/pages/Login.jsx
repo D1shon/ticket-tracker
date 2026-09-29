@@ -12,6 +12,21 @@ const Login = () => {
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Гостевой вход стажёра: по кнопке раскрывается форма имени
+  const [guestOpen, setGuestOpen] = useState(false);
+  const [guestFirst, setGuestFirst] = useState('');
+  const [guestLast, setGuestLast] = useState('');
+
+  const submitGuest = async () => {
+    setError(''); setInfo('');
+    const first = guestFirst.trim();
+    const last = guestLast.trim();
+    if (!first || !last) { setError('Введите имя и фамилию — так наставник увидит вас в чекине.'); return; }
+    setLoading(true);
+    try { await loginAsGuest(`${first} ${last}`); }
+    catch (e) { setError('Не удалось войти как гость: ' + (e?.message || e)); setLoading(false); }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setError(''); setInfo('');
@@ -128,21 +143,44 @@ const Login = () => {
           </div>
         </form>
 
-        {/* Гостевой вход для стажёров — без email и пароля */}
+        {/* Гостевой вход для стажёров — без email и пароля, но с именем */}
         <div className="mt-6 pt-6 border-t border-border">
-          <button
-            type="button"
-            onClick={async () => {
-              setError('');
-              setLoading(true);
-              try { await loginAsGuest(); }
-              catch (e) { setError('Не удалось войти как гость: ' + (e?.message || e)); setLoading(false); }
-            }}
-            disabled={loading}
-            className="w-full border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            <GraduationCap size={20} /> Я стажёр — войти без пароля
-          </button>
+          {!guestOpen ? (
+            <button
+              type="button"
+              onClick={() => { setError(''); setGuestOpen(true); }}
+              disabled={loading}
+              className="w-full border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <GraduationCap size={20} /> Я стажёр — войти без пароля
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                <GraduationCap size={18} className="text-primary" /> Представьтесь — и начнём обучение
+              </p>
+              <div className="flex gap-3">
+                <input
+                  type="text" value={guestFirst} onChange={(e) => setGuestFirst(e.target.value)}
+                  placeholder="Имя" autoFocus autoComplete="given-name"
+                  onKeyDown={(e) => e.key === 'Enter' && submitGuest()}
+                  className="w-1/2 bg-muted/50 border border-border rounded-xl py-2.5 px-4 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
+                />
+                <input
+                  type="text" value={guestLast} onChange={(e) => setGuestLast(e.target.value)}
+                  placeholder="Фамилия" autoComplete="family-name"
+                  onKeyDown={(e) => e.key === 'Enter' && submitGuest()}
+                  className="w-1/2 bg-muted/50 border border-border rounded-xl py-2.5 px-4 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
+                />
+              </div>
+              <button
+                type="button" onClick={submitGuest} disabled={loading}
+                className="w-full border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loading ? <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div> : <><LogIn size={18} /> Войти как стажёр</>}
+              </button>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground mt-2 text-center">
             Гостевой доступ: Академия, Гайдбук, Регламент травм и Чекин
           </p>

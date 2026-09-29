@@ -23,7 +23,7 @@ const HomePage = () => {
   const firstName = (user?.displayName || '').split(' ')[0] || 'коллега';
   const userClub = user?.club?.toUpperCase() || null;
   const globalRole = ['chef', 'komdir', 'viewer', 'marketing', 'tech'].includes(user?.role);
-  const clubLabel = userClub || 'Вся сеть';
+  const clubLabel = user?.role === 'guest' ? 'Стажёр' : (userClub || 'Вся сеть');
   const today = localDate();
   const yesterday = localDate(new Date(Date.now() - 86400e3));
 

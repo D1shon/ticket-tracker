@@ -187,7 +187,11 @@ const AttendancePage = () => {
     const ts = (x) => x.timestamp?.seconds ?? (new Date(x.timestamp || 0).getTime() / 1000);
     const byUser = {};
     [...historyCheckins].filter(c => passRole(c.userId)).sort((a, b) => ts(a) - ts(b)).forEach(c => {
-      const key = (c.userId || c.userName || '?').toLowerCase();
+      // Гостевой аккаунт стажёров общий (guest@hj.fit) — группируем по имени,
+      // иначе все стажёры слипались бы в одну строку
+      const key = (c.userId === 'guest@hj.fit' && c.userName)
+        ? ('guest:' + c.userName).toLowerCase()
+        : (c.userId || c.userName || '?').toLowerCase();
       if (!byUser[key]) byUser[key] = { name: c.userName || c.userId, marks: [] };
       byUser[key].marks.push(c);
     });
