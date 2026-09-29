@@ -44,7 +44,11 @@ const MARKETING_TABS = ['/merch', '/policy', '/shift-board', '/calendar', '/inst
 const SALES_TABS = ['/news', '/merch', '/policy', '/settings', '/reviews', '/qr-reviews', '/leads', '/lost-items', '/assistant', '/attendance', '/club-visits', '/calendar', '/instudio', '/academy'];
 const VIEWER_HIDDEN_TABS = ['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads', '/ai-chat'];
 
+// Гость (стажёр): строго только эти вкладки, ничего сверх
+const GUEST_TABS = ['/academy', '/guidebook', '/injury-protocol', '/attendance'];
+
 export function baseNavAllowed(user, path) {
+  if (user?.role === 'guest') return GUEST_TABS.includes(path);
   if (path === '/staff') return showStaffNav(user);
   // Техник: только Чек-листы и InStudio, по всем клубам
   if (user?.role === 'tech') return path === '/checklists' || path === '/instudio' || path === '/settings';

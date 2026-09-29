@@ -103,6 +103,10 @@ export const USER_ROLES = {
 // Stored in Firestore collection `app_users` (doc id = email), merged into
 // USER_ROLES at runtime and cached in localStorage so login works instantly.
 // A doc with { revoked: true } removes access for a hardcoded admin account.
+// Гостевой аккаунт стажёра — общий, без пароля. Роль guest режет доступ
+// до «Академия / Гайдбук / Регламент травм / Чекин» (см. navAccess.js).
+const GUEST_USER = { email: 'guest@hj.fit', displayName: 'Стажёр', role: 'guest', club: null, isGuest: true };
+
 const DYNAMIC_USERS_CACHE_KEY = 'dynamic_users_v1';
 const dynamicUserKeys = new Set();
 const revokedStaticKeys = new Set();
@@ -401,11 +405,18 @@ export const TicketProvider = ({ children }) => {
   // Реальная авторизация Firebase (email + пароль). Сессия хранится самим
   // Firebase и переживает перезагрузку; после «Выйти» нужен повторный вход
   // с паролем. Пароли Firebase хранит зашифрованными — их не видит никто.
+  // Гость (стажёр): анонимный вход Firebase + флаг hj_guest_session — без пароля,
+  // доступ только к Академии, Гайдбуку, Регламенту травм и Чекину (navAccess).
   useEffect(() => {
     localStorage.removeItem('app_mock_user');
     localStorage.removeItem('app_session_user'); // легаси беспарольная сессия
 
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser && fbUser.isAnonymous && localStorage.getItem('hj_guest_session') === '1') {
+        setUser({ ...GUEST_USER, uid: fbUser.uid });
+        setLoading(false);
+        return;
+      }
       if (fbUser && !fbUser.isAnonymous && fbUser.email) {
         const email = fbUser.email.toLowerCase().trim();
         // Динамический пользователь (МОП / созданный админ) может ещё не быть в
@@ -532,8 +543,22 @@ export const TicketProvider = ({ children }) => {
     }
   };
 
+  // Гостевой вход для стажёров: без email и пароля
+  const loginAsGuest = async () => {
+    try { localStorage.setItem('hj_guest_session', '1'); } catch {}
+    if (auth.currentUser?.isAnonymous) {
+      // Анонимная сессия уже есть (например, после проверки email) —
+      // onAuthStateChanged не сработает повторно, ставим юзера сами
+      setUser({ ...GUEST_USER, uid: auth.currentUser.uid });
+    } else {
+      await signInAnonymously(auth);
+    }
+    toast.success('Добро пожаловать! Вы вошли как стажёр');
+  };
+
   const logout = () => {
     localStorage.removeItem('app_session_user');
+    localStorage.removeItem('hj_guest_session');
     signOut(auth).catch(() => {});
     setUser(null);
     toast.success('Вы вышли из системы');
@@ -558,7 +583,8 @@ export const TicketProvider = ({ children }) => {
           snap.docs.forEach(d => { usersMap[d.id.toLowerCase().trim()] = d.data(); });
           applyDynamicUsers(usersMap);
           // Refresh the logged-in user's profile in case their own entry changed
-          setUser(prev => prev ? enrichUserWithRole({ email: prev.email, uid: prev.uid }) : prev);
+          // (гостя не трогаем — его нет в USER_ROLES/app_users)
+          setUser(prev => prev && prev.role !== 'guest' ? enrichUserWithRole({ email: prev.email, uid: prev.uid }) : prev);
         }, (err) => console.error('[app_users] listener error:', err));
       } else if (!firebaseUser && unsubUsers) {
         unsubUsers();
@@ -957,7 +983,7 @@ export const TicketProvider = ({ children }) => {
   }, [user?.email]);
 
   return (
-    <TicketContext.Provider value={{ user, tickets, loading, checkEmail, createPassword, loginWithPassword, resetPassword, logout, switchClub, addTicket, updateTicket, deleteTicket, addComment, deleteComment, uploadFile, updateDisplayName }}>
+    <TicketContext.Provider value={{ user, tickets, loading, checkEmail, createPassword, loginWithPassword, loginAsGuest, resetPassword, logout, switchClub, addTicket, updateTicket, deleteTicket, addComment, deleteComment, uploadFile, updateDisplayName }}>
       {children}
     </TicketContext.Provider>
   );

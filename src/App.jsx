@@ -196,6 +196,7 @@ const ProtectedLayout = ({ children, allowedRoles, allowedEmails, allowClubAdmin
       : (user.role === 'komdir' || user.role === 'rop') ? '/news'
       : (user.role === 'viewer' || user.role === 'tech') ? '/checklists'
       : user.role === 'lostviewer' ? '/lost-items'
+      : user.role === 'guest' ? '/academy'
       : '/tickets';
     return <Navigate to={fallback} replace />;
   }
@@ -260,6 +261,7 @@ const AppContent = () => {
       : (user.role === 'komdir' || user.role === 'rop') ? '/news'
       : (user.role === 'viewer' || user.role === 'tech') ? '/checklists'
       : user.role === 'lostviewer' ? '/lost-items'
+      : user.role === 'guest' ? '/academy'
       : '/tickets';
     return <Navigate to={home} replace />;
   };
@@ -361,7 +363,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/attendance" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'admin', 'rop', 'komdir']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'viewer', 'admin', 'rop', 'komdir', 'guest']}>
             <AttendancePage />
           </ProtectedLayout>
         } />
@@ -371,12 +373,12 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/guidebook" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'guest']}>
             <GuidebookPage />
           </ProtectedLayout>
         } />
         <Route path="/academy" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'marketing', 'komdir', 'rop']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'marketing', 'komdir', 'rop', 'guest']}>
             <AcademyPage />
           </ProtectedLayout>
         } />
@@ -386,7 +388,7 @@ const AppContent = () => {
           </ProtectedLayout>
         } />
         <Route path="/injury-protocol" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'komdir', 'rop']}>
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'komdir', 'rop', 'guest']}>
             <GuidebookPage mode="injury" />
           </ProtectedLayout>
         } />

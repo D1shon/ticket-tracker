@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useTickets } from '../store/TicketContext';
-import { Mail, LogIn, AlertCircle, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Mail, LogIn, AlertCircle, Lock, Eye, EyeOff, KeyRound, GraduationCap } from 'lucide-react';
 
 const Login = () => {
-  const { checkEmail, createPassword, loginWithPassword, resetPassword } = useTickets();
+  const { checkEmail, createPassword, loginWithPassword, loginAsGuest, resetPassword } = useTickets();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -128,7 +128,27 @@ const Login = () => {
           </div>
         </form>
 
-        <div className="mt-6 pt-6 border-t border-border text-center">
+        {/* Гостевой вход для стажёров — без email и пароля */}
+        <div className="mt-6 pt-6 border-t border-border">
+          <button
+            type="button"
+            onClick={async () => {
+              setError('');
+              setLoading(true);
+              try { await loginAsGuest(); }
+              catch (e) { setError('Не удалось войти как гость: ' + (e?.message || e)); setLoading(false); }
+            }}
+            disabled={loading}
+            className="w-full border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <GraduationCap size={20} /> Я стажёр — войти без пароля
+          </button>
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            Гостевой доступ: Академия, Гайдбук, Регламент травм и Чекин
+          </p>
+        </div>
+
+        <div className="mt-4 text-center">
           <p className="text-sm text-muted-foreground">
             Нет доступа? <span className="text-primary font-medium">Обратитесь к администратору</span>
           </p>

@@ -131,15 +131,17 @@ const HomePage = () => {
         <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 900, color: 'var(--accent-purple)', background: 'rgba(125,111,179,0.13)', borderRadius: 8, padding: '5px 10px', letterSpacing: '0.05em' }}>{clubLabel}</span>
       </div>
 
-      {/* Статус-плашки */}
+      {/* Статус-плашки (гостю-стажёру не показываем задачи клуба) */}
+      {user?.role !== 'guest' && (
       <div style={{ display: 'flex', gap: 8 }}>
         {!globalRole && <Chip value={checkinTime ? `✓ ${checkinTime}` : '—'} label="Чекин" color={checkinTime ? '#5F9C81' : 'var(--text-muted)'} />}
         <Chip value={myTicketsInWork.length} label="Заявки в работе" color={myTicketsInWork.length > 0 ? '#C08F4F' : 'var(--text-primary)'} />
         <Chip value={issuesToday.length} label="Неиспр. сегодня" color={issuesToday.length > 0 ? '#B06A6A' : 'var(--text-primary)'} />
       </div>
+      )}
 
-      {/* Админы: вместо задач по клубу — окно Академии (обучение в приоритете) */}
-      {user?.role === 'admin' ? (<>
+      {/* Админы и гости-стажёры: вместо задач по клубу — окно Академии */}
+      {(user?.role === 'admin' || user?.role === 'guest') ? (<>
         <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Обучение</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {!checkinTime && (
@@ -204,8 +206,8 @@ const HomePage = () => {
       </div>
       </>)}
 
-      {/* Техника */}
-      {(user?.role !== 'tech') && (
+      {/* Техника (гостю не показываем — InStudio ему недоступен) */}
+      {(user?.role !== 'tech' && user?.role !== 'guest') && (
         <Card icon={Wrench} iconColor="#8a94a6" title="Сломалась техника или софт?" sub="создайте заявку InStudio — разработчики увидят сразу" to="/instudio?create=1" />
       )}
     </div>
