@@ -87,12 +87,26 @@ const LostItemsPage = () => {
   };
 
   // Per-club subscription — only the selected club's photos are downloaded
+  const cleanedClubsRef = useRef(new Set());
   useEffect(() => {
     const q = query(collection(db, 'lost_items'), where('club', '==', activeClub));
     return onSnapshot(q, snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       list.sort((a, b) => (b.acceptedAtISO || '').localeCompare(a.acceptedAtISO || ''));
       setItems(list);
+
+      // Возвращённое хранится месяц: всё, что вернули больше 31 дня назад,
+      // тихо удаляется вместе с полным фото (раз за сессию на клуб)
+      if (!cleanedClubsRef.current.has(activeClub)) {
+        cleanedClubsRef.current.add(activeClub);
+        const cutoff = new Date(Date.now() - 31 * 24 * 3600 * 1000).toISOString();
+        list
+          .filter(i => i.status === 'returned' && ((i.returnedAtISO || i.acceptedAtISO || '') < cutoff))
+          .forEach(i => {
+            deleteDoc(doc(db, 'lost_items', i.id)).catch(() => {});
+            deleteDoc(doc(db, 'lost_item_photos', i.id)).catch(() => {});
+          });
+      }
     }, err => console.error('[lost_items]', err));
   }, [activeClub]);
 
