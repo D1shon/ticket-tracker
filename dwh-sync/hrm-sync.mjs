@@ -57,9 +57,11 @@ const CLUB_MAP = {
 // hrmstatus='PERMANENT' и accessstatus='ASSIGNED' (датчик закреплён и на руках).
 // TEMPORARY (прокат) и PERMANENT+RETURNED (сдал) — считаются «без постоянного».
 // Клуб = клуб абонемента, fallback — клуб пользователя.
+// Разбивка «без пульсометра» по сроку окончания ХП — только количества,
+// никаких имён/ID пользователей наружу не уходит.
 const SQL = `
 WITH active_hp AS (
-  SELECT DISTINCT ON (uhp."user") uhp."user" AS uid, uhp.club AS hp_club_id
+  SELECT DISTINCT ON (uhp."user") uhp."user" AS uid, uhp.club AS hp_club_id, uhp.endtime
   FROM raw.userheropass uhp
   WHERE uhp.endtime >= CURRENT_DATE AND uhp.starttime <= CURRENT_DATE
     AND (uhp.status IS NULL OR uhp.status <> 'refunded')
@@ -75,7 +77,13 @@ SELECT
   COALESCE(NULLIF(hc.name,''), NULLIF(uc.name,''), '') AS club_name,
   COUNT(*)::int AS active_hp,
   COUNT(*) FILTER (WHERE p.uid IS NOT NULL)::int AS with_monitor,
-  COUNT(*) FILTER (WHERE p.uid IS NULL)::int AS without_monitor
+  COUNT(*) FILTER (WHERE p.uid IS NULL)::int AS without_monitor,
+  COUNT(*) FILTER (WHERE p.uid IS NULL AND a.endtime <  CURRENT_DATE + INTERVAL '1 month')::int AS wo_exp_1m,
+  COUNT(*) FILTER (WHERE p.uid IS NULL AND a.endtime >= CURRENT_DATE + INTERVAL '1 month'
+                                       AND a.endtime <  CURRENT_DATE + INTERVAL '3 months')::int AS wo_exp_3m,
+  COUNT(*) FILTER (WHERE p.uid IS NULL AND a.endtime >= CURRENT_DATE + INTERVAL '3 months'
+                                       AND a.endtime <  CURRENT_DATE + INTERVAL '6 months')::int AS wo_exp_6m,
+  COUNT(*) FILTER (WHERE p.uid IS NULL AND a.endtime >= CURRENT_DATE + INTERVAL '6 months')::int AS wo_exp_6m_plus
 FROM active_hp a
 LEFT JOIN permanent p ON p.uid = a.uid
 LEFT JOIN raw."user" u ON u.id = a.uid
@@ -135,13 +143,20 @@ async function run() {
     const without = Number(row.without_monitor) || 0;
     const withMonitor = Number(row.with_monitor) || 0;
     const pctWithout = activeHp ? Math.round((without / activeHp) * 1000) / 10 : 0;
+    // Кто из «без пульсометра» скоро теряет ХП — только счётчики по срокам
+    const withoutByExpiry = {
+      m1:     Number(row.wo_exp_1m) || 0,      // ХП закончится в течение 1 месяца
+      m3:     Number(row.wo_exp_3m) || 0,      // через 1–3 месяца
+      m6:     Number(row.wo_exp_6m) || 0,      // через 3–6 месяцев
+      m6plus: Number(row.wo_exp_6m_plus) || 0, // больше чем через 6 месяцев
+    };
     totActive += activeHp; totWithout += without;
     await setDoc(doc(db, 'hrm_coverage', appClub), {
-      club: appClub, activeHp, withMonitor, without, pctWithout,
+      club: appClub, activeHp, withMonitor, without, pctWithout, withoutByExpiry,
       metric: 'permanent_sensor', windowDays: null, updatedAtISO: nowISO,
     }, { merge: true });
     written++;
-    console.log(`[hrm-sync] ${appClub}: активн ${activeHp}, с ${withMonitor}, без ${without} (${pctWithout}%)`);
+    console.log(`[hrm-sync] ${appClub}: активн ${activeHp}, с ${withMonitor}, без ${without} (${pctWithout}%) · сроки ХП: <1м ${withoutByExpiry.m1}, 1-3м ${withoutByExpiry.m3}, 3-6м ${withoutByExpiry.m6}, >6м ${withoutByExpiry.m6plus}`);
   }
   // ── Посещения атлетов → dwh_stats/club_visits + dwh_stats/daily_history ──
   // Формат совместим со страницей «Посещения клубов» (ClubVisitsPage).

@@ -775,6 +775,44 @@ const HRMonitorsPage = () => {
               </div>
             </div>
 
+            {/* Без пульсометра — по сроку окончания ХП (агрегаты из DWH, без личных данных) */}
+            {coverage.withoutByExpiry && (() => {
+              const exp = coverage.withoutByExpiry;
+              const groups = [
+                { key: 'm1',     label: 'ХП заканчивается в течение месяца',  color: '#B06A6A' },
+                { key: 'm3',     label: 'ХП заканчивается через 1–3 месяца',  color: '#C08F4F' },
+                { key: 'm6',     label: 'ХП заканчивается через 3–6 месяцев', color: '#5580A8' },
+                { key: 'm6plus', label: 'ХП действует больше 6 месяцев',      color: '#5F9C81' },
+              ];
+              const maxVal = Math.max(1, ...groups.map(g => exp[g.key] || 0));
+              return (
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                    Без своего пульсометра — когда заканчивается ХП
+                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12 }}>
+                    Кому предлагать в первую очередь: сверху те, у кого Hero Pass скоро закончится
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {groups.map(g => {
+                      const val = exp[g.key] || 0;
+                      return (
+                        <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, color: g.color, minWidth: 44, textAlign: 'right', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{val}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: isMobile ? 11 : 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 3 }}>{g.label}</div>
+                            <div style={{ height: 6, borderRadius: 4, background: 'var(--bg-hover)', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${(val / maxVal) * 100}%`, background: g.color, borderRadius: 4, transition: 'width 0.4s' }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px 16px' }}>
               <b style={{ color: 'var(--text-secondary)' }}>Клуб {coverage.club || activeClub}.</b> «Без своего п/м» — активные держатели абонемента (Hero Pass), за кем <b style={{ color: 'var(--text-secondary)' }}>не закреплён свой пульсометр</b> (берут прокатный/разный каждый раз или не берут). Это адресный список: кому продать/закрепить свой монитор.
               {upd && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>Обновлено: {upd} · данные из аналитики HJ</div>}
