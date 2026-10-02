@@ -139,7 +139,7 @@ const LangSwitch = ({ style }) => {
   const cur = getLang();
   return (
     <div data-notranslate style={{ display: 'flex', gap: 5, ...style }}>
-      {[['kk', 'ҚАЗ'], ['ru', 'РУС'], ['en', 'ENG']].map(([id, label]) => (
+      {[['ru', 'РУС'], ['en', 'ENG']].map(([id, label]) => (
         <button key={id} onClick={() => id !== cur && setLang(id)} style={{
           flex: 1, padding: '7px 0', borderRadius: 10, cursor: 'pointer', fontSize: 11, fontWeight: 900, letterSpacing: '0.05em',
           border: '1px solid ' + (cur === id ? 'var(--accent-purple)' : 'var(--border)'),

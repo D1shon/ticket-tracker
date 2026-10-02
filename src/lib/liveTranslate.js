@@ -15,10 +15,14 @@ const ATTRS = ['placeholder', 'title', 'aria-label'];
 let dict = null;          // ru(норм.) -> перевод
 let lastSet = new WeakMap(); // node -> значение, которое записали мы (защита от цикла с observer)
 
+// Языки платформы: русский и английский. Казахский из интерфейса убран
+// (02.10.2026, решение шефа) — он остался только в публичной QR-форме
+// отзывов (/feedback), у которой своя система перевода. Сохранённый ранее
+// выбор 'kk' тихо откатывается на русский.
 export const getLang = () => {
   try {
     const l = localStorage.getItem(LS_KEY);
-    return l === 'kk' || l === 'en' ? l : 'ru';
+    return l === 'en' ? 'en' : 'ru';
   } catch { return 'ru'; }
 };
 
@@ -84,9 +88,7 @@ export async function initLiveTranslate() {
   if (lang === 'ru') return; // родной язык — движок не поднимаем вовсе
 
   try {
-    const mod = lang === 'kk'
-      ? await import('../locales/kk.json')
-      : await import('../locales/en.json');
+    const mod = await import('../locales/en.json');
     dict = mod.default || mod;
   } catch (e) {
     console.warn('[i18n] словарь не загрузился:', e?.message);
