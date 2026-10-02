@@ -9,7 +9,7 @@
 // создатель академии): ACADEMY_PROJECT_ID, ACADEMY_CLIENT_EMAIL, ACADEMY_PRIVATE_KEY.
 // Пока их нет — отвечаем 503, фронт молча открывает академию без SSO (как раньше).
 import admin from 'firebase-admin';
-import { USER_ROLES } from '../src/lib/userRoles.js';
+import { USER_ROLES, ACADEMY_ROLE_BY_HJ, ACADEMY_MENTOR_BY_HJ } from '../src/lib/userRoles.js';
 
 // Приложение №1: HJ Track — проверка ID-токена сотрудника
 if (!admin.apps.length) {
@@ -63,9 +63,12 @@ export default async function handler(req, res) {
   }
 
   // 2) Профиль: стажёр (анонимный вход) или сотрудник из справочника/app_users
-  let profile; // { uid, email, name, role, club, mop }
+  const ACADEMY_DEPTS = ['admin', 'service', 'sales', 'coach'];
+  let profile; // { uid, email, name, role, club, mop, entry }
   if (decoded.firebase?.sign_in_provider === 'anonymous') {
     const guestName = String(req.body?.guestName || 'Стажёр').replace(/\s+/g, ' ').trim().slice(0, 60);
+    const guestDept = ACADEMY_DEPTS.includes(req.body?.guestDept) ? req.body.guestDept : 'admin';
+    const guestPhone = String(req.body?.guestPhone || '').replace(/\D/g, '').slice(0, 15) || null;
     profile = {
       uid: `hj-guest-${decoded.uid}`,
       email: null,
@@ -73,6 +76,7 @@ export default async function handler(req, res) {
       role: 'guest',
       club: null,
       mop: false,
+      entry: { academyRole: guestDept, phone: guestPhone },
     };
   } else {
     const email = (decoded.email || '').toLowerCase().trim();
@@ -93,11 +97,27 @@ export default async function handler(req, res) {
       role: entry.role || 'admin',
       club: entry.club || null,
       mop: !!entry.mop,
+      entry,
     };
   }
 
   // 3) Custom token проекта академии. Claims читаются академией из
   // getIdTokenResult() и определяют права — вручную их выставлять не нужно.
+  // Поля academy* — по спецификации академии (02.10.2026): их проверяют
+  // правила базы академии. Маппинг ролей — в src/lib/userRoles.js,
+  // персональные поля в записи сотрудника сильнее маппинга.
+  const e = profile.entry || {};
+  const academyRole = ACADEMY_DEPTS.includes(e.academyRole)
+    ? e.academyRole
+    : (ACADEMY_ROLE_BY_HJ[profile.role] || 'admin');
+  const academyLevel = profile.role === 'guest'
+    ? 'candidate'                        // стажёр: обучение по дням
+    : (e.probation === true ? 'probation' : 'employee');
+  const academyMentor = Array.isArray(e.academyMentor)
+    ? e.academyMentor.filter(d => ACADEMY_DEPTS.includes(d))
+    : (ACADEMY_MENTOR_BY_HJ[profile.role] || []);
+  const phone = String(e.phone || '').replace(/\D/g, '') || null;
+
   const claims = {
     hjTrack: true,
     hjEmail: profile.email,
@@ -107,6 +127,11 @@ export default async function handler(req, res) {
     status: profile.role === 'guest' ? 'trainee' : 'staff',
     club: profile.club,
     mop: profile.mop,
+    academyRole,
+    academyLevel,
+    academyMentor,
+    academyAdmin: e.academyAdmin === true,
+    phone,
   };
   try {
     const token = await academyApp.auth().createCustomToken(profile.uid, claims);

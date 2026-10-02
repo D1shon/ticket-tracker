@@ -16,6 +16,16 @@ const Login = () => {
   const [guestOpen, setGuestOpen] = useState(false);
   const [guestFirst, setGuestFirst] = useState('');
   const [guestLast, setGuestLast] = useState('');
+  // Отдел и телефон нужны Академии: отдел определяет программу обучения,
+  // по телефону она подтягивает прогресс существующего аккаунта (без повторной регистрации)
+  const [guestDept, setGuestDept] = useState('admin');
+  const [guestPhone, setGuestPhone] = useState('');
+  const GUEST_DEPTS = [
+    ['admin', 'Администратор'],
+    ['service', 'Сервис-менеджер'],
+    ['sales', 'Отдел продаж'],
+    ['coach', 'Тренер'],
+  ];
 
   const submitGuest = async () => {
     setError(''); setInfo('');
@@ -23,7 +33,13 @@ const Login = () => {
     const last = guestLast.trim();
     if (!first || !last) { setError('Введите имя и фамилию — так наставник увидит вас в чекине.'); return; }
     setLoading(true);
-    try { await loginAsGuest(`${first} ${last}`); }
+    try {
+      try {
+        localStorage.setItem('hj_guest_dept', guestDept);
+        localStorage.setItem('hj_guest_phone', guestPhone.replace(/\D/g, ''));
+      } catch {}
+      await loginAsGuest(`${first} ${last}`);
+    }
     catch (e) { setError('Не удалось войти как гость: ' + (e?.message || e)); setLoading(false); }
   };
 
@@ -169,6 +185,20 @@ const Login = () => {
                 <input
                   type="text" value={guestLast} onChange={(e) => setGuestLast(e.target.value)}
                   placeholder="Фамилия" autoComplete="family-name"
+                  onKeyDown={(e) => e.key === 'Enter' && submitGuest()}
+                  className="w-1/2 bg-muted/50 border border-border rounded-xl py-2.5 px-4 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
+                />
+              </div>
+              <div className="flex gap-3">
+                <select
+                  value={guestDept} onChange={(e) => setGuestDept(e.target.value)}
+                  className="w-1/2 bg-muted/50 border border-border rounded-xl py-2.5 px-3 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
+                >
+                  {GUEST_DEPTS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                </select>
+                <input
+                  type="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value.replace(/[^\d+\s]/g, ''))}
+                  placeholder="Телефон (для Академии)" inputMode="tel"
                   onKeyDown={(e) => e.key === 'Enter' && submitGuest()}
                   className="w-1/2 bg-muted/50 border border-border rounded-xl py-2.5 px-4 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-foreground"
                 />

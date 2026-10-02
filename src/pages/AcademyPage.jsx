@@ -19,7 +19,13 @@ const fetchSsoToken = async (user) => {
     const resp = await fetch('/api/academy-token', {
       method: 'POST',
       headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ guestName: user?.displayName || '' }),
+      body: JSON.stringify({
+        guestName: user?.displayName || '',
+        // Отдел и телефон стажёра из формы гостевого входа — академия по ним
+        // выдаёт программу и подтягивает прогресс без повторной регистрации
+        guestDept: (() => { try { return localStorage.getItem('hj_guest_dept') || 'admin'; } catch { return 'admin'; } })(),
+        guestPhone: (() => { try { return localStorage.getItem('hj_guest_phone') || ''; } catch { return ''; } })(),
+      }),
     });
     if (!resp.ok) return null;
     const data = await resp.json();

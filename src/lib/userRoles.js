@@ -98,3 +98,34 @@ export const USER_ROLES = {
   'iliyas.s@hj.fit': { role: 'chef', club: null, displayName: 'Илияс' },
 };
 
+// ─── Академия (SSO, api/academy-token): что передаётся в heros-journey-trainee ──
+// В записи сотрудника выше можно задать ПЕРСОНАЛЬНЫЕ поля (они сильнее маппинга):
+//   phone: '77771112233'   — по нему академия переносит прогресс со старого аккаунта
+//   probation: true        — испытательный срок (academyLevel 'probation')
+//   academyRole: 'coach'   — отдел академии вручную (admin|service|sales|coach)
+//   academyMentor: ['sales'] — где человек наставник
+//   academyAdmin: true     — главный наставник академии (только один человек)
+
+// Отдел академии по роли HJ Track
+export const ACADEMY_ROLE_BY_HJ = {
+  chef: 'admin',
+  manager: 'admin',
+  admin: 'admin',
+  rop: 'sales',
+  komdir: 'sales',
+  marketing: 'admin',
+  viewer: 'admin',
+  tech: 'service',
+  lostviewer: 'admin',
+  guest: 'admin',
+};
+
+// Наставничество по роли: шефы — везде, менеджеры — над админами,
+// РОП и Ком-Дир — над отделом продаж. Остальные — не наставники.
+export const ACADEMY_MENTOR_BY_HJ = {
+  chef: ['admin', 'service', 'sales', 'coach'],
+  manager: ['admin'],
+  rop: ['sales'],
+  komdir: ['sales'],
+};
+
