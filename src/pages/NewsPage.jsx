@@ -165,29 +165,37 @@ const NewsPage = () => {
   const uiLang = getLang();
   const trText = (p) => (uiLang !== 'ru' && p.tr?.[uiLang]) ? p.tr[uiLang] : (p.text || '');
   const translatingRef = useRef(new Set());
+
+  // Перевести один пост и закешировать в нём (fire-and-forget)
+  const translatePost = async (postId, text, lang) => {
+    if (!text?.trim() || translatingRef.current.has(postId + lang)) return;
+    translatingRef.current.add(postId + lang);
+    try {
+      const r = await fetch('/api/assistant', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ translateTo: lang, text }),
+      });
+      if (!r.ok) return;
+      const { text: out } = await r.json();
+      if (out) await updateDoc(doc(db, 'news_posts', postId), { [`tr.${lang}`]: out });
+    } catch {}
+  };
+
   useEffect(() => {
     if (uiLang === 'ru' || posts.length === 0) return;
     const pending = posts
-      .filter(p => (p.text || '').trim() && !p.tr?.[uiLang] && !translatingRef.current.has(p.id))
+      .filter(p => (p.text || '').trim() && !p.tr?.[uiLang] && !translatingRef.current.has(p.id + uiLang))
       .slice(0, 30); // свежие сверху; старьё переводим по мере надобности
     if (pending.length === 0) return;
-    let dead = false;
-    (async () => {
-      for (const p of pending) {
-        if (dead) return;
-        translatingRef.current.add(p.id);
-        try {
-          const r = await fetch('/api/assistant', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ translateTo: uiLang, text: p.text }),
-          });
-          if (!r.ok) continue;
-          const { text } = await r.json();
-          if (text) await updateDoc(doc(db, 'news_posts', p.id), { [`tr.${uiLang}`]: text });
-        } catch {}
+    // Параллельно по 4 — свежие посты переводятся за секунды, а не по очереди
+    let i = 0;
+    const worker = async () => {
+      while (i < pending.length) {
+        const p = pending[i++];
+        await translatePost(p.id, p.text, uiLang);
       }
-    })();
-    return () => { dead = true; };
+    };
+    for (let w = 0; w < 4; w++) worker();
   }, [uiLang, posts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Подтверждения «Ознакомлен» — нужны и сотруднику (состояние кнопки), и панели просмотров
@@ -297,17 +305,22 @@ const NewsPage = () => {
       if (editingPost) {
         // Редактирование: обновляем текст/аудиторию/формат; postedAtISO НЕ трогаем,
         // чтобы правка не зажигала зелёные точки «новая новость» заново
+        const newBody = text || TEMPLATE_FALLBACK[newTemplate] || '';
         await updateDoc(doc(db, 'news_posts', editingPost.id), {
-          text: text || TEMPLATE_FALLBACK[newTemplate] || '',
+          text: newBody,
+          tr: {}, // текст изменился — старый перевод больше не актуален
           template: newTemplate || null,
           audience: newAudience,
           editedAtISO: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         });
+        translatingRef.current.delete(editingPost.id + 'en');
+        translatePost(editingPost.id, newBody, 'en'); // перевод сразу, не дожидаясь читателя
         toast.success('Новость обновлена');
       } else {
-        await addDoc(collection(db, 'news_posts'), {
-          text: text || TEMPLATE_FALLBACK[newTemplate] || '',
+        const newBody = text || TEMPLATE_FALLBACK[newTemplate] || '';
+        const ref = await addDoc(collection(db, 'news_posts'), {
+          text: newBody,
           template: newTemplate || null,
           source: newTemplate ? 'release' : 'manual',
           author: user?.displayName || '',
@@ -315,6 +328,9 @@ const NewsPage = () => {
           postedAtISO: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         });
+        // Английский перевод готовится сразу при публикации — читатели с ENG
+        // видят новость переведённой мгновенно, без запоздания
+        translatePost(ref.id, newBody, 'en');
         toast.success('Новость опубликована');
       }
       setNewTemplate('');

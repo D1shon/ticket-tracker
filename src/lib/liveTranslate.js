@@ -47,12 +47,30 @@ const lookup = (raw) => {
 const SKIP_SELECTOR = 'script,style,textarea,input,[contenteditable="true"],[data-notranslate]';
 const skip = (el) => !!(el && el.closest && el.closest(SKIP_SELECTOR));
 
+// Составные строки: «Сумма: 5 000 ₸ за смену» собирается из кусков с числами,
+// и целиком её в словаре нет. Режем по числам/латинице/скобкам и переводим
+// кириллические куски по отдельности — куски в словаре есть (экстракция
+// собирает именно литералы-куски из кода).
+const SEG_SPLIT = /(\d[\d\s.,:;%–\-\/]*|[A-Za-z][A-Za-z0-9@._\-'’]*|[«»"()\[\]{}|·•→←№#+=~`^<>]+)/;
+const lookupPiecewise = (raw) => {
+  if (!raw.includes(' ') && !SEG_SPLIT.test(raw)) return null;
+  const parts = raw.split(SEG_SPLIT);
+  let changed = false;
+  const out = parts.map(p => {
+    if (!p || !CYR.test(p)) return p;
+    const t = lookup(p);
+    if (t != null) { changed = true; return t; }
+    return p;
+  });
+  return changed ? out.join('') : null;
+};
+
 const translateTextNode = (n) => {
   const cur = n.nodeValue;
   if (!cur || !CYR.test(cur)) return;
   if (lastSet.get(n) === cur) return; // это наша же запись
   if (skip(n.parentElement)) return;
-  const t = lookup(cur);
+  const t = lookup(cur) ?? lookupPiecewise(cur);
   if (t && t !== cur) {
     lastSet.set(n, t);
     n.nodeValue = t;
@@ -63,7 +81,7 @@ const translateAttrs = (el) => {
   for (const a of ATTRS) {
     const v = el.getAttribute && el.getAttribute(a);
     if (!v || !CYR.test(v)) continue;
-    const t = lookup(v);
+    const t = lookup(v) ?? lookupPiecewise(v);
     if (t && t !== v) el.setAttribute(a, t);
   }
 };
