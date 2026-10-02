@@ -52,13 +52,30 @@ const skip = (el) => !!(el && el.closest && el.closest(SKIP_SELECTOR));
 // кириллические куски по отдельности — куски в словаре есть (экстракция
 // собирает именно литералы-куски из кода).
 const SEG_SPLIT = /(\d[\d\s.,:;%–\-\/]*|[A-Za-z][A-Za-z0-9@._\-'’]*|[«»"()\[\]{}|·•→←№#+=~`^<>]+)/;
+// Пословный резерв для куска из нескольких слов («октября в»): переводим,
+// ТОЛЬКО если найдено каждое слово — полупереводов не делаем.
+const lookupWords = (seg) => {
+  const words = seg.trim().split(/\s+/);
+  if (words.length < 2) return null;
+  const out = [];
+  for (const w of words) {
+    if (!CYR.test(w)) { out.push(w); continue; }
+    const t = dict[norm(w)];
+    if (t == null) return null;
+    out.push(t);
+  }
+  const lead = seg.match(/^\s*/)[0];
+  const tail = seg.match(/\s*$/)[0];
+  return lead + out.filter(Boolean).join(' ') + tail;
+};
+
 const lookupPiecewise = (raw) => {
   if (!raw.includes(' ') && !SEG_SPLIT.test(raw)) return null;
   const parts = raw.split(SEG_SPLIT);
   let changed = false;
   const out = parts.map(p => {
     if (!p || !CYR.test(p)) return p;
-    const t = lookup(p);
+    const t = lookup(p) ?? lookupWords(p);
     if (t != null) { changed = true; return t; }
     return p;
   });

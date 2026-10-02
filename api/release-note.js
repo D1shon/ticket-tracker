@@ -51,12 +51,33 @@ export default async function handler(req, res) {
 
     await ref.set({
       text,
+      tr: {}, // текст мог измениться при повторном POST — переводим заново
       source: 'release',
       author: project || 'Релиз',
       audience,
       postedAtISO: new Date().toISOString(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true })
+
+    // Английский перевод готовим сразу при публикации — читатели с ENG-интерфейсом
+    // видят релиз переведённым без запоздания. Ошибка перевода пост не ломает.
+    const gkey = process.env.GEMINI_API_KEY
+    if (gkey) {
+      try {
+        const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest'
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${gkey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Переведи текст новости фитнес-клуба на английский язык. Сохрани эмодзи, форматирование, переносы строк и нумерацию. Не переводи названия клубов (4YOU, COLIBRI, VILLA, NURLY ORDA, PROMENADE, EUROPE CITY, DUBAI) и бренды (Hero's Journey, HJ Track, WhatsApp, InStudio). В ответе верни ТОЛЬКО перевод, без пояснений и кавычек.\n\n${text}` }] }],
+            generationConfig: { temperature: 0.2 },
+          }),
+        })
+        const j = await r.json()
+        const out = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+        if (out) await ref.set({ tr: { en: out } }, { merge: true })
+      } catch (e) { console.error('release-note translate:', e.message) }
+    }
 
     return res.json({ ok: true, id: ref.id, audience })
   } catch (err) {
