@@ -130,8 +130,10 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     { label: '8:30–14:30',  value: '8:30-14:30',  bg: '#5F9C81', text: '#fff' },
     { label: '14:30–20:30', value: '14:30-20:30', bg: '#5580A8', text: '#fff' },
   ] : isColibri ? SHIFT_OPTIONS.map(o =>
-    // COLIBRI: выходная полная смена короче — 8:30–20:30 вместо 8:30–21:30
-    o.value === '8:30-21:30' ? { ...o, label: '8:30–20:30', value: '8:30-20:30' } : o
+    // COLIBRI: смены короче на час — 8:30–20:30 и 14:30–20:30 (вместо …–21:30)
+    o.value === '8:30-21:30' ? { ...o, label: '8:30–20:30', value: '8:30-20:30' }
+    : o.value === '14:30-21:30' ? { ...o, label: '14:30–20:30', value: '14:30-20:30' }
+    : o
   ) : SHIFT_OPTIONS;
 
   const getShiftColor = (val) => {
@@ -147,7 +149,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
     }
 
     const isMorning = norm === '6:30-14:30' || norm === '8:30-14:30';
-    const isEvening = norm === '14:30-22:30' || norm === '14:30-21:30' || norm === '13:30-23:00';
+    const isEvening = norm === '14:30-22:30' || norm === '14:30-21:30' || norm === '14:30-20:30' || norm === '13:30-23:00';
     const isFullDay = norm === '6:30-22:30' || norm === '8:30-21:30' || norm === '8:30-20:30' || norm === '6:30-22:00';
 
     if (isMorning) {
@@ -220,7 +222,7 @@ const ScheduleCell = ({ monthKey, empId, dayNum, initialValue, isHoliday, isToda
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
           {currentShiftOptions.map((opt) => {
             const isOptMorning = opt.value === '6:30-14:30' || opt.value === '8:30-14:30';
-            const isOptEvening = opt.value === '14:30-22:30' || opt.value === '14:30-21:30' || opt.value === '13:30-23:00';
+            const isOptEvening = opt.value === '14:30-22:30' || opt.value === '14:30-21:30' || opt.value === '14:30-20:30' || opt.value === '13:30-23:00';
             const isOptFullDay = opt.value === '6:30-22:30' || opt.value === '8:30-21:30' || opt.value === '8:30-20:30' || opt.value === '6:30-22:00';
 
             let isWeekendDay = false;
