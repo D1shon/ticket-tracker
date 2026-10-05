@@ -3,7 +3,7 @@ import {
   BookOpen, Search, HelpCircle, AlertTriangle, ShieldCheck,
   Baby, Sparkles, ChevronDown, ChevronUp, Book, MessageSquare,
   Calendar, CheckCircle, Smartphone, Wifi, Wrench, Package, Info, Loader2,
-  ArrowLeft, Clock, Layers, FileText, Plus, Edit3, Trash2, X
+  ArrowLeft, Clock, Layers, FileText, Plus, Edit3, Trash2, X, Footprints
 } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { useNavigate } from 'react-router-dom';
@@ -63,22 +63,29 @@ const getTopicIcon = (title) => {
 };
 
 // mode="injury" — та же страница, но показывает ТОЛЬКО раздел «Регламент при травмах»
-// (роут /injury-protocol): интерфейс гайдбука один-в-один, данные из той же коллекции.
+// (роут /injury-protocol); mode="tour" — только «Экскурсия по залу» (роут /club-tour).
+// Интерфейс гайдбука один-в-один, данные из той же коллекции guidebook.
 const GuidebookPage = ({ mode }) => {
   const injury = mode === 'injury';
-  const PAGE_SECTIONS = injury ? [{ id: 'Injury Protocol', label: 'Регламент при травмах' }] : SECTIONS;
+  const tour = mode === 'tour';
+  const PAGE_SECTIONS = injury
+    ? [{ id: 'Injury Protocol', label: 'Регламент при травмах' }]
+    : tour
+      ? [{ id: 'Club Tour', label: 'Экскурсия по залу' }]
+      : SECTIONS;
   const { user } = useTickets();
   const navigate = useNavigate();
   const isChef = user?.role === 'chef' || user?.role === 'viewer' || user?.role === 'admin' || user?.role === 'manager';
-  const [activeSection, setActiveSection] = useState(injury ? 'Injury Protocol' : 'Introduction');
-  // Роуты /guidebook и /injury-protocol рендерят ОДИН компонент — при переключении
-  // шторок React не пересоздаёт его, и activeSection оставался от прошлого режима
-  // (раздела нет в новом режиме → «нет статей», ни одна вкладка не активна)
+  const homeSection = injury ? 'Injury Protocol' : tour ? 'Club Tour' : 'Introduction';
+  const [activeSection, setActiveSection] = useState(homeSection);
+  // Роуты /guidebook, /injury-protocol и /club-tour рендерят ОДИН компонент — при
+  // переключении шторок React не пересоздаёт его, и activeSection оставался от
+  // прошлого режима (раздела нет в новом режиме → «нет статей», вкладки неактивны)
   useEffect(() => {
-    setActiveSection(injury ? 'Injury Protocol' : 'Introduction');
+    setActiveSection(homeSection);
     setSearchQuery('');
     setOpenFaqIdx(null);
-  }, [injury]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
 
@@ -142,11 +149,13 @@ const GuidebookPage = ({ mode }) => {
   }, [activeSection, guidebookData]);
 
   // Filter Guidebook Sections
-  // В режиме «регламент травм» пул статей ограничен своим разделом (и поиск тоже);
-  // в обычном гайдбуке регламент не показывается — у него своя страница
+  // В спец-режимах (травмы, экскурсия) пул статей ограничен своим разделом (и поиск
+  // тоже); в обычном гайдбуке спец-разделы не показываются — у них свои страницы
   const dataPool = injury
     ? guidebookData.filter(i => i.section === 'Injury Protocol')
-    : guidebookData.filter(i => i.section !== 'Injury Protocol');
+    : tour
+      ? guidebookData.filter(i => i.section === 'Club Tour')
+      : guidebookData.filter(i => i.section !== 'Injury Protocol' && i.section !== 'Club Tour');
   const getFilteredData = () => {
     if (!searchQuery) return dataPool.filter(item => item.section === activeSection);
 
@@ -528,11 +537,12 @@ const GuidebookPage = ({ mode }) => {
       >
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'between', alignItems: isMobile ? 'flex-start' : 'center', gap: 16 }}>
           <div style={{ flex: 1 }}>
-            {/* Шторки-переключатели: Гайдбук ↔ Регламент при травмах */}
+            {/* Шторки-переключатели: Гайдбук ↔ Регламент при травмах ↔ Экскурсия */}
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 22, flexWrap: 'wrap' }}>
               {[
-                { key: 'guide', label: 'ГАЙДБУК АДМИНИСТРАТОРА', Icon: BookOpen, color: 'var(--accent-purple)', to: '/guidebook', active: !injury },
+                { key: 'guide', label: 'ГАЙДБУК АДМИНИСТРАТОРА', Icon: BookOpen, color: 'var(--accent-purple)', to: '/guidebook', active: !injury && !tour },
                 { key: 'injury', label: 'РЕГЛАМЕНТ ПРИ ТРАВМАХ', Icon: ShieldCheck, color: '#B06A6A', to: '/injury-protocol', active: injury },
+                { key: 'tour', label: 'ЭКСКУРСИЯ ПО ЗАЛУ', Icon: Footprints, color: '#5A9E7C', to: '/club-tour', active: tour },
               ].map(t => t.active ? (
                 <h1 key={t.key} className="text-xl font-black italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)', margin: 0 }}>
                   <span style={{ color: t.color }}><t.Icon size={22} strokeWidth={2.5} /></span>
@@ -546,7 +556,7 @@ const GuidebookPage = ({ mode }) => {
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', margin: 0, padding: 0, opacity: 0.65, transition: '0.15s' }}
                   onMouseEnter={e => { e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--text-primary)'; }}
                   onMouseLeave={e => { e.currentTarget.style.opacity = 0.65; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                  title={t.key === 'injury' ? 'Открыть регламент при травмах' : 'Открыть гайдбук'}
+                  title={t.key === 'injury' ? 'Открыть регламент при травмах' : t.key === 'tour' ? 'Открыть экскурсию по залу' : 'Открыть гайдбук'}
                 >
                   <span style={{ color: t.color }}><t.Icon size={22} strokeWidth={2.5} /></span>
                   {t.label}
@@ -554,7 +564,7 @@ const GuidebookPage = ({ mode }) => {
               ))}
             </div>
             <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--text-muted)' }}>
-              {injury ? '🚑 действия команды студии при получении травмы атлетом во время тренировки' : '🎯 база знаний, стандарты обслуживания и регламенты безопасности'}
+              {injury ? '🚑 действия команды студии при получении травмы атлетом во время тренировки' : tour ? '🚶 онбординг новичков: маршрут экскурсии и скрипт на казахском' : '🎯 база знаний, стандарты обслуживания и регламенты безопасности'}
             </p>
           </div>
 

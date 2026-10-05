@@ -392,6 +392,11 @@ const AppContent = () => {
             <GuidebookPage mode="injury" />
           </ProtectedLayout>
         } />
+        <Route path="/club-tour" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'komdir', 'rop', 'guest']}>
+            <GuidebookPage mode="tour" />
+          </ProtectedLayout>
+        } />
         <Route path="/policy" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'marketing', 'viewer', 'komdir', 'rop']}>
             <PolicyPage />
