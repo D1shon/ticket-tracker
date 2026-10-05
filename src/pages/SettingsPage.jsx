@@ -1082,9 +1082,10 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
         map[e].revoked = !!p.revoked;
         if (Array.isArray(p.tabsExtra)) map[e].tabsExtra = p.tabsExtra;
         if (Array.isArray(p.tabsHidden)) map[e].tabsHidden = p.tabsHidden;
+        if (p.phone) map[e].phone = p.phone; // телефон для Академии живёт в app_users
         if (p.role) map[e].isStatic = false; // док с ролью = динамический аккаунт
       } else {
-        map[e] = { email: e, role: p.role || 'admin', club: p.club || null, displayName: p.displayName || e.split('@')[0], mop: !!p.mop, dev: !!p.dev, revoked: !!p.revoked, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: false };
+        map[e] = { email: e, role: p.role || 'admin', club: p.club || null, displayName: p.displayName || e.split('@')[0], mop: !!p.mop, dev: !!p.dev, phone: p.phone || '', revoked: !!p.revoked, tabsExtra: p.tabsExtra || [], tabsHidden: p.tabsHidden || [], isStatic: false };
       }
     });
     const list = Object.values(map);
@@ -1134,7 +1135,7 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
   const openRoleEditor = (u) => {
     if (u.isStatic && u.role === 'chef') { toast.error('Роль шефа меняется только в коде'); return; }
     const uiRole = u.dev ? 'dev' : u.mop ? 'mop' : u.role;
-    setRoleDraft({ role: ACCESS_ROLES.some(r => r.id === uiRole) ? uiRole : 'manager', club: u.club || '4YOU' });
+    setRoleDraft({ role: ACCESS_ROLES.some(r => r.id === uiRole) ? uiRole : 'manager', club: u.club || '4YOU', phone: u.phone || '' });
     setRoleUser(u);
   };
   const saveRole = async () => {
@@ -1144,16 +1145,18 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     const isMop = roleDraft.role === 'mop';
     const isDev = roleDraft.role === 'dev';
     const club = def?.needsClub ? roleDraft.club : null;
+    // Телефон цифрами — по нему Академия переносит прогресс сотрудника (SSO)
+    const phone = String(roleDraft.phone || '').replace(/\D/g, '') || null;
     try {
       if (roleUser.isStatic) {
         // Зашитый аккаунт: роль из кода не трогаем, кладём перекрытие
         await setDoc(doc(db, 'app_users', roleUser.email), {
-          roleOverride: realRole, mopOverride: isMop, devOverride: isDev, clubOverride: club,
+          roleOverride: realRole, mopOverride: isMop, devOverride: isDev, clubOverride: club, phone,
           roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
         }, { merge: true });
       } else {
         await setDoc(doc(db, 'app_users', roleUser.email), {
-          role: realRole, mop: isMop, dev: isDev, club,
+          role: realRole, mop: isMop, dev: isDev, club, phone,
           roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
         }, { merge: true });
       }
@@ -1293,6 +1296,10 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
                 </select>
               </>
             )}
+            <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Телефон · для Академии</div>
+            <input type="tel" inputMode="tel" value={roleDraft.phone || ''} onChange={e => setRoleDraft(d => ({ ...d, phone: e.target.value.replace(/[^\d+\s]/g, '') }))}
+              placeholder="77771112233 — Академия перенесёт прогресс"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, outline: 'none', marginBottom: 12 }} />
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setRoleUser(null)} style={{ padding: '11px 18px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase' }}>Отмена</button>
               <button onClick={saveRole} style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', background: '#5F9C81', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase' }}>Применить</button>

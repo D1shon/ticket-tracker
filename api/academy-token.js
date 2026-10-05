@@ -81,14 +81,24 @@ export default async function handler(req, res) {
   } else {
     const email = (decoded.email || '').toLowerCase().trim();
     if (!email) return res.status(403).json({ error: 'No email in token' });
-    // Статический справочник, затем динамические аккаунты (app_users)
-    let entry = USER_ROLES[email] || null;
-    if (!entry) {
-      try {
-        const snap = await admin.firestore().collection('app_users').doc(email).get();
-        if (snap.exists && !snap.data().revoked) entry = snap.data();
-      } catch {}
-    }
+    // Статический справочник + app_users-док. Док читаем ВСЕГДА: для статиков
+    // он хранит персональные поля академии (телефон из панели «Сотрудники»,
+    // probation, academyRole/Mentor/Admin), для динамических — всю запись.
+    let entry = USER_ROLES[email] ? { ...USER_ROLES[email] } : null;
+    try {
+      const snap = await admin.firestore().collection('app_users').doc(email).get();
+      if (snap.exists) {
+        const d = snap.data();
+        if (d.revoked) return res.status(403).json({ error: 'Access revoked' });
+        if (entry) {
+          for (const k of ['phone', 'probation', 'academyRole', 'academyMentor', 'academyAdmin']) {
+            if (d[k] !== undefined) entry[k] = d[k];
+          }
+        } else {
+          entry = d;
+        }
+      }
+    } catch {}
     if (!entry) return res.status(403).json({ error: 'Not an HJ Track employee' });
     profile = {
       uid: 'hj-' + email.replace(/[^a-z0-9]/g, '-'),
