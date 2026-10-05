@@ -1,4 +1,5 @@
 import admin from 'firebase-admin'
+import { pushCategoryOf } from '../src/lib/pushPrefs.js'
 
 // Роли, легитимно видящие все клубы (token.club=null по задумке). Только им клубный
 // пуш уходит без совпадения клуба; всем остальным — строго по своему клубу.
@@ -86,6 +87,21 @@ export default async function handler(req, res) {
         const all = await getAllTokens()
         const ropSet = new Set(all.filter(t => (t.role || '') === 'rop').map(t => t.token))
         if (ropSet.size) tokens = tokens.filter(tk => !ropSet.has(tk))
+      } catch {}
+    }
+
+    // Личный фильтр уведомлений: пользователь в Настройках выключает разделы —
+    // muted хранится на доке токена (зеркалится из push_prefs). Категория пуша
+    // определяется по url; пуши вне категорий (тест, сервисные) проходят всегда.
+    const cat = pushCategoryOf(url)
+    if (cat && tokens.length > 0) {
+      try {
+        const all = await getAllTokens()
+        const mutedMap = new Map(all.map(t => [t.token, t.muted]))
+        tokens = tokens.filter(tk => {
+          const m = mutedMap.get(tk)
+          return !(Array.isArray(m) && m.includes(cat))
+        })
       } catch {}
     }
 

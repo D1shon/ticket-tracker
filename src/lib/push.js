@@ -1,8 +1,20 @@
 // Web Push subscription via Firebase Cloud Messaging.
 // Works in Chrome/Android and iOS 16.4+ (app must be added to Home Screen).
 // The messaging SDK is imported lazily — it's not needed for first paint.
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, app } from './firebase';
+
+// Личный фильтр уведомлений (push_prefs/{email}.muted) копируется в док токена —
+// по нему серверные рассыльщики отсекают выключенные пользователем разделы
+async function getMuted(user) {
+  try {
+    const email = (user?.email || '').toLowerCase();
+    if (!email) return [];
+    const snap = await getDoc(doc(db, 'push_prefs', email));
+    const m = snap.exists() ? snap.data().muted : null;
+    return Array.isArray(m) ? m : [];
+  } catch { return []; }
+}
 
 const fcm = () => import('firebase/messaging');
 
@@ -52,6 +64,7 @@ export async function enablePush(user) {
     role: user?.role || '',
     club: user?.club || null,
     clubs: user?.clubs || null, // мультиклубный менеджер получает пуши всех своих клубов
+    muted: await getMuted(user), // личный фильтр разделов (Настройки → Уведомления)
     ua: navigator.userAgent.slice(0, 160),
     standalone: window.navigator.standalone === true
       || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || false,
@@ -87,6 +100,7 @@ async function enablePushSilent(user) {
     role: user?.role || '',
     club: user?.club || null,
     clubs: user?.clubs || null, // мультиклубный менеджер получает пуши всех своих клубов
+    muted: await getMuted(user), // личный фильтр разделов (Настройки → Уведомления)
     ua: navigator.userAgent.slice(0, 160),
     standalone: window.navigator.standalone === true
       || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || false,

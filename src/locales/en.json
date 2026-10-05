@@ -4351,5 +4351,12 @@
   "ТРАВМЫ": "INJURIES",
   "ЭКСКУРСИЯ": "TOUR",
   "КОНФЛИКТЫ": "CONFLICTS",
-  "Гайдбук администратора": "Admin guidebook"
+  "Гайдбук администратора": "Admin guidebook",
+  "Фильтр уведомлений": "Notification filter",
+  "все разделы включены": "all sections enabled",
+  "выключено разделов:": "sections off:",
+  "Выключите разделы, с которых не хотите получать уведомления. Настройка личная и действует на все ваши устройства.": "Turn off the sections you do not want notifications from. The setting is personal and applies to all your devices.",
+  "Не удалось сохранить фильтр уведомлений": "Failed to save the notification filter",
+  "Тренажеры (счета)": "Machines (invoices)",
+  "Отчет смены": "Shift report"
 }

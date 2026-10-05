@@ -1,4 +1,11 @@
 import admin from 'firebase-admin'
+import { pushCategoryOf } from '../src/lib/pushPrefs.js'
+
+// Личный фильтр уведомлений: токены с выключенным разделом (muted) пуш не получают
+const notMuted = (url) => (t) => {
+  const cat = pushCategoryOf(url)
+  return !cat || !(Array.isArray(t.muted) && t.muted.includes(cat))
+}
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -99,7 +106,7 @@ async function getTokens(clientTokens) {
   if (tokensCache && now - tokensCachedAt < 10 * 60 * 1000) return tokensCache
   try {
     const snap = await admin.firestore().collection('push_tokens').get()
-    tokensCache = snap.docs.map(d => ({ token: d.id, club: d.data().club || null, role: d.data().role || null }))
+    tokensCache = snap.docs.map(d => ({ token: d.id, club: d.data().club || null, role: d.data().role || null, muted: d.data().muted || null }))
     tokensCachedAt = now
     return tokensCache
   } catch (err) {
@@ -144,6 +151,7 @@ export default async function handler(req, res) {
         // Только адресованные роли; токены без роли (старые подписки) не получают
         // служебные пуши — роль допишется при следующем открытии приложения
         .filter(t => !r.roles || r.roles.includes(t.role))
+        .filter(notMuted(r.url))
         .map(t => t.token)
       if (tokens.length === 0) { results.push({ id: r.id, sent: 0 }); continue }
 
@@ -185,6 +193,7 @@ export default async function handler(req, res) {
           const tokens = allTokens
             .filter(t => (t.club || '').toUpperCase() === club)
             .filter(t => ['manager', 'admin', 'chef'].includes(t.role))
+            .filter(notMuted('/calendar'))
             .map(t => t.token)
           if (!tokens.length) { results.push({ id, sent: 0 }); continue }
           const out = await admin.messaging().sendEachForMulticast({
@@ -224,6 +233,7 @@ export default async function handler(req, res) {
           const tokens = allTokens
             .filter(tk => (tk.club || '').toUpperCase() === club)
             .filter(tk => ['manager', 'chef'].includes(tk.role))
+            .filter(notMuted('/tickets'))
             .map(tk => tk.token)
           if (!tokens.length) { results.push({ id, sent: 0 }); continue }
           const out = await admin.messaging().sendEachForMulticast({

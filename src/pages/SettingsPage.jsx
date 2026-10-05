@@ -4,7 +4,8 @@ import { NAV_ITEMS, navAllowed, baseNavAllowed } from '../lib/navAccess';
 import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users, FileText } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { useNavigate } from 'react-router-dom';
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { PUSH_CATEGORIES } from '../lib/pushPrefs';
 import { db } from '../lib/firebase';
 import { toast } from 'sonner';
 import { enablePush, disablePush, isPushEnabled, getPushToken } from '../lib/push';
@@ -62,6 +63,37 @@ const SettingsPage = () => {
       setPushBusy(false);
     }
   };
+
+  // Личный фильтр уведомлений: с каких вкладок получать пуши (muted = выключенные).
+  // Канон — push_prefs/{email}; при каждом изменении зеркалится в доки push_tokens
+  // пользователя, по которым фильтруют api/send-push и api/scheduled-reminders.
+  const [pushMuted, setPushMuted] = useState([]);
+  const [showPushFilter, setShowPushFilter] = useState(false);
+  useEffect(() => {
+    const email = (user?.email || '').toLowerCase();
+    if (!email) return;
+    getDoc(doc(db, 'push_prefs', email))
+      .then(s => { if (s.exists() && Array.isArray(s.data().muted)) setPushMuted(s.data().muted); })
+      .catch(() => {});
+  }, [user?.email]);
+  const togglePushCat = async (catId) => {
+    const email = (user?.email || '').toLowerCase();
+    if (!email) return;
+    const next = pushMuted.includes(catId) ? pushMuted.filter(c => c !== catId) : [...pushMuted, catId];
+    setPushMuted(next);
+    try {
+      await setDoc(doc(db, 'push_prefs', email), { muted: next, updatedAtISO: new Date().toISOString() }, { merge: true });
+      const snap = await getDocs(query(collection(db, 'push_tokens'), where('email', '==', email)));
+      await Promise.allSettled(snap.docs.map(d => setDoc(d.ref, { muted: next }, { merge: true })));
+    } catch {
+      toast.error('Не удалось сохранить фильтр уведомлений');
+    }
+  };
+  // Показываем только разделы, доступные роли пользователя (вне NAV_ITEMS — всем)
+  const pushFilterCats = PUSH_CATEGORIES.filter(c => {
+    const inNav = NAV_ITEMS.some(n => n.path === c.id);
+    return !inNav || navAllowed(user, c.id);
+  });
 
   const [clubsConfig, setClubsConfig] = useState({});
   const [editingClub, setEditingClub] = useState(null); // clubName being edited
@@ -449,6 +481,36 @@ const SettingsPage = () => {
                   <Toggle enabled={pushEnabled} setEnabled={handlePushToggle} />
                 </div>
               </div>
+
+              {/* Фильтр уведомлений: каждый сам выбирает, с каких вкладок получать пуши */}
+              <div style={{ border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+                <button
+                  onClick={() => setShowPushFilter(v => !v)}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px', background: 'var(--bg-hover)', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 800 }}>Фильтр уведомлений</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: pushMuted.length ? '#C08A3E' : 'var(--text-muted)' }}>
+                    {pushMuted.length ? `выключено разделов: ${pushMuted.length}` : 'все разделы включены'} {showPushFilter ? '▲' : '▼'}
+                  </span>
+                </button>
+                {showPushFilter && (
+                  <div style={{ padding: '4px 16px 12px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', columnGap: 24, rowGap: 2 }}>
+                    <p style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, margin: '10px 0 6px', lineHeight: 1.5 }}>
+                      Выключите разделы, с которых не хотите получать уведомления. Настройка личная и действует на все ваши устройства.
+                    </p>
+                    {pushFilterCats.map(c => {
+                      const on = !pushMuted.includes(c.id);
+                      return (
+                        <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0' }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: on ? 'var(--text-primary)' : 'var(--text-muted)' }}>{c.label}</span>
+                          <Toggle enabled={on} setEnabled={() => togglePushCat(c.id)} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'flex', itemsCenter: 'center', justifyContent: 'space-between' }}>
                 <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Звуковые алерты (SLA)</h4>
                 <Toggle enabled={soundEnabled} setEnabled={setSoundEnabled} />
