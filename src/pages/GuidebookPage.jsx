@@ -540,33 +540,47 @@ const GuidebookPage = ({ mode }) => {
       >
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'between', alignItems: isMobile ? 'flex-start' : 'center', gap: 16 }}>
           <div style={{ flex: 1 }}>
-            {/* Шторки-переключатели: Гайдбук ↔ Регламент при травмах ↔ Экскурсия */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 22, flexWrap: 'wrap' }}>
+            {/* Переключатель страниц базы знаний: четыре отдельные страницы в виде
+                вкладок-пилюль — активная залита своим цветом, остальные выглядят
+                кнопками (рамка + приглушённый текст), чтобы ряд читался как табы */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
               {[
-                { key: 'guide', label: 'ГАЙДБУК АДМИНИСТРАТОРА', Icon: BookOpen, color: 'var(--accent-purple)', to: '/guidebook', active: !injury && !tour && !conflict },
-                { key: 'injury', label: 'РЕГЛАМЕНТ ПРИ ТРАВМАХ', Icon: ShieldCheck, color: '#B06A6A', to: '/injury-protocol', active: injury },
-                { key: 'tour', label: 'ЭКСКУРСИЯ ПО ЗАЛУ', Icon: Footprints, color: '#5A9E7C', to: '/club-tour', active: tour },
-                { key: 'conflict', label: 'КОНФЛИКТ-МЕНЕДЖМЕНТ', Icon: Handshake, color: '#C08A3E', to: '/conflict-management', active: conflict },
-              ].map(t => t.active ? (
-                <h1 key={t.key} className="text-xl font-black italic flex items-center gap-2 mb-1" style={{ color: 'var(--text-primary)', margin: 0 }}>
-                  <span style={{ color: t.color }}><t.Icon size={22} strokeWidth={2.5} /></span>
-                  {t.label}
-                </h1>
-              ) : (
+                { key: 'guide', label: 'ГАЙДБУК', full: 'Гайдбук администратора', Icon: BookOpen, color: '#7B3DFF', to: '/guidebook', active: !injury && !tour && !conflict },
+                { key: 'injury', label: 'ТРАВМЫ', full: 'Регламент при травмах', Icon: ShieldCheck, color: '#B06A6A', to: '/injury-protocol', active: injury },
+                { key: 'tour', label: 'ЭКСКУРСИЯ', full: 'Экскурсия по залу', Icon: Footprints, color: '#5A9E7C', to: '/club-tour', active: tour },
+                { key: 'conflict', label: 'КОНФЛИКТЫ', full: 'Конфликт-менеджмент', Icon: Handshake, color: '#C08A3E', to: '/conflict-management', active: conflict },
+              ].map(t => (
                 <button
                   key={t.key}
-                  onClick={() => navigate(t.to)}
-                  className="text-xl font-black italic flex items-center gap-2"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', margin: 0, padding: 0, opacity: 0.65, transition: '0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.opacity = 1; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.opacity = 0.65; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                  title={t.key === 'injury' ? 'Открыть регламент при травмах' : t.key === 'tour' ? 'Открыть экскурсию по залу' : t.key === 'conflict' ? 'Открыть конфликт-менеджмент' : 'Открыть гайдбук'}
+                  onClick={() => { if (!t.active) navigate(t.to); }}
+                  title={t.full}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    padding: '8px 14px',
+                    borderRadius: 12,
+                    background: t.active ? t.color : 'rgba(255,255,255,0.02)',
+                    border: '1px solid ' + (t.active ? t.color : 'var(--border)'),
+                    color: t.active ? '#fff' : 'var(--text-muted)',
+                    fontSize: 12,
+                    fontWeight: t.active ? 900 : 700,
+                    letterSpacing: '0.04em',
+                    cursor: t.active ? 'default' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: t.active ? `0 4px 12px ${t.color}44` : 'none',
+                    transition: '0.15s',
+                  }}
+                  onMouseEnter={e => { if (!t.active) { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = t.color; } }}
+                  onMouseLeave={e => { if (!t.active) { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; } }}
                 >
-                  <span style={{ color: t.color }}><t.Icon size={22} strokeWidth={2.5} /></span>
+                  <t.Icon size={14} strokeWidth={2.5} style={{ color: t.active ? '#fff' : t.color, flexShrink: 0 }} />
                   {t.label}
                 </button>
               ))}
             </div>
+            {/* Крупный заголовок активной страницы — под табами */}
+            <h1 className="text-xl font-black italic flex items-center gap-2" style={{ color: 'var(--text-primary)', margin: '10px 0 0 0' }}>
+              {injury ? 'РЕГЛАМЕНТ ПРИ ТРАВМАХ' : tour ? 'ЭКСКУРСИЯ ПО ЗАЛУ' : conflict ? 'КОНФЛИКТ-МЕНЕДЖМЕНТ' : 'ГАЙДБУК АДМИНИСТРАТОРА'}
+            </h1>
             <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--text-muted)' }}>
               {injury ? '🚑 действия команды студии при получении травмы атлетом во время тренировки' : tour ? '🚶 онбординг новичков: маршрут экскурсии и скрипт на казахском' : conflict ? '🤝 управление конфликтами между атлетами: протоколы, скрипты и чек-листы' : '🎯 база знаний, стандарты обслуживания и регламенты безопасности'}
             </p>
