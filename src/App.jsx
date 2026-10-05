@@ -397,6 +397,11 @@ const AppContent = () => {
             <GuidebookPage mode="tour" />
           </ProtectedLayout>
         } />
+        <Route path="/conflict-management" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'viewer', 'komdir', 'rop', 'guest']}>
+            <GuidebookPage mode="conflict" />
+          </ProtectedLayout>
+        } />
         <Route path="/policy" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'user', 'marketing', 'viewer', 'komdir', 'rop']}>
             <PolicyPage />
