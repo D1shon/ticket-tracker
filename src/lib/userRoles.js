@@ -19,7 +19,7 @@ export const USER_ROLES = {
 
   // ── COLIBRI ───────────────────────────────────────────────────────────────
   '19.anastasiya.tkachenko.88@gmail.com': { role: 'manager', club: 'COLIBRI', displayName: 'Анастасия' },
-  'daewure@mail.ru':              { role: 'manager', club: 'COLIBRI', displayName: 'Аружан' },
+  'daewure@mail.ru':              { role: 'manager', club: 'COLIBRI', displayName: 'Аружан', academyAdmin: true }, // главный наставник Академии (выбор шефа 05.10.2026)
   'loshkadishka3006@gmail.com':   { role: 'admin', club: 'COLIBRI', displayName: 'Алишер' },
 
   // ── VILLA ─────────────────────────────────────────────────────────────────
