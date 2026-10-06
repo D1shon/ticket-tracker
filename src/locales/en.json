@@ -4358,5 +4358,13 @@
   "Выключите разделы, с которых не хотите получать уведомления. Настройка личная и действует на все ваши устройства.": "Turn off the sections you do not want notifications from. The setting is personal and applies to all your devices.",
   "Не удалось сохранить фильтр уведомлений": "Failed to save the notification filter",
   "Тренажеры (счета)": "Machines (invoices)",
-  "Отчет смены": "Shift report"
+  "Отчет смены": "Shift report",
+  "Номер для Академии": "Phone for the Academy",
+  "Укажите номер телефона, под которым вы зарегистрированы в Академии, — аккаунт подтвердится автоматически, и вводить его в самой Академии больше не придётся. Нужно один раз.": "Enter the phone number you are registered with in the Academy — your account will be confirmed automatically, no need to enter it in the Academy again. One time only.",
+  "Сохранить и войти": "Save and enter",
+  "Сохраняем…": "Saving…",
+  "Позже": "Later",
+  "Введите номер полностью, например 77771112233": "Enter the full number, e.g. 77771112233",
+  "Не удалось сохранить номер — попробуйте ещё раз": "Failed to save the number — try again",
+  "Вход в Академию проходит автоматически — регистрироваться и вводить пароль не нужно. При первом входе укажите свой номер телефона: по нему Академия подтвердит аккаунт и подтянет ваш прогресс.": "Signing in to the Academy is automatic — no registration or password needed. On your first visit, enter your phone number: the Academy uses it to confirm your account and pull up your progress."
 }

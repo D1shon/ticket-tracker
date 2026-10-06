@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GraduationCap, ExternalLink, RotateCcw, ArrowLeft, BookOpen, Award, TrendingUp, Sparkles } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { db, auth } from '../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { isMobileDevice } from '../lib/isMobile';
+import { toast } from 'sonner';
 
 // Партнёрская обучающая платформа. Открывается прямо внутри HJ Track (iframe),
 // заходы и старты обучения пишем в academy_activity — видно, кто учится.
@@ -79,7 +80,25 @@ const AcademyPage = () => {
   const [ssoToken, setSsoToken] = useState(null);
   const [ssoReady, setSsoReady] = useState(false); // токен получен (или SSO недоступно) — можно грузить iframe
 
-  const startTraining = async () => {
+  // Телефон для академии: по нему она подтверждает аккаунт и подтягивает прогресс.
+  // Сотрудник вводит его ОДИН раз прямо здесь при первом входе (self-service,
+  // не через панель шефа) — сохраняем в app_users, пропуск уходит уже с номером.
+  const isEmployee = !!user?.email && user?.role !== 'guest';
+  const [phoneChecked, setPhoneChecked] = useState(false);
+  const [hasPhone, setHasPhone] = useState(false);
+  const [askPhone, setAskPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [pendingAction, setPendingAction] = useState('embed'); // 'embed' | 'external'
+  useEffect(() => {
+    if (!isEmployee) { setPhoneChecked(true); return; }
+    getDoc(doc(db, 'app_users', user.email.toLowerCase()))
+      .then(s => setHasPhone(!!(s.exists() && s.data().phone)))
+      .catch(() => setHasPhone(true)) // профиль не прочитался — не блокируем вход окном
+      .finally(() => setPhoneChecked(true));
+  }, [isEmployee, user?.email]);
+
+  const doStartTraining = async () => {
     logActivity(user, 'start_training');
     setIframeLoaded(false);
     setSsoReady(false);
@@ -89,15 +108,74 @@ const AcademyPage = () => {
     setSsoReady(true);
   };
 
-  const openExternal = async () => {
+  const doOpenExternal = async () => {
     logActivity(user, 'open_external');
-    const token = ssoToken || await fetchSsoToken(user);
+    const token = await fetchSsoToken(user);
     window.open(academyUrlWithSso(token), '_blank', 'noopener');
   };
+
+  const needPhone = isEmployee && phoneChecked && !hasPhone;
+  const startTraining = () => { if (needPhone) { setPendingAction('embed'); setAskPhone(true); } else doStartTraining(); };
+  const openExternal = () => { if (needPhone) { setPendingAction('external'); setAskPhone(true); } else doOpenExternal(); };
+
+  const proceed = () => (pendingAction === 'external' ? doOpenExternal() : doStartTraining());
+  const savePhoneAndGo = async () => {
+    const digits = phoneInput.replace(/\D/g, '');
+    if (digits.length < 10) { toast.error('Введите номер полностью, например 77771112233'); return; }
+    setSavingPhone(true);
+    try {
+      await setDoc(doc(db, 'app_users', user.email.toLowerCase()), { phone: digits }, { merge: true });
+      setHasPhone(true);
+      setAskPhone(false);
+      proceed();
+    } catch {
+      toast.error('Не удалось сохранить номер — попробуйте ещё раз');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+  const skipPhoneAndGo = () => { setAskPhone(false); setHasPhone(true); proceed(); }; // не спрашиваем повторно в этой сессии
+
+  // Окно одноразового ввода телефона перед первым входом в академию
+  const phoneModal = askPhone ? (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, width: '100%', maxWidth: 420, padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <GraduationCap size={18} style={{ color: '#7D6FB3' }} />
+          <span style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)' }}>Номер для Академии</span>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', fontWeight: 600, lineHeight: 1.6, margin: '0 0 14px' }}>
+          Укажите номер телефона, под которым вы зарегистрированы в Академии, — аккаунт
+          подтвердится автоматически, и вводить его в самой Академии больше не придётся.
+          Нужно один раз.
+        </p>
+        <input
+          type="tel"
+          inputMode="tel"
+          autoFocus
+          value={phoneInput}
+          onChange={e => setPhoneInput(e.target.value.replace(/[^\d+\s]/g, ''))}
+          onKeyDown={e => { if (e.key === 'Enter') savePhoneAndGo(); }}
+          placeholder="77771112233"
+          style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 15, fontWeight: 700, outline: 'none', marginBottom: 14 }}
+        />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={savePhoneAndGo} disabled={savingPhone} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', cursor: savingPhone ? 'default' : 'pointer', background: 'linear-gradient(135deg, #7D6FB3, #5580A8)', color: '#fff', fontSize: 13, fontWeight: 800, opacity: savingPhone ? 0.7 : 1 }}>
+            {savingPhone ? 'Сохраняем…' : 'Сохранить и войти'}
+          </button>
+          <button onClick={skipPhoneAndGo} style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, fontWeight: 700 }}>
+            Позже
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   // ── Режим обучения: платформа во всю рабочую область ──
   if (mode === 'embed') {
     return (
+      <>
+      {phoneModal}
       <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 10, height: isMobile ? 'calc(100dvh - 130px)' : 'calc(100vh - 60px)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setMode('intro')} style={{
@@ -151,11 +229,14 @@ const AcademyPage = () => {
           )}
         </div>
       </div>
+      </>
     );
   }
 
   // ── Обложка ──
   return (
+    <>
+    {phoneModal}
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 40 }}>
 
       {/* Header */}
@@ -226,10 +307,11 @@ const AcademyPage = () => {
       </div>
 
       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px 16px' }}>
-        Академия — отдельная платформа со своим входом. Если попросит войти — используйте данные,
-        которые выдали для обучения. По вопросам доступа — к менеджеру клуба.
+        Вход в Академию проходит автоматически — регистрироваться и вводить пароль не нужно.
+        При первом входе укажите свой номер телефона: по нему Академия подтвердит аккаунт и подтянет ваш прогресс.
       </div>
     </div>
+    </>
   );
 };
 
