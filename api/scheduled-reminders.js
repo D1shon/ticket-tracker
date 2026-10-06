@@ -95,13 +95,28 @@ let tokensCache = null
 let tokensCachedAt = 0
 
 async function getTokens(clientTokens) {
-  // Client passes [{ t, club, role }] — resolved with the client SDK (admin reads hit quota)
+  // Client passes [{ t, club, role, muted }] — resolved with the client SDK (admin reads hit quota).
+  // muted ОБЯЗАТЕЛЬНО прокидывать дальше: иначе напоминания обходят личный фильтр уведомлений
   if (Array.isArray(clientTokens) && clientTokens.length > 0) {
-    return clientTokens
+    const list = clientTokens
       .filter(x => x && typeof x.t === 'string' && x.t.length > 20)
       .slice(0, 500)
-      .map(x => ({ token: x.t, club: x.club || null, role: x.role || null }))
+      .map(x => ({ token: x.t, club: x.club || null, role: x.role || null, muted: Array.isArray(x.muted) ? x.muted : null }))
+    // Старый бандл клиента muted не шлёт — дозаполняем из серверного кеша,
+    // чтобы фильтр уведомлений работал независимо от версии пингующего клиента
+    if (list.some(x => x.muted === null)) {
+      try {
+        const srv = await getServerTokens()
+        const mutedById = new Map(srv.map(t => [t.token, t.muted]))
+        for (const x of list) if (x.muted === null) x.muted = mutedById.get(x.token) || null
+      } catch {}
+    }
+    return list
   }
+  return getServerTokens()
+}
+
+async function getServerTokens() {
   const now = Date.now()
   if (tokensCache && now - tokensCachedAt < 10 * 60 * 1000) return tokensCache
   try {

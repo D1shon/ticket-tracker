@@ -393,7 +393,9 @@ export const NotificationProvider = ({ children }) => {
         if (!inWindow) return;
 
         const snap = await getDocs(collection(db, 'push_tokens'));
-        const tokens = snap.docs.map(d => ({ t: d.id, club: d.data().club || null, role: d.data().role || null }));
+        // muted обязателен: без него серверные напоминания обходили бы личный
+        // фильтр уведомлений (Настройки → Уведомления → Фильтр)
+        const tokens = snap.docs.map(d => ({ t: d.id, club: d.data().club || null, role: d.data().role || null, muted: d.data().muted || null }));
         await fetch('/api/scheduled-reminders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
