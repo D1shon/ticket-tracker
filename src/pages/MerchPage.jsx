@@ -22,8 +22,11 @@ import {
 // складском модуле (вкладка, товары, перемещения). В чекин/календарь/отзывы НЕ добавлять.
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI', 'ГОЛОВНОЙ СКЛАД'];
 const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы', 'Блокноты', 'Ручки', 'Другое'];
-// Включая сдвоенные размеры (S-M и т.п.) — у части мерча именно такая сетка
-const SIZES = ['XS', 'S', 'S-M', 'M', 'L', 'L-XL', 'XL', 'XL-XXL', 'XXL', '3XL'];
+// Основная сетка — одиночные размеры; сдвоенные (S-M и т.п.) — второстепенный
+// блок у части мерча. SIZES — полный список для логики (суммы, чипы, продажи).
+const SIZES_SINGLE = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
+const SIZES_COMBO = ['S-M', 'L-XL', 'XL-XXL'];
+const SIZES = [...SIZES_SINGLE, ...SIZES_COMBO];
 
 const MerchPage = () => {
   const { user } = useTickets();
@@ -3125,7 +3128,7 @@ const MerchPage = () => {
               {productForm.useSizes && (
                 <div className="rounded-xl border border-[var(--border)] p-3" style={{ background: 'var(--bg-primary)' }}>
                   <div className="grid grid-cols-4 gap-2">
-                    {SIZES.map(sz => (
+                    {SIZES_SINGLE.map(sz => (
                       <div key={sz}>
                         <label className="text-[9px] font-black uppercase tracking-wider block mb-1 text-center" style={{ color: 'var(--text-muted)' }}>{sz}</label>
                         <input
@@ -3138,6 +3141,25 @@ const MerchPage = () => {
                         />
                       </div>
                     ))}
+                  </div>
+                  {/* Сдвоенные размеры — второстепенный блок под основной сеткой */}
+                  <div className="mt-3 pt-2 border-t border-dashed border-[var(--border)]">
+                    <div className="text-[9px] font-black uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)', opacity: 0.75 }}>Сдвоенные размеры</div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {SIZES_COMBO.map(sz => (
+                        <div key={sz} style={{ opacity: 0.85 }}>
+                          <label className="text-[9px] font-black uppercase tracking-wider block mb-1 text-center" style={{ color: 'var(--text-muted)' }}>{sz}</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={productForm.sizes?.[sz] ?? ''}
+                            onChange={e => setProductForm({ ...productForm, sizes: { ...(productForm.sizes || {}), [sz]: e.target.value } })}
+                            className="w-full px-2 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-sm font-bold text-center text-[var(--text-primary)] outline-none focus:border-[var(--accent-purple)]"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="mt-2 text-[11px] font-black text-right" style={{ color: 'var(--accent-purple)' }}>
                     Итого: {SIZES.reduce((a, sz) => a + (parseInt(productForm.sizes?.[sz]) || 0), 0)} шт
@@ -3662,10 +3684,21 @@ const MerchPage = () => {
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер поставки</label>
                   <div className="flex gap-1.5 flex-wrap">
-                    {SIZES.map(sz => (
+                    {SIZES_SINGLE.map(sz => (
                       <button key={sz} type="button" onClick={() => setSupplyForm(f => ({ ...f, size: sz }))}
                         className={`px-3 rounded-xl text-xs font-black border transition-all ${supplyForm.size === sz ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)]'}`}
                         style={{ minHeight: 40 }}>
+                        {sz}{(selectedProductForSupply.sizes[sz] || 0) > 0 ? <span style={{ opacity: 0.7, fontWeight: 700 }}> ·{selectedProductForSupply.sizes[sz]}</span> : ''}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Сдвоенные размеры — второстепенный ряд */}
+                  <div className="text-[9px] font-black uppercase tracking-wider mt-2 mb-1" style={{ color: 'var(--text-muted)', opacity: 0.75 }}>Сдвоенные</div>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {SIZES_COMBO.map(sz => (
+                      <button key={sz} type="button" onClick={() => setSupplyForm(f => ({ ...f, size: sz }))}
+                        className={`px-3 rounded-xl text-xs font-black border transition-all ${supplyForm.size === sz ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)]'}`}
+                        style={{ minHeight: 40, opacity: supplyForm.size === sz ? 1 : 0.85 }}>
                         {sz}{(selectedProductForSupply.sizes[sz] || 0) > 0 ? <span style={{ opacity: 0.7, fontWeight: 700 }}> ·{selectedProductForSupply.sizes[sz]}</span> : ''}
                       </button>
                     ))}
