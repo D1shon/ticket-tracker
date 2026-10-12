@@ -27,6 +27,14 @@ const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы'
 const SIZES_SINGLE = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
 const SIZES_COMBO = ['S-M', 'L-XL', 'XL-XXL'];
 const SIZES = [...SIZES_SINGLE, ...SIZES_COMBO];
+// Размеры товара для продажи/перемещения: в порядке SIZES + любые ключи из
+// документа, которых в SIZES нет. Так товар с «неизвестным» размером (новый
+// размер добавили, а у клиента открыт старый бандл) не теряет кнопки выбора.
+const productSizeKeys = (sizes) => {
+  const known = SIZES.filter(sz => sizes?.[sz] !== undefined);
+  const extra = Object.keys(sizes || {}).filter(k => !SIZES.includes(k)).sort();
+  return [...known, ...extra];
+};
 
 const MerchPage = () => {
   const { user } = useTickets();
@@ -2488,7 +2496,7 @@ const MerchPage = () => {
                     {/* Размерная сетка: остатки по размерам */}
                     {p.sizes && Object.keys(p.sizes).length > 0 && (
                       <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
-                        {SIZES.filter(sz => p.sizes[sz] !== undefined).map(sz => (
+                        {productSizeKeys(p.sizes).map(sz => (
                           <span key={sz} style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 7, background: (p.sizes[sz] || 0) > 0 ? 'rgba(125,111,179,0.12)' : 'rgba(176,106,106,0.1)', color: (p.sizes[sz] || 0) > 0 ? 'var(--accent-purple)' : '#B06A6A', border: '1px solid var(--border)' }}>
                             {sz}·{p.sizes[sz] || 0}
                           </span>
@@ -2670,7 +2678,7 @@ const MerchPage = () => {
                           {/* Размерная сетка: остатки по размерам */}
                           {p.sizes && Object.keys(p.sizes).length > 0 && (
                             <span className="text-[9px] font-black block mt-0.5" style={{ color: 'var(--accent-purple)' }}>
-                              {SIZES.filter(sz => p.sizes[sz] !== undefined).map(sz => `${sz}·${p.sizes[sz] || 0}`).join('  ')}
+                              {productSizeKeys(p.sizes).map(sz => `${sz}·${p.sizes[sz] || 0}`).join('  ')}
                             </span>
                           )}
                         </td>
@@ -3377,7 +3385,7 @@ const MerchPage = () => {
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер</label>
                       <div className="flex gap-1.5 flex-wrap">
-                        {SIZES.filter(sz => (selectedProductForSale.sizes[sz] || 0) > 0).map(sz => (
+                        {productSizeKeys(selectedProductForSale.sizes).filter(sz => (selectedProductForSale.sizes[sz] || 0) > 0).map(sz => (
                           <button
                             key={sz}
                             type="button"
@@ -3453,7 +3461,7 @@ const MerchPage = () => {
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер</label>
                       <div className="flex gap-1.5 flex-wrap">
-                        {SIZES.filter(sz => (selectedProductForSale.sizes[sz] || 0) > 0).map(sz => (
+                        {productSizeKeys(selectedProductForSale.sizes).filter(sz => (selectedProductForSale.sizes[sz] || 0) > 0).map(sz => (
                           <button
                             key={sz}
                             type="button"
@@ -3620,7 +3628,7 @@ const MerchPage = () => {
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Размер</label>
                   <div className="flex gap-1.5 flex-wrap">
-                    {SIZES.filter(sz => (selectedProductForTransfer.sizes[sz] || 0) > 0).map(sz => (
+                    {productSizeKeys(selectedProductForTransfer.sizes).filter(sz => (selectedProductForTransfer.sizes[sz] || 0) > 0).map(sz => (
                       <button key={sz} type="button" onClick={() => setTransferForm(f => ({ ...f, size: sz }))}
                         className={`px-3 rounded-xl text-xs font-black border transition-all ${transferForm.size === sz ? 'bg-[var(--accent-purple)] text-white border-[var(--accent-purple)]' : 'bg-[var(--bg-primary)] border-[var(--border)] text-[var(--text-secondary)]'}`}
                         style={{ minHeight: 40 }}>
