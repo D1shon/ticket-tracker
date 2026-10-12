@@ -22,7 +22,8 @@ import {
 // складском модуле (вкладка, товары, перемещения). В чекин/календарь/отзывы НЕ добавлять.
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI', 'ГОЛОВНОЙ СКЛАД'];
 const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы', 'Блокноты', 'Ручки', 'Другое'];
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
+// Включая сдвоенные размеры (S-M и т.п.) — у части мерча именно такая сетка
+const SIZES = ['XS', 'S', 'S-M', 'M', 'L', 'L-XL', 'XL', 'XL-XXL', 'XXL', '3XL'];
 
 const MerchPage = () => {
   const { user } = useTickets();
