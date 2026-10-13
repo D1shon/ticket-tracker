@@ -436,6 +436,9 @@ const SettingsPage = () => {
             <LogOut size={16} />
             Выйти из системы
           </button>
+          <div style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', opacity: 0.7, marginTop: 8 }} data-notranslate>
+            Сборка: {typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '—'}
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 24 }}>
