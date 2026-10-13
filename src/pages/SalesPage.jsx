@@ -6,6 +6,7 @@ import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
 import { toast } from 'sonner';
 import { reportSaleError } from '../lib/saleError';
+import { productSizeKeys } from '../lib/merchSizes';
 import { TrendingUp, ShoppingCart, Package, Search, Check, X, AlertTriangle, RotateCcw, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -516,7 +517,7 @@ const SalesPage = () => {
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Размер</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {['XS','S','M','L','XL','XXL','3XL'].filter(sz => (selectedProduct.sizes[sz] || 0) > 0).map(sz => (
+                      {productSizeKeys(selectedProduct.sizes).filter(sz => (selectedProduct.sizes[sz] || 0) > 0).map(sz => (
                         <button key={sz} type="button" onClick={() => setSaleSize(sz)} style={{
                           minHeight: 40, padding: '0 14px', borderRadius: 12, cursor: 'pointer', fontSize: 12, fontWeight: 900, transition: 'all 0.15s',
                           border: saleSize === sz ? '1px solid var(--accent-purple)' : '1px solid var(--border)',

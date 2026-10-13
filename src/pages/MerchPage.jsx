@@ -10,6 +10,8 @@ import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { reportSaleError } from '../lib/saleError';
+// Размерная сетка (одиночные + сдвоенные) и порядок кнопок — общие с SalesPage
+import { SIZES_SINGLE, SIZES_COMBO, SIZES, productSizeKeys } from '../lib/merchSizes';
 import { toast } from 'sonner';
 import { 
   Package, Plus, Search, ShoppingCart, TrendingUp, History, 
@@ -22,19 +24,6 @@ import {
 // складском модуле (вкладка, товары, перемещения). В чекин/календарь/отзывы НЕ добавлять.
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI', 'ГОЛОВНОЙ СКЛАД'];
 const CATEGORIES = ['Худи', 'Футболки', 'Кепки', 'Шоперы', 'Блокноты', 'Ручки', 'Другое'];
-// Основная сетка — одиночные размеры; сдвоенные (S-M и т.п.) — второстепенный
-// блок у части мерча. SIZES — полный список для логики (суммы, чипы, продажи).
-const SIZES_SINGLE = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
-const SIZES_COMBO = ['S-M', 'L-XL', 'XL-XXL'];
-const SIZES = [...SIZES_SINGLE, ...SIZES_COMBO];
-// Размеры товара для продажи/перемещения: в порядке SIZES + любые ключи из
-// документа, которых в SIZES нет. Так товар с «неизвестным» размером (новый
-// размер добавили, а у клиента открыт старый бандл) не теряет кнопки выбора.
-const productSizeKeys = (sizes) => {
-  const known = SIZES.filter(sz => sizes?.[sz] !== undefined);
-  const extra = Object.keys(sizes || {}).filter(k => !SIZES.includes(k)).sort();
-  return [...known, ...extra];
-};
 
 const MerchPage = () => {
   const { user } = useTickets();
