@@ -143,7 +143,10 @@ export default async function handler(req, res) {
     const dateStr = alm.toISOString().slice(0, 10)
     const inWin = (t) => nowMin >= t && nowMin < t + 6
 
-    const allTokens = await getTokens(req.body?.tokens)
+    // Токены читаем ТОЛЬКО когда реально есть что отправлять (вне окон — ноль
+    // чтений Firestore): пинги приходят от всех клиентов каждую минуту окна
+    const needTokens = due.length > 0 || inWin(480) || inWin(600)
+    const allTokens = needTokens ? await getTokens(req.body?.tokens) : []
     const results = []
 
     for (const r of due) {

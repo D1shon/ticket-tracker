@@ -392,14 +392,13 @@ export const NotificationProvider = ({ children }) => {
         const inWindow = windows.some(([a, b]) => nowMin >= a && nowMin < b);
         if (!inWindow) return;
 
-        const snap = await getDocs(collection(db, 'push_tokens'));
-        // muted обязателен: без него серверные напоминания обходили бы личный
-        // фильтр уведомлений (Настройки → Уведомления → Фильтр)
-        const tokens = snap.docs.map(d => ({ t: d.id, club: d.data().club || null, role: d.data().role || null, muted: d.data().muted || null }));
+        // Токены клиент больше НЕ читает (раньше: 54 дока × каждый клиент × каждую
+        // минуту окна = ~100 тыс. чтений Firestore в день). Сервер сам читает
+        // коллекцию с кешем и учитывает muted-фильтр (getServerTokens).
         await fetch('/api/scheduled-reminders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokens }),
+          body: JSON.stringify({}),
         });
       } catch {}
     };

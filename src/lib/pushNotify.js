@@ -9,9 +9,20 @@ import { db } from './firebase';
 // Только им клубный пуш уходит без совпадения клуба. Всем остальным — строго по клубу.
 const GLOBAL_ROLES = new Set(['chef', 'komdir', 'viewer']); // viewer видит всё — как в колокольчике
 
+// Кеш списка токенов на 5 минут: события (чекауты, продажи, заявки) часто идут
+// сериями, и каждый вызов читал всю коллекцию (54+ дока) заново — лишние тысячи
+// чтений Firestore в день. Изменение токена/фильтра доезжает максимум за 5 минут.
+let tokensSnapCache = null;
+let tokensSnapAt = 0;
+
 export async function pushNotify({ title, body = '', club = null, excludeEmail = '', url = '/', tag = '', roles = null, emails = null }) {
   try {
-    const snap = await getDocs(collection(db, 'push_tokens'));
+    let snap = tokensSnapCache;
+    if (!snap || Date.now() - tokensSnapAt > 5 * 60 * 1000) {
+      snap = await getDocs(collection(db, 'push_tokens'));
+      tokensSnapCache = snap;
+      tokensSnapAt = Date.now();
+    }
     const exclude = (excludeEmail || '').toLowerCase();
     const emailSet = Array.isArray(emails) && emails.length > 0
       ? new Set(emails.map(e => (e || '').toLowerCase()))
