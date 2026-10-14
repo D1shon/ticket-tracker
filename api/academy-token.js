@@ -68,7 +68,9 @@ export default async function handler(req, res) {
   if (decoded.firebase?.sign_in_provider === 'anonymous') {
     const guestName = String(req.body?.guestName || 'Стажёр').replace(/\s+/g, ' ').trim().slice(0, 60);
     const guestDept = ACADEMY_DEPTS.includes(req.body?.guestDept) ? req.body.guestDept : 'admin';
-    const guestPhone = String(req.body?.guestPhone || '').replace(/\D/g, '').slice(0, 15) || null;
+    let guestPhone = String(req.body?.guestPhone || '').replace(/\D/g, '').slice(0, 15);
+    if (guestPhone.length === 11 && guestPhone.startsWith('8')) guestPhone = '7' + guestPhone.slice(1);
+    guestPhone = guestPhone || null;
     profile = {
       uid: `hj-guest-${decoded.uid}`,
       email: null,
@@ -126,7 +128,11 @@ export default async function handler(req, res) {
   const academyMentor = Array.isArray(e.academyMentor)
     ? e.academyMentor.filter(d => ACADEMY_DEPTS.includes(d))
     : (ACADEMY_MENTOR_BY_HJ[profile.role] || []);
-  const phone = String(e.phone || '').replace(/\D/g, '') || null;
+  // Телефон — в международном формате 7XXXXXXXXXX: казахстанское «8747…»
+  // академия не сматчит со своим «7747…», и аккаунт не активируется
+  let phone = String(e.phone || '').replace(/\D/g, '');
+  if (phone.length === 11 && phone.startsWith('8')) phone = '7' + phone.slice(1);
+  phone = phone || null;
 
   const claims = {
     hjTrack: true,

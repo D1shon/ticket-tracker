@@ -120,7 +120,8 @@ const AcademyPage = () => {
 
   const proceed = () => (pendingAction === 'external' ? doOpenExternal() : doStartTraining());
   const savePhoneAndGo = async () => {
-    const digits = phoneInput.replace(/\D/g, '');
+    let digits = phoneInput.replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('8')) digits = '7' + digits.slice(1); // 8747… → 7747…
     if (digits.length < 10) { toast.error('Введите номер полностью, например 77771112233'); return; }
     setSavingPhone(true);
     try {

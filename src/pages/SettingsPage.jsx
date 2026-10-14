@@ -1211,7 +1211,9 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     const isDev = roleDraft.role === 'dev';
     const club = def?.needsClub ? roleDraft.club : null;
     // Телефон цифрами — по нему Академия переносит прогресс сотрудника (SSO)
-    const phone = String(roleDraft.phone || '').replace(/\D/g, '') || null;
+    let phoneDigits = String(roleDraft.phone || '').replace(/\D/g, '');
+    if (phoneDigits.length === 11 && phoneDigits.startsWith('8')) phoneDigits = '7' + phoneDigits.slice(1); // 8747… → 7747…
+    const phone = phoneDigits || null;
     try {
       if (roleUser.isStatic) {
         // Зашитый аккаунт: роль из кода не трогаем, кладём перекрытие
