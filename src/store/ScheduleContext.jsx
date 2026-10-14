@@ -642,13 +642,28 @@ export const ScheduleProvider = ({ children }) => {
   };
 
   // ─── removeEmployee ───────────────────────────────────────────────────────
+  // Сотрудники хранятся помесячными копиями (id = `${monthKey}_${baseId}`), и
+  // раньше удалялся только открытый месяц — человек «воскресал» в следующем.
+  // Теперь удаляем из текущего И всех будущих месяцев; прошлые месяцы не
+  // трогаем — там зарплатная история.
   const removeEmployee = async (id) => {
     try {
       setIsSaving(true);
-      // Remove locally first
       setEmployees(prev => prev.filter(e => e.id !== id));
-      await deleteDoc(doc(db, 'employees', id));
-      toast.success('Удалено');
+      if (!id.includes('_')) {
+        await deleteDoc(doc(db, 'employees', id)); // легаси-док без месячного префикса
+      } else {
+        const base = id.slice(id.indexOf('_') + 1);
+        const [y, m] = monthKey.split('-').map(Number);
+        const dels = [];
+        for (let i = 0; i < 18; i++) {
+          const d = new Date(y, m - 1 + i, 1);
+          const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          dels.push(deleteDoc(doc(db, 'employees', `${ym}_${base}`)));
+        }
+        await Promise.allSettled(dels);
+      }
+      toast.success('Сотрудник удалён из текущего и будущих месяцев');
     } catch (err) {
       console.error('Error removing employee:', err);
       toast.error('Не удалось удалить сотрудника');
