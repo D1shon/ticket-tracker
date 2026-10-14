@@ -975,36 +975,37 @@ const SettingsPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <Users size={isMobile ? 18 : 22} color="var(--accent-purple)" />
             <h2 style={{ fontSize: isMobile ? 16 : 24, fontWeight: 900, fontStyle: 'italic', color: 'var(--text-primary)', textTransform: 'uppercase', margin: 0 }}>
-              Админы
+              Сотрудники клуба
             </h2>
           </div>
           <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: isMobile ? 18 : 32 }}>
-            Аккаунты с доступом к платформе · роль ADMIN
+            Аккаунты с доступом к платформе · менеджер управляет сотрудниками своего клуба
           </p>
 
           {(isChef ? CLUBS.map(c => c.name) : [user?.club]).filter(Boolean).map(clubName => {
             const clubColor = (CLUBS.find(c => c.name === clubName) || {}).color || 'var(--accent-purple)';
-            const staticAdmins = Object.entries(USER_ROLES)
-              .filter(([email, u]) => u.role === 'admin' && u.club === clubName && !(email in appUsers));
-            // МОПы (role:'rop', mop:true) управляются на странице /staff — здесь только админы,
-            // иначе МОП отображается с бейджем ADMIN и его можно случайно удалить как админа
-            const dynamicAdmins = Object.entries(appUsers)
-              .filter(([, u]) => !u.revoked && (u.role || 'admin') === 'admin' && (u.club || '').toUpperCase() === clubName.toUpperCase());
+            // Все аккаунты клуба, кроме шефа и МОПов (role:'rop'+mop — ими управляет
+            // РОП на странице /staff, здесь их можно было бы удалить случайно)
+            const fitsClub = (u) => (u.club || '').toUpperCase() === clubName.toUpperCase() && u.role !== 'chef' && !u.mop;
+            const staticStaff = Object.entries(USER_ROLES)
+              .filter(([email, u]) => fitsClub(u) && !(email in appUsers));
+            const dynamicStaff = Object.entries(appUsers)
+              .filter(([, u]) => !u.revoked && fitsClub({ ...u, role: u.role || 'admin' }));
             const allAdmins = [
-              ...staticAdmins.map(([email, u]) => ({ email, name: u.displayName, dynamic: false })),
-              ...dynamicAdmins.map(([email, u]) => ({ email, name: u.displayName, dynamic: true, addedBy: u.addedBy })),
+              ...staticStaff.map(([email, u]) => ({ email, name: u.displayName, role: u.role || 'admin', dynamic: false })),
+              ...dynamicStaff.map(([email, u]) => ({ email, name: u.displayName, role: u.role || 'admin', dynamic: true, addedBy: u.addedBy })),
             ];
             return (
               <div key={clubName} style={{ marginBottom: 28 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: clubColor }} />
                   <span style={{ fontSize: 10, fontWeight: 900, color: clubColor, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                    {clubName} · Админы ({allAdmins.length})
+                    {clubName} · Сотрудники ({allAdmins.length})
                   </span>
                 </div>
                 {allAdmins.length === 0 ? (
                   <div style={{ padding: '14px 16px', border: '1px dashed var(--border)', borderRadius: 14, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
-                    Пока нет админов
+                    Пока нет сотрудников
                   </div>
                 ) : allAdmins.map(a => (
                   <div key={a.email} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--bg-hover)', border: '1px solid var(--border)', marginBottom: 8 }}>
@@ -1014,7 +1015,7 @@ const SettingsPage = () => {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         {a.name}
-                        <span style={{ fontSize: 9, fontWeight: 900, background: `${clubColor}20`, color: clubColor, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>ADMIN</span>
+                        <span style={{ fontSize: 9, fontWeight: 900, background: `${clubColor}20`, color: clubColor, padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase' }}>{a.role}</span>
                         {a.dynamic && (
                           <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(95,156,129,0.15)', color: '#5F9C81', padding: '3px 8px', borderRadius: 6 }}>
                             добавлен вручную
@@ -1024,13 +1025,15 @@ const SettingsPage = () => {
                       </div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.email}</div>
                     </div>
-                    <button onClick={() => handleRemoveAdmin(a)} title="Удалить доступ" style={{
-                      background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                      padding: 6, borderRadius: 8, lineHeight: 0, opacity: 0.4, flexShrink: 0, transition: 'opacity 0.15s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = 1}
-                    onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
-                    ><Trash2 size={14} /></button>
+                    {a.email.toLowerCase() !== (user?.email || '').toLowerCase() && (
+                      <button onClick={() => { if (window.confirm(`Удалить доступ для ${a.name} (${a.email})?`)) handleRemoveAdmin(a); }} title="Удалить доступ" style={{
+                        background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                        padding: 6, borderRadius: 8, lineHeight: 0, opacity: 0.4, flexShrink: 0, transition: 'opacity 0.15s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                      onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                      ><Trash2 size={14} /></button>
+                    )}
                   </div>
                 ))}
               </div>

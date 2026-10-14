@@ -1875,7 +1875,7 @@
   "Сотрудник 3 (Колибри)": "Employee 3 (Колибри)",
   "Сотрудник добавлен": "Employee added",
   "Сотрудник:": "Employee:",
-  "Сотрудники": "Employees",
+  "Сотрудники": "Staff",
   "Сотрудники (МОП)": "Employees (MOP)",
   "Сотрудники и доступы": "Staff and access",
   "Сотрудников": "Employees",
@@ -4366,5 +4366,8 @@
   "Позже": "Later",
   "Введите номер полностью, например 77771112233": "Enter the full number, e.g. 77771112233",
   "Не удалось сохранить номер — попробуйте ещё раз": "Failed to save the number — try again",
-  "Вход в Академию проходит автоматически — регистрироваться и вводить пароль не нужно. При первом входе укажите свой номер телефона: по нему Академия подтвердит аккаунт и подтянет ваш прогресс.": "Signing in to the Academy is automatic — no registration or password needed. On your first visit, enter your phone number: the Academy uses it to confirm your account and pull up your progress."
+  "Вход в Академию проходит автоматически — регистрироваться и вводить пароль не нужно. При первом входе укажите свой номер телефона: по нему Академия подтвердит аккаунт и подтянет ваш прогресс.": "Signing in to the Academy is automatic — no registration or password needed. On your first visit, enter your phone number: the Academy uses it to confirm your account and pull up your progress.",
+  "Сотрудники клуба": "Club staff",
+  "Аккаунты с доступом к платформе · менеджер управляет сотрудниками своего клуба": "Accounts with platform access · the manager controls their own club staff",
+  "Пока нет сотрудников": "No staff yet"
 }
