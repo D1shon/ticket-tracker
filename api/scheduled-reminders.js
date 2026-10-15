@@ -270,6 +270,82 @@ export default async function handler(req, res) {
       }
     }
 
+    // 7. Залежавшиеся находки — 10:00 Almaty. Вещь, хранящаяся > 30 дней,
+    // получает первый пуш менеджерам клуба (отметка staleNotifiedAtISO на доке),
+    // через 7 дней — второй, с общим числом залежавшихся в клубе (staleNotified2AtISO).
+    // Суточный маркер ставится ДО запроса — lost_items читаются один раз в день.
+    if (inWin(600)) {
+      const dayMarker = `${dateStr}_lost_stale`
+      let runLost = true
+      try {
+        await admin.firestore().collection('checklist_reminders').doc(dayMarker).create({ sentAtISO: new Date().toISOString(), title: '📦 Залежавшиеся вещи' })
+      } catch (e) {
+        if (String(e.code) === '6' || /already exists/i.test(e.message || '')) runLost = false
+      }
+      if (runLost) {
+        try {
+          const nowMs = Date.now()
+          const MONTH_MS = 30 * 24 * 3600 * 1000
+          const WEEK_MS = 7 * 24 * 3600 * 1000
+          const lostSnap = await admin.firestore().collection('lost_items')
+            .where('status', '==', 'stored')
+            .get()
+          const first = {}   // club -> [{ ref, name }]
+          const second = {}  // club -> [{ ref, name }]
+          const staleTotal = {} // club -> число всех залежавшихся
+          for (const d of lostSnap.docs) {
+            const it = d.data()
+            if (!it.acceptedAtISO || nowMs - new Date(it.acceptedAtISO).getTime() <= MONTH_MS) continue
+            const club = (it.club || '').toUpperCase()
+            if (!club) continue
+            staleTotal[club] = (staleTotal[club] || 0) + 1
+            const entry = { ref: d.ref, name: (it.note || '').trim() || 'вещь без описания' }
+            if (!it.staleNotifiedAtISO) {
+              (first[club] ||= []).push(entry)
+            } else if (!it.staleNotified2AtISO && nowMs - new Date(it.staleNotifiedAtISO).getTime() >= WEEK_MS) {
+              (second[club] ||= []).push(entry)
+            }
+          }
+          const nowISO = new Date().toISOString()
+          const sendLost = async (club, id, title, body, entries, field) => {
+            const batch = admin.firestore().batch()
+            entries.forEach(e => batch.update(e.ref, { [field]: nowISO }))
+            await batch.commit()
+            const tokens = allTokens
+              .filter(tk => (tk.club || '').toUpperCase() === club)
+              .filter(tk => tk.role === 'manager')
+              .filter(notMuted('/lost-items'))
+              .map(tk => tk.token)
+            if (!tokens.length) { results.push({ id, sent: 0 }); return }
+            const out = await admin.messaging().sendEachForMulticast({
+              tokens,
+              notification: { title, body },
+              webpush: {
+                headers: { Urgency: 'high', TTL: '3600' },
+                notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: id },
+                fcmOptions: { link: 'https://ticket-tracker-inky.vercel.app/lost-items' },
+              },
+            })
+            results.push({ id, sent: out.successCount, failed: out.failureCount })
+          }
+          for (const [club, entries] of Object.entries(first)) {
+            const names = entries.slice(0, 3).map(e => e.name).join(', ')
+            const body = entries.length === 1
+              ? `«${names}» хранится больше месяца — свяжитесь с владельцем или решите судьбу вещи`
+              : `${entries.length} вещей перешли рубеж 30 дней: ${names}${entries.length > 3 ? '…' : ''}`
+            await sendLost(club, `${dateStr}_lost1_${club.replace(/\s+/g, '')}`, '📦 Вещь залежалась', body, entries, 'staleNotifiedAtISO')
+          }
+          for (const [club, entries] of Object.entries(second)) {
+            const total = staleTotal[club] || entries.length
+            const body = `В клубе ${club} уже ${total} ${total === 1 ? 'вещь' : total < 5 ? 'вещи' : 'вещей'} старше месяца — пора разобрать находки`
+            await sendLost(club, `${dateStr}_lost2_${club.replace(/\s+/g, '')}`, '📦 Находок накопилось много', body, entries, 'staleNotified2AtISO')
+          }
+        } catch (lostErr) {
+          console.warn('lost items stale push failed:', lostErr.message)
+        }
+      }
+    }
+
     if (!due.length && !results.length) return res.json({ ok: true, reason: 'no due reminders' })
     return res.json({ ok: true, results })
   } catch (err) {
