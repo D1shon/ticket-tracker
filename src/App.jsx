@@ -60,6 +60,7 @@ const IMPORTERS = {
   ReviewsPage:     () => import('./pages/ReviewsPage'),
   QrReviewsPage:   () => import('./pages/QrReviewsPage'),
   ShiftBoardPage:  () => import('./pages/ShiftBoardPage'),
+  OnboardingPage:  () => import('./pages/OnboardingPage'),
   ClubVisitsPage:  () => import('./pages/ClubVisitsPage'),
   CalendarPage:    () => import('./pages/CalendarPage'),
   CalendarDayPage: () => import('./pages/CalendarDayPage'),
@@ -98,6 +99,7 @@ const LostItemsPage   = lazyPage(IMPORTERS.LostItemsPage);
 const ReviewsPage     = lazyPage(IMPORTERS.ReviewsPage);
 const QrReviewsPage   = lazyPage(IMPORTERS.QrReviewsPage);
 const ShiftBoardPage  = lazyPage(IMPORTERS.ShiftBoardPage);
+const OnboardingPage  = lazyPage(IMPORTERS.OnboardingPage);
 const ClubVisitsPage  = lazyPage(IMPORTERS.ClubVisitsPage);
 const CalendarPage    = lazyPage(IMPORTERS.CalendarPage);
 const CalendarDayPage = lazyPage(IMPORTERS.CalendarDayPage);
@@ -460,6 +462,11 @@ const AppContent = () => {
         <Route path="/shift-board" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'viewer', 'komdir', 'marketing', 'rop']}>
             <ShiftBoardPage />
+          </ProtectedLayout>
+        } />
+        <Route path="/onboarding" element={
+          <ProtectedLayout allowedRoles={['chef', 'manager']}>
+            <OnboardingPage />
           </ProtectedLayout>
         } />
         <Route path="/news" element={

@@ -23,6 +23,7 @@ export const PUSH_CATEGORIES = [
   { id: '/service-report', label: 'Отчет смены' },
   { id: '/calendar',       label: 'Календарь' },
   { id: '/news',           label: 'Новости' },
+  { id: '/onboarding',     label: 'Адаптация' },
 ];
 
 // Пуши, ведущие на эти адреса, относятся к категории-алиасу

@@ -26,6 +26,7 @@ export const NAV_ITEMS = [
   { path: '/assistant',       label: 'Помощник' },
   { path: '/ai-chat',         label: 'ИИ-чат' },
   { path: '/staff',           label: 'Сотрудники (МОП)' },
+  { path: '/onboarding',      label: 'Адаптация' },
   { path: '/calendar',        label: 'Календарь' },
   { path: '/instudio',        label: 'InStudio' },
   { path: '/invoices',        label: 'Тренажеры' },
@@ -57,6 +58,8 @@ export function baseNavAllowed(user, path) {
   // Счета на оплату — менеджеры загружают, шеф подтверждает (до ролевых веток
   // ниже, иначе viewer получил бы вкладку через «всё, кроме скрытого»)
   if (path === '/invoices') return user?.role === 'manager' || user?.role === 'chef';
+  // Адаптация стажёров — менеджерский состав
+  if (path === '/onboarding') return user?.role === 'manager' || user?.role === 'chef';
   if (user?.role === 'admin') {
     // Чек-листы — только админам Europe City
     if (path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';

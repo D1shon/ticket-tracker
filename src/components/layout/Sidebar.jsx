@@ -124,6 +124,7 @@ const ALL_NAV = [
   { icon: Sparkles,        label: 'Помощник',     path: '/assistant',   primary: false },
   { icon: Bot,             label: 'ИИ-чат',       path: '/ai-chat',     primary: false },
   { icon: UserPlus,        label: 'Сотрудники',   path: '/staff',       primary: false },
+  { icon: ClipboardCheck,  label: 'Адаптация',    path: '/onboarding',  primary: false },
   { icon: CalendarDays,    label: 'Календарь',   path: '/calendar',    primary: false },
   { icon: MonitorSmartphone, label: 'InStudio',  path: '/instudio',    primary: false },
   { icon: Dumbbell,        label: 'Тренажеры',   path: '/invoices',    primary: false },
@@ -156,7 +157,7 @@ const LangSwitch = ({ style }) => {
 
 /* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
 const NAV_GROUPS = [
-  { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/archive', '/merch'] },
+  { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/onboarding', '/archive', '/merch'] },
   { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/academy', '/leads', '/assistant', '/ai-chat'] },
 ];
 
@@ -167,6 +168,7 @@ const MOBILE_META = {
   '/news':        { sub: 'обновления и анонсы', sect: 1 },
   '/attendance':  { sub: 'отметки прихода', sect: 1 },
   '/shift-board': { sub: 'записи смены', sect: 1 },
+  '/onboarding':  { sub: 'обучение стажёров', sect: 1 },
   '/tickets':     { sub: 'задачи с таймером', sect: 1 },
   '/merch':       { sub: 'мерч: склад и учёт', sect: 2 },
   '/sales':       { sub: 'продажа мерча', sect: 2 },
