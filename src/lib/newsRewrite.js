@@ -57,9 +57,7 @@ const PROMPT = `Ты редактор внутренних новостей се
 
 Верни ТОЛЬКО JSON без пояснений: {"title": "...", "audience": "...", "topic": "...", "text": "..."} — где text это весь готовый текст новости целиком, включая заголовок первой строкой.`
 
-export async function rewriteNews(raw) {
-  const src = String(raw || '').trim().slice(0, 8000)
-  if (!src) return null
+async function askJson(prompt, temperature = 0.2) {
   const token = await vertexToken()
   const project = process.env.FIREBASE_PROJECT_ID || 'hjtrack-928f5'
   const url = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemini-2.5-flash:generateContent`
@@ -67,21 +65,61 @@ export async function rewriteNews(raw) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: `${PROMPT}\n\nИСХОДНЫЙ ТЕКСТ:\n${src}` }] }],
-      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature, responseMimeType: 'application/json' },
     }),
   })
   const j = await r.json()
   if (!r.ok) throw new Error('vertex ' + r.status + ': ' + JSON.stringify(j.error || j).slice(0, 300))
   const out = j.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || ''
-  let parsed
-  try { parsed = JSON.parse(out) } catch { parsed = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)) }
-  const text = String(parsed.text || '').trim()
+  try { return JSON.parse(out) } catch { return JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)) }
+}
+
+const VERIFY_PROMPT = `Ты ревизор фактов. Есть ИСХОДНИК (релиз-нот от разработчиков) и ПЕРЕСКАЗ для сотрудников. Проверь пересказ ТОЛЬКО на достоверность:
+1. Нет ли в пересказе утверждений, которых НЕТ в исходнике (выдуманные функции, цифры, названия, сроки, клубы, действия сотрудника, которых исходник не требует).
+2. Не искажён ли смысл (перепутано «раньше/теперь», «включено/выключено», кто и где, условия «если…»).
+3. Не потерян ли важный факт, из-за которого сотрудник сделает ошибку (цифры, названия клубов/программ, условия, что именно нужно делать).
+4. Верные ли названия продуктов: «POS-касса (Поска)», «Админка (admin.herosjourney)», «Приложение атлета», «HJ Track».
+Стиль, краткость, эмодзи и структуру НЕ оценивай. Пункт «Что делать: Ничего — всё работает само» допустим, если исходник не требует действий.
+
+Верни ТОЛЬКО JSON: {"ok": true|false, "issues": ["краткое описание каждой найденной ошибки"], "text": "исправленный пересказ целиком (та же структура), если ok=false; иначе пустая строка"}. Исправляя, меняй только ошибочные места, остальное оставляй как есть.`
+
+// Сверка результата с исходником. Возвращает { ok, issues, text } — text только при ok=false
+export async function verifyNews(raw, text) {
+  const v = await askJson(`${VERIFY_PROMPT}\n\nИСХОДНИК:\n${raw}\n\nПЕРЕСКАЗ:\n${text}`, 0)
+  return {
+    ok: v.ok !== false,
+    issues: Array.isArray(v.issues) ? v.issues.map(String).slice(0, 10) : [],
+    text: String(v.text || '').trim(),
+  }
+}
+
+// Переписать + проверить. Два круга ревизии: нашли ошибку → берём исправленный
+// текст → проверяем снова. Если и после этого не чисто — возвращаем null
+// (вызывающий публикует исходник, а не сомнительный пересказ).
+export async function rewriteNews(raw) {
+  const src = String(raw || '').trim().slice(0, 8000)
+  if (!src) return null
+  const parsed = await askJson(`${PROMPT}\n\nИСХОДНЫЙ ТЕКСТ:\n${src}`)
+  let text = String(parsed.text || '').trim()
   if (!text) return null
+  const issues = []
+  for (let round = 0; round < 2; round++) {
+    const v = await verifyNews(src, text)
+    if (v.ok) break
+    issues.push(...v.issues)
+    if (!v.text) return null
+    text = v.text
+    if (round === 1) {
+      const again = await verifyNews(src, text)
+      if (!again.ok) return null
+    }
+  }
   return {
     title: String(parsed.title || '').trim().slice(0, 120),
     audience: NEWS_AUDIENCES.includes(parsed.audience) ? parsed.audience : 'all',
     topic: NEWS_TOPICS.includes(parsed.topic) ? parsed.topic : 'other',
     text: text.slice(0, 4000),
+    issues, // что ревизор поправил — для лога
   }
 }
