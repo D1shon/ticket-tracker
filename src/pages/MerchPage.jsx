@@ -814,6 +814,7 @@ const MerchPage = () => {
 
       await addDoc(collection(db, 'merch_history'), {
         type: isSale ? 'return_sale' : 'delete_sale',
+        saleId: sale.id, // по нему merch-sync API узнаёт об удалённых продажах между полными выгрузками
         productId: sale.productId || null,
         productName: sale.productName,
         club: sale.club,

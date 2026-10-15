@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { collection, query, onSnapshot, updateDoc, deleteDoc, doc, increment, serverTimestamp, where, runTransaction } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, increment, serverTimestamp, where, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { isMobileDevice } from '../lib/isMobile';
 import { useTickets } from '../store/TicketContext';
@@ -237,6 +237,18 @@ const SalesPage = () => {
         updatedAt: serverTimestamp(),
       });
       await deleteDoc(doc(db, 'merch_sales', sale.id));
+      // След в журнале — как при удалении со Склада: merch-sync API по saleId узнаёт
+      // об отменённых продажах, не дожидаясь ночной полной выгрузки
+      await addDoc(collection(db, 'merch_history'), {
+        type: 'delete_sale',
+        saleId: sale.id,
+        productId: sale.productId || null,
+        productName: sale.productName,
+        club: sale.club,
+        details: `Отмена продажи: «${sale.productName}» (${sale.qty} шт${sale.size ? `, размер ${sale.size}` : ''}, Сумма: ${sale.totalSum ?? sale.total ?? 0} ₸, Продавец: ${sale.salespersonName || 'нет'}) — товар возвращён на склад`,
+        cashierName: user?.name || user?.email || 'Менеджер',
+        createdAt: serverTimestamp(),
+      }).catch(() => {}); // журнал не должен ломать саму отмену
       toast.success(`Отменено: ${sale.productName} × ${sale.qty}`);
     } catch (err) {
       console.error(err);
