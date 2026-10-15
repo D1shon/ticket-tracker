@@ -1,4 +1,5 @@
 import admin from 'firebase-admin'
+import { rewriteNews, NEWS_AUDIENCES, NEWS_TOPICS } from '../src/lib/newsRewrite.js'
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -38,10 +39,24 @@ export default async function handler(req, res) {
     const title = String(b.title || '').trim()
     const bodyText = String(b.text || b.body || b.message || '').trim()
     if (!title && !bodyText) return res.status(400).json({ error: 'text required' })
-    const text = [title, bodyText].filter(Boolean).join('\n\n').slice(0, 6000)
-
-    const audience = ['all', 'managers', 'sales'].includes(b.audience) ? b.audience : 'all'
+    const raw = [title, bodyText].filter(Boolean).join('\n\n').slice(0, 6000)
     const project = String(b.project || b.repo || b.source || '').trim()
+
+    // Сырой релиз-нот переписываем в понятную новость и раскладываем по адресатам:
+    // явные audience/topic от отправителя важнее, иначе берём определённые редактором.
+    // Если Vertex недоступен — публикуем исходник, релиз не теряется.
+    let text = raw
+    let audience = NEWS_AUDIENCES.includes(b.audience) ? b.audience : null
+    let topic = NEWS_TOPICS.includes(b.topic) ? b.topic : null
+    try {
+      const rw = await rewriteNews(raw)
+      if (rw) {
+        text = rw.text
+        audience = audience || rw.audience
+        topic = topic || rw.topic
+      }
+    } catch (e) { console.error('release-note rewrite:', e.message) }
+    audience = audience || 'all'
 
     // Идемпотентность: если прислали releaseId/version — повторный POST обновит тот же пост
     const key = String(b.releaseId || b.version || '').replace(/[^\w.\-]/g, '')
@@ -51,6 +66,8 @@ export default async function handler(req, res) {
 
     await ref.set({
       text,
+      raw: raw !== text ? raw : null, // исходник от разработчиков — для сверки
+      topic: topic || null,
       tr: {}, // текст мог измениться при повторном POST — переводим заново
       source: 'release',
       author: project || 'Релиз',

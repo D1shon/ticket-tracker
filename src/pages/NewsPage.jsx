@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Newspaper, Send, Plus, Trash2, X, Eye, Check, Edit3 } from 'lucide-react';
+import { Newspaper, Send, Plus, Trash2, X, Eye, Check, Edit3, Sparkles } from 'lucide-react';
 import { isMobileDevice } from '../lib/isMobile';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -49,6 +49,26 @@ const BULLET_EMOJI = [
   [/пульс|датчик/i, '❤️'],
 ];
 const pickEmoji = (rules, s) => (rules.find(([re]) => re.test(s)) || [])[1] || null;
+
+// Адресаты и темы новостей. Адресат определяет, в какой вкладке пост и кто его
+// видит; тема — бейдж и фильтр внутри вкладки. Оба подставляет «Сделать понятно».
+const AUDIENCES = [
+  ['all',      '📢 Всем'],
+  ['admins',   '🙋 Админам'],
+  ['managers', '👔 Менеджерам'],
+  ['sales',    '💼 Отделу продаж'],
+];
+const AUD_LABEL = Object.fromEntries(AUDIENCES);
+const TOPICS = [
+  ['app',   '📱 Приложение'],
+  ['admin', '🖥 Админка'],
+  ['pos',   '💳 POS-касса'],
+  ['track', '🧭 HJ Track'],
+  ['rules', '📋 Регламенты'],
+  ['promo', '🎉 Акции'],
+  ['other', '📌 Другое'],
+];
+const TOPIC_LABEL = Object.fromEntries(TOPICS);
 
 const renderNewsText = (raw) => {
   const lines = String(raw || '').split('\n');
@@ -104,6 +124,8 @@ const NewsPage = () => {
   const canSeeManagers = user?.role === 'manager' || user?.role === 'chef';
   // Окошко «Отдел продаж» — Ком-Дир, РОПы и шефы
   const canSeeSales = user?.role === 'komdir' || user?.role === 'rop' || user?.role === 'chef';
+  // Окошко «Админам» — админы, их менеджеры и шефы
+  const canSeeAdmins = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'chef';
   // Панель «кто посмотрел» — шефы (вся сеть) и менеджеры (только свой клуб)
   const canSeeViews = user?.role === 'chef' || user?.role === 'manager';
 
@@ -113,6 +135,10 @@ const NewsPage = () => {
   const [newText, setNewText] = useState('');
   const [newAudience, setNewAudience] = useState('all');
   const [newTemplate, setNewTemplate] = useState(''); // '' = обычный текст, иначе ключ RICH_TEMPLATES
+  const [newTopic, setNewTopic] = useState('');
+  const [rawText, setRawText] = useState(''); // исходник до «Сделать понятно» — хранится в посте как raw
+  const [rewriting, setRewriting] = useState(false);
+  const [topicFilter, setTopicFilter] = useState(''); // фильтр по теме внутри вкладки
   const [editingPost, setEditingPost] = useState(null); // пост в режиме редактирования
 
   const openEdit = (post) => {
@@ -120,10 +146,38 @@ const NewsPage = () => {
     setNewText(post.text || '');
     setNewAudience(post.audience || 'all');
     setNewTemplate(post.template || '');
+    setNewTopic(post.topic || '');
+    setRawText(post.raw || '');
     setShowAdd(true);
   };
-  const closeModal = () => { setShowAdd(false); setEditingPost(null); setNewText(''); setNewTemplate(''); setNewAudience('all'); };
+  const closeModal = () => { setShowAdd(false); setEditingPost(null); setNewText(''); setNewTemplate(''); setNewAudience('all'); setNewTopic(''); setRawText(''); };
   const [saving, setSaving] = useState(false);
+
+  // «Сделать понятно»: сырой текст из Slack → читабельная новость + адресат + тема
+  const makeReadable = async () => {
+    const src = newText.trim();
+    if (src.length < 10 || rewriting) return;
+    setRewriting(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const r = await fetch('/api/news-rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token || ''}` },
+        body: JSON.stringify({ text: src }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.text) throw new Error(j.error || 'пустой ответ');
+      if (!rawText) setRawText(src);
+      setNewText(j.text);
+      if (j.audience) setNewAudience(j.audience);
+      if (j.topic) setNewTopic(j.topic);
+      toast.success(`Переписано · ${AUD_LABEL[j.audience] || ''} · ${TOPIC_LABEL[j.topic] || ''}`);
+    } catch (e) {
+      toast.error('Не удалось переписать: ' + (e.message || e));
+    } finally {
+      setRewriting(false);
+    }
+  };
   // Просмотры (только для Дильшата): news_seen/{email} → { lastSeenISO, name, role, club }
   const [seenMap, setSeenMap] = useState({});
   // Явное «Ознакомлен» по каждому посту: news_acks/{postId__email} → ставит галочку в просмотрах
@@ -231,14 +285,21 @@ const NewsPage = () => {
   // Посты, доступные этой роли
   const visiblePosts = posts.filter(p =>
     (p.audience !== 'managers' || canSeeManagers) &&
-    (p.audience !== 'sales' || canSeeSales)
+    (p.audience !== 'sales' || canSeeSales) &&
+    (p.audience !== 'admins' || canSeeAdmins)
   );
-  const generalPosts = visiblePosts.filter(p => p.audience !== 'managers' && p.audience !== 'sales');
+  const generalPosts = visiblePosts.filter(p => !['managers', 'sales', 'admins'].includes(p.audience));
+  const adminPosts   = visiblePosts.filter(p => p.audience === 'admins');
   const managerPosts = visiblePosts.filter(p => p.audience === 'managers');
   const salesPosts   = visiblePosts.filter(p => p.audience === 'sales');
-  const shownPosts = canSeeManagers && audienceTab === 'managers' ? managerPosts
+  const listOf = (tab) => tab === 'managers' ? managerPosts : tab === 'sales' ? salesPosts : tab === 'admins' ? adminPosts : generalPosts;
+  const tabPosts = canSeeManagers && audienceTab === 'managers' ? managerPosts
     : canSeeSales && audienceTab === 'sales' ? salesPosts
+    : canSeeAdmins && audienceTab === 'admins' ? adminPosts
     : generalPosts;
+  const shownPosts = topicFilter ? tabPosts.filter(p => (p.topic || 'other') === topicFilter) : tabPosts;
+  // Темы, встречающиеся во вкладке — фильтр показываем только когда есть из чего выбирать
+  const tabTopics = TOPICS.filter(([id]) => tabPosts.some(p => (p.topic || 'other') === id));
 
   // Просмотр в облаке (панель «кто посмотрел» у Дильшата) — по факту открытия страницы.
   // ВАЖНО: локальный hj_news_seen здесь больше НЕ трогаем — прочитанность считается
@@ -261,7 +322,7 @@ const NewsPage = () => {
   }, [posts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Прочитанность по вкладкам: открыл вкладку → её посты прочитаны ──
-  const TAB_SEEN_KEY = { all: 'hj_news_seen_tab_all', managers: 'hj_news_seen_tab_managers', sales: 'hj_news_seen_tab_sales' };
+  const TAB_SEEN_KEY = { all: 'hj_news_seen_tab_all', admins: 'hj_news_seen_tab_admins', managers: 'hj_news_seen_tab_managers', sales: 'hj_news_seen_tab_sales' };
   const newestOf = (list) => list.reduce((m, p) => ((p.postedAtISO || '') > m ? (p.postedAtISO || '') : m), '');
   const [, setSeenTick] = useState(0);
   const tabSeen = (tab) => {
@@ -272,13 +333,11 @@ const NewsPage = () => {
     } catch { return ''; }
   };
   const tabUnread = (tab) => {
-    const list = tab === 'managers' ? managerPosts : tab === 'sales' ? salesPosts : generalPosts;
-    const newest = newestOf(list);
+    const newest = newestOf(listOf(tab));
     return !!newest && newest > tabSeen(tab);
   };
   useEffect(() => {
-    const list = audienceTab === 'managers' ? managerPosts : audienceTab === 'sales' ? salesPosts : generalPosts;
-    const newest = newestOf(list);
+    const newest = newestOf(listOf(audienceTab));
     if (!newest) return;
     try {
       const key = TAB_SEEN_KEY[audienceTab] || TAB_SEEN_KEY.all;
@@ -311,6 +370,8 @@ const NewsPage = () => {
           tr: {}, // текст изменился — старый перевод больше не актуален
           template: newTemplate || null,
           audience: newAudience,
+          topic: newTopic || null,
+          raw: rawText || null,
           editedAtISO: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         });
@@ -325,6 +386,8 @@ const NewsPage = () => {
           source: newTemplate ? 'release' : 'manual',
           author: user?.displayName || '',
           audience: newAudience,
+          topic: newTopic || null,
+          raw: rawText || null,
           postedAtISO: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         });
@@ -333,11 +396,7 @@ const NewsPage = () => {
         translatePost(ref.id, newBody, 'en');
         toast.success('Новость опубликована');
       }
-      setNewTemplate('');
-      setNewText('');
-      setNewAudience('all'); // не тянем аудиторию прошлого поста в следующий
-      setShowAdd(false);
-      setEditingPost(null);
+      closeModal(); // не тянем аудиторию/тему/исходник прошлого поста в следующий
     } catch (e) {
       toast.error('Не удалось сохранить');
     } finally {
@@ -366,6 +425,7 @@ const NewsPage = () => {
       if (!NEWS_ROLES.includes(p.role)) continue;
       if (post.audience === 'managers' && p.role !== 'manager' && p.role !== 'chef') continue;
       if (post.audience === 'sales' && p.role !== 'komdir' && p.role !== 'rop' && p.role !== 'chef') continue;
+      if (post.audience === 'admins' && p.role !== 'admin' && p.role !== 'manager' && p.role !== 'chef') continue;
       // Менеджер видит просмотры только своего клуба
       if (user?.role === 'manager' && (p.club || '').toUpperCase() !== myClub) continue;
       out.push({
@@ -446,16 +506,17 @@ const NewsPage = () => {
 
       {/* Окошки аудиторий: Общие / Менеджерам / Отдел продаж — по ролям.
           На мобильном — горизонтальная лента чипов без переноса */}
-      {(canSeeManagers || canSeeSales) && (
+      {(canSeeManagers || canSeeSales || canSeeAdmins) && (
         <div style={isMobile
           ? { display: 'flex', gap: 6, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
           : { display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
             ['all', `Общие (${generalPosts.length})`],
+            ...(canSeeAdmins ? [['admins', `🙋 Админам (${adminPosts.length})`]] : []),
             ...(canSeeManagers ? [['managers', `👔 Менеджерам (${managerPosts.length})`]] : []),
             ...(canSeeSales ? [['sales', `💼 Отдел продаж (${salesPosts.length})`]] : []),
           ].map(([id, label]) => (
-            <button key={id} onClick={() => setAudienceTab(id)} style={{
+            <button key={id} onClick={() => { setAudienceTab(id); setTopicFilter(''); }} style={{
               position: 'relative', flexShrink: 0, whiteSpace: 'nowrap',
               padding: isMobile ? '8px 14px' : '8px 16px', borderRadius: isMobile ? 999 : 12, fontSize: 12, fontWeight: 800, cursor: 'pointer',
               border: '1px solid ' + (audienceTab === id ? 'var(--accent-purple)' : 'var(--border)'),
@@ -467,6 +528,20 @@ const NewsPage = () => {
                 <span style={{ position: 'absolute', top: -3, right: -3, width: 10, height: 10, borderRadius: '50%', background: '#5F9C81', boxShadow: '0 0 6px #5F9C81', border: '2px solid var(--bg-primary)' }} />
               )}
             </button>
+          ))}
+        </div>
+      )}
+
+      {/* Фильтр по теме внутри вкладки — только если тем больше одной */}
+      {tabTopics.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch' }}>
+          {[['', 'Все темы'], ...tabTopics].map(([id, label]) => (
+            <button key={id || 'any'} onClick={() => setTopicFilter(id)} style={{
+              flexShrink: 0, whiteSpace: 'nowrap', padding: '5px 11px', borderRadius: 999, fontSize: 11, fontWeight: 800, cursor: 'pointer',
+              border: '1px solid ' + (topicFilter === id ? '#5580A8' : 'var(--border)'),
+              background: topicFilter === id ? 'rgba(85,128,168,0.14)' : 'transparent',
+              color: topicFilter === id ? '#5580A8' : 'var(--text-muted)',
+            }}>{label}</button>
           ))}
         </div>
       )}
@@ -504,6 +579,16 @@ const NewsPage = () => {
                 {p.audience === 'sales' && (
                   <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7, background: 'rgba(14,165,233,0.12)', color: '#0ea5e9', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     💼 Отдел продаж
+                  </span>
+                )}
+                {p.audience === 'admins' && (
+                  <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7, background: 'rgba(95,156,150,0.12)', color: '#5F9C96', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    🙋 Админам
+                  </span>
+                )}
+                {p.topic && TOPIC_LABEL[p.topic] && (
+                  <span style={{ fontSize: 9, fontWeight: 900, padding: '3px 9px', borderRadius: 7, background: 'rgba(85,128,168,0.12)', color: '#5580A8', letterSpacing: '0.03em' }}>
+                    {TOPIC_LABEL[p.topic]}
                   </span>
                 )}
                 <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>{fmtDate(p.postedAtISO)}{p.editedAtISO ? ' · изменено' : ''}</span>
@@ -577,15 +662,31 @@ const NewsPage = () => {
               <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>{editingPost ? 'Редактировать новость' : 'Новая новость'}</h3>
               <button onClick={closeModal} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, lineHeight: 0 }}><X size={18} /></button>
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {[['all', '📢 Всем'], ['managers', '👔 Менеджерам'], ['sales', '💼 Отделу продаж']].map(([id, label]) => (
-                <button key={id} onClick={() => setNewAudience(id)} style={{
-                  flex: 1, padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
-                  border: '1px solid ' + (newAudience === id ? 'var(--accent-purple)' : 'var(--border)'),
-                  background: newAudience === id ? 'var(--accent-purple)' : 'transparent',
-                  color: newAudience === id ? '#fff' : 'var(--text-muted)',
-                }}>{label}</button>
-              ))}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Кому</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {AUDIENCES.map(([id, label]) => (
+                  <button key={id} onClick={() => setNewAudience(id)} style={{
+                    flex: '1 1 45%', padding: '10px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                    border: '1px solid ' + (newAudience === id ? 'var(--accent-purple)' : 'var(--border)'),
+                    background: newAudience === id ? 'var(--accent-purple)' : 'transparent',
+                    color: newAudience === id ? '#fff' : 'var(--text-muted)',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Тема</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {TOPICS.map(([id, label]) => (
+                  <button key={id} onClick={() => setNewTopic(newTopic === id ? '' : id)} style={{
+                    padding: '6px 11px', borderRadius: 999, fontSize: 11, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                    border: '1px solid ' + (newTopic === id ? '#5580A8' : 'var(--border)'),
+                    background: newTopic === id ? 'rgba(85,128,168,0.14)' : 'transparent',
+                    color: newTopic === id ? '#5580A8' : 'var(--text-muted)',
+                  }}>{label}</button>
+                ))}
+              </div>
             </div>
             {/* Шаблон: обычный текст или готовый анонс */}
             <div>
@@ -616,6 +717,24 @@ const NewsPage = () => {
               onChange={e => setNewText(e.target.value)}
               style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', fontSize: 14, color: 'var(--text-primary)', outline: 'none', fontWeight: 500, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
             />
+            {!newTemplate && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  onClick={makeReadable}
+                  disabled={rewriting || newText.trim().length < 10}
+                  title="Переписать текст из Slack понятным языком, подставить адресата и тему"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', border: '1px solid #5580A8', background: 'rgba(85,128,168,0.12)', color: '#5580A8', opacity: rewriting || newText.trim().length < 10 ? 0.5 : 1 }}
+                >
+                  <Sparkles size={14} /> {rewriting ? 'Переписываю…' : 'Сделать понятно'}
+                </button>
+                {rawText && !rewriting && (
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+                    Исходник сохранится в посте ·{' '}
+                    <button onClick={() => { setNewText(rawText); setRawText(''); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#5580A8', fontWeight: 800, fontSize: 11 }}>вернуть исходник</button>
+                  </span>
+                )}
+              </div>
+            )}
             <button
               onClick={handleAdd}
               disabled={saving || (!newText.trim() && !newTemplate)}

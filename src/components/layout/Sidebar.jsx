@@ -59,6 +59,7 @@ const useNewsAlert = (role) => {
   const [seenTick, setSeenTick] = useState(0);
   const canSeeManagers = role === 'manager' || role === 'chef';
   const canSeeSales = role === 'komdir' || role === 'rop' || role === 'chef'; // отдел продаж: КД + РОПы
+  const canSeeAdmins = role === 'admin' || role === 'manager' || role === 'chef';
   useEffect(() => {
     const onSeen = () => setSeenTick(t => t + 1);
     window.addEventListener('hj-news-seen', onSeen);
@@ -75,17 +76,18 @@ const useNewsAlert = (role) => {
     return onSnapshot(q, snap => {
       // Свежесть считаем ПО ВКЛАДКАМ: общая / менеджерам / отделу продаж —
       // точка горит, пока не открыта КАЖДАЯ вкладка с новым постом.
-      let general = '', managers = '', sales = '';
+      let general = '', managers = '', sales = '', admins = '';
       snap.docs.forEach(d => {
         const data = d.data();
         const t = data.postedAtISO || '';
         if (data.audience === 'managers') { if (canSeeManagers && t > managers) managers = t; }
         else if (data.audience === 'sales') { if (canSeeSales && t > sales) sales = t; }
+        else if (data.audience === 'admins') { if (canSeeAdmins && t > admins) admins = t; }
         else if (t > general) general = t;
       });
-      setLatest({ general, managers, sales });
+      setLatest({ general, managers, sales, admins });
     }, () => setLatest(null));
-  }, [canSeeManagers, canSeeSales]);
+  }, [canSeeManagers, canSeeSales, canSeeAdmins]);
   void seenTick;
   const seenOf = (key) => {
     try {
@@ -97,6 +99,7 @@ const useNewsAlert = (role) => {
   if (!latest) return false;
   return (!!latest.general && latest.general > seenOf('hj_news_seen_tab_all'))
     || (!!latest.managers && latest.managers > seenOf('hj_news_seen_tab_managers'))
+    || (!!latest.admins && latest.admins > seenOf('hj_news_seen_tab_admins'))
     || (!!latest.sales && latest.sales > seenOf('hj_news_seen_tab_sales'));
 };
 
