@@ -248,14 +248,18 @@ const OnboardingPage = () => {
                     <button key={item.id} onClick={() => toggleItem(t, item.id)} disabled={isDone} style={{
                       display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', width: '100%',
                       padding: isMobile ? '10px 10px' : '8px 10px', minHeight: 44, borderRadius: 10, cursor: isDone ? 'default' : 'pointer',
-                      border: '1px solid ' + (c ? `${GREEN}33` : 'transparent'),
-                      background: c ? `${GREEN}0D` : 'transparent', color: 'var(--text-primary)',
+                      // Пройденный пункт: вся строка серая и зачёркнутая целиком
+                      border: '1px solid ' + (c ? 'var(--border)' : 'transparent'),
+                      background: c ? 'var(--bg-hover)' : 'transparent',
+                      color: c ? 'var(--text-muted)' : 'var(--text-primary)',
+                      textDecoration: c ? 'line-through' : 'none', textDecorationColor: c ? 'var(--text-muted)' : undefined,
+                      opacity: c ? 0.7 : 1,
                     }}>
-                      <span style={{ width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid ' + (c ? GREEN : 'var(--border)'), background: c ? GREEN : 'transparent' }}>
+                      <span style={{ width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid ' + (c ? '#9CA3AF' : 'var(--border)'), background: c ? '#9CA3AF' : 'transparent' }}>
                         {c && <Check size={14} color="#fff" strokeWidth={3} />}
                       </span>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, lineHeight: 1.35, textDecoration: c ? 'line-through' : 'none', color: c ? 'var(--text-muted)' : 'var(--text-primary)' }}>{item.text}</span>
-                      {c && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{c.byName ? c.byName.split(' ')[0] : ''} · {fmtDay(c.atISO)}</span>}
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, lineHeight: 1.35 }}>{item.text}</span>
+                      {c && <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{c.byName ? c.byName.split(' ')[0] : ''} · {fmtDay(c.atISO)}</span>}
                     </button>
                   );
                 })}
