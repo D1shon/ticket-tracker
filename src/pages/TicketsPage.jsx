@@ -795,12 +795,25 @@ const TicketsPage = () => {
   const userClub = user?.club?.toUpperCase();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeClub,   setActiveClub]   = useState(() => userClub || searchParams.get('club') || 'ВСЕ');
-  // Автофильтры из URL (переход из Операционного центра): ?filter=В РАБОТЕ / ?priority=critical / ?q=имя
-  const [activeFilter, setActiveFilter] = useState(() => { const f = searchParams.get('filter'); return f && FILTERS.includes(f) ? f : 'ВСЕ'; });
-  const [priorityFilter, setPriorityFilter] = useState(() => searchParams.get('priority') || '');
-  const [search,       setSearch]       = useState(() => searchParams.get('q') || '');
-  const [viewMode,     setViewMode]     = useState('kanban');
+  // Фильтры переживают проваливание в заявку и возврат: страница размонтируется,
+  // поэтому выбор держим в sessionStorage. Приоритет: URL-параметр (переход из
+  // Операционного центра) → сохранённый выбор → значение по умолчанию.
+  const savedFilters = (() => {
+    try { return JSON.parse(sessionStorage.getItem('hj_tickets_filters')) || {}; } catch { return {}; }
+  })();
+  const [activeClub,   setActiveClub]   = useState(() => userClub || searchParams.get('club') || savedFilters.club || 'ВСЕ');
+  const [activeFilter, setActiveFilter] = useState(() => {
+    const f = searchParams.get('filter') || savedFilters.filter;
+    return f && FILTERS.includes(f) ? f : 'ВСЕ';
+  });
+  const [priorityFilter, setPriorityFilter] = useState(() => searchParams.get('priority') || savedFilters.priority || '');
+  const [search,       setSearch]       = useState(() => searchParams.get('q') || savedFilters.q || '');
+  const [viewMode,     setViewMode]     = useState(() => savedFilters.view || 'kanban');
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('hj_tickets_filters', JSON.stringify({ club: activeClub, filter: activeFilter, priority: priorityFilter, q: search, view: viewMode }));
+    } catch {}
+  }, [activeClub, activeFilter, priorityFilter, search, viewMode]);
   const [isCreateOpen,   setIsCreateOpen]   = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [prevColIds,    setPrevColIds]    = useState(null);
