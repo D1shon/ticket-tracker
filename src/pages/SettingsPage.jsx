@@ -987,8 +987,10 @@ const SettingsPage = () => {
             // Все аккаунты клуба, кроме шефа и МОПов (role:'rop'+mop — ими управляет
             // РОП на странице /staff, здесь их можно было бы удалить случайно)
             const fitsClub = (u) => (u.club || '').toUpperCase() === clubName.toUpperCase() && u.role !== 'chef' && !u.mop;
+            // Захардкоженные менеджеры показаны в карточке «Роли» выше — здесь только
+            // те, кого можно удалить (админы и созданные вручную аккаунты)
             const staticStaff = Object.entries(USER_ROLES)
-              .filter(([email, u]) => fitsClub(u) && !(email in appUsers));
+              .filter(([email, u]) => fitsClub(u) && u.role !== 'manager' && !(email in appUsers));
             const dynamicStaff = Object.entries(appUsers)
               .filter(([, u]) => !u.revoked && fitsClub({ ...u, role: u.role || 'admin' }));
             const allAdmins = [
