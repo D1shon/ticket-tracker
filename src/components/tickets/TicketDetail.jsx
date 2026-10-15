@@ -663,14 +663,18 @@ const TicketDetail = () => {
                 </div>
               ) : messages.map(m => {
                 // Удалять можно только свои сообщения (шеф — любые)
-                const canDelete = !!user && (user.role === 'chef' ||
-                  (m.authorEmail || '').toLowerCase() === (user.email || '').toLowerCase());
+                const myEmail = (user?.email || '').toLowerCase();
+                // Старые сообщения без authorEmail — сравниваем по отформатированному имени
+                const mine = !!user && (m.authorEmail
+                  ? m.authorEmail.toLowerCase() === myEmail
+                  : formatAuthor(m.author) === formatAuthor(user));
+                const canDelete = !!user && (user.role === 'chef' || mine);
                 return (
                 <div
                   key={m.id}
                   onMouseEnter={() => setHoveredMsg(m.id)}
                   onMouseLeave={() => setHoveredMsg(null)}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, position: 'relative' }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', gap: 4, position: 'relative' }}
                 >
                   {/* delete button — на тач-экране hover нет, показываем всегда */}
                   {canDelete && (hoveredMsg === m.id || isMobile) && (
@@ -678,7 +682,8 @@ const TicketDetail = () => {
                       onClick={() => deleteComment && deleteComment(ticket.id, m.id)}
                       title="Удалить сообщение"
                       style={{
-                        position: 'absolute', top: 0, right: 0, transform: 'translate(8px, -8px)',
+                        position: 'absolute', top: 0,
+                        ...(mine ? { right: 0, transform: 'translate(8px, -8px)' } : { left: 0, transform: 'translate(-8px, -8px)' }),
                         width: 22, height: 22,
                         background: 'rgba(176,106,106,0.15)', border: '1px solid rgba(176,106,106,0.4)',
                         borderRadius: 6, cursor: 'pointer',
@@ -692,7 +697,10 @@ const TicketDetail = () => {
                       <Trash2 size={11} />
                     </button>
                   )}
-                  <div style={{ background: 'rgba(85,128,168,0.12)', border: '1px solid rgba(85,128,168,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }}>
+                  <div style={mine
+                    ? { background: 'rgba(85,128,168,0.12)', border: '1px solid rgba(85,128,168,0.2)', borderRadius: '10px 10px 2px 10px', padding: '8px 14px', maxWidth: '80%' }
+                    : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px 10px 10px 2px', padding: '8px 14px', maxWidth: '80%' }}>
+                    {!mine && <div style={{ fontSize: 11, fontWeight: 700, color: '#5580A8', marginBottom: 3 }}>{formatAuthor(m.author)}</div>}
                     {m.text && <div style={{ fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{m.text}</div>}
                     {m.attachment && (
                       <div style={{ marginTop: m.text ? 8 : 0 }}>
@@ -718,7 +726,7 @@ const TicketDetail = () => {
                       </div>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatAuthor(m.author)} · {formatCreatedDate(m.createdAt || m.time)}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{mine ? `${formatAuthor(m.author)} · ` : ''}{formatCreatedDate(m.createdAt || m.time)}</div>
                 </div>
                 );
               })}
