@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ClipboardCheck, Plus, X, ChevronLeft, Check, Trash2, CheckCircle2, UserRound, CalendarDays, GraduationCap } from 'lucide-react';
+import { ClipboardCheck, Plus, X, ChevronLeft, ChevronDown, Check, Trash2, CheckCircle2, UserRound, CalendarDays, GraduationCap } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { isMobileDevice } from '../lib/isMobile';
@@ -51,6 +51,8 @@ const OnboardingPage = () => {
   const [showDone, setShowDone] = useState(false);
   const [params, setParams] = useSearchParams();
   const openId = params.get('id');
+  const [openSec, setOpenSec] = useState({}); // ручное раскрытие/сворачивание групп чек-листа
+  useEffect(() => { setOpenSec({}); }, [openId]);
 
   // Форма нового стажёра
   const [showAdd, setShowAdd] = useState(false);
@@ -227,14 +229,19 @@ const OnboardingPage = () => {
         {ONBOARDING_SECTIONS.map(sec => {
           const secDone = sec.items.filter(i => t.checks?.[i.id]).length;
           const all = secDone === sec.items.length;
+          // Полностью пройденная группа сворачивается сама; вручную можно раскрыть/свернуть любую
+          const isOpen = openSec[sec.id] ?? !all;
           return (
             <div key={sec.id} style={{ background: 'var(--bg-card)', border: '1px solid ' + (all ? `${GREEN}55` : 'var(--border)'), borderRadius: 16, padding: isMobile ? '12px 12px' : '16px 18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: sec.intro ? 2 : 8 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 900, color: 'var(--text-primary)', flex: 1 }}>{sec.title}</span>
+              <button onClick={() => setOpenSec(o => ({ ...o, [sec.id]: !isOpen }))} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', marginBottom: isOpen ? (sec.intro ? 2 : 8) : 0 }}>
+                {all
+                  ? <span style={{ width: 20, height: 20, borderRadius: 6, background: GREEN, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Check size={13} color="#fff" strokeWidth={3} /></span>
+                  : <ChevronDown size={16} color="var(--text-muted)" style={{ flexShrink: 0, transform: isOpen ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />}
+                <span style={{ fontSize: 13.5, fontWeight: 900, color: all ? 'var(--text-muted)' : 'var(--text-primary)', flex: 1, textDecoration: all ? 'line-through' : 'none' }}>{sec.title}</span>
                 <span style={{ fontSize: 10, fontWeight: 900, color: all ? GREEN : 'var(--text-muted)' }}>{secDone}/{sec.items.length}</span>
-              </div>
-              {sec.intro && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8 }}>{sec.intro}</div>}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              </button>
+              {isOpen && sec.intro && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8 }}>{sec.intro}</div>}
+              {isOpen && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {sec.items.map(item => {
                   const c = t.checks?.[item.id];
                   return (
@@ -247,12 +254,12 @@ const OnboardingPage = () => {
                       <span style={{ width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid ' + (c ? GREEN : 'var(--border)'), background: c ? GREEN : 'transparent' }}>
                         {c && <Check size={14} color="#fff" strokeWidth={3} />}
                       </span>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: c ? 600 : 500, lineHeight: 1.35 }}>{item.text}</span>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, lineHeight: 1.35, textDecoration: c ? 'line-through' : 'none', color: c ? 'var(--text-muted)' : 'var(--text-primary)' }}>{item.text}</span>
                       {c && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{c.byName ? c.byName.split(' ')[0] : ''} · {fmtDay(c.atISO)}</span>}
                     </button>
                   );
                 })}
-              </div>
+              </div>}
             </div>
           );
         })}
