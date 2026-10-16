@@ -252,13 +252,13 @@ const OnboardingPage = () => {
                       border: '1px solid ' + (c ? 'var(--border)' : 'transparent'),
                       background: c ? 'var(--bg-hover)' : 'transparent',
                       color: c ? 'var(--text-muted)' : 'var(--text-primary)',
-                      textDecoration: c ? 'line-through' : 'none', textDecorationColor: c ? 'var(--text-muted)' : undefined,
                       opacity: c ? 0.7 : 1,
                     }}>
                       <span style={{ width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid ' + (c ? '#9CA3AF' : 'var(--border)'), background: c ? '#9CA3AF' : 'transparent' }}>
                         {c && <Check size={14} color="#fff" strokeWidth={3} />}
                       </span>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, lineHeight: 1.35 }}>{item.text}</span>
+                      {/* Зачёркнут только текст пункта; имя закрывшего и дата читаются */}
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, lineHeight: 1.35, textDecoration: c ? 'line-through' : 'none' }}>{item.text}</span>
                       {c && <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{c.byName ? c.byName.split(' ')[0] : ''} · {fmtDay(c.atISO)}</span>}
                     </button>
                   );
