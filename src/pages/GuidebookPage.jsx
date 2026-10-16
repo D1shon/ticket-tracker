@@ -8,7 +8,7 @@ import {
 import { useTickets } from '../store/TicketContext';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, addDoc, setDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 
 const SECTIONS = [
@@ -278,8 +278,17 @@ const GuidebookPage = ({ mode }) => {
   };
 
   const handleDeleteTopic = async (topic) => {
-    if (!window.confirm(`Удалить статью "${topic.title}"?`)) return;
+    if (!window.confirm(`Удалить статью "${topic.title}"?\n\nСтатья уйдёт в корзину гайдбука — её можно будет восстановить.`)) return;
     try {
+      // Корзина: копия документа в guidebook_trash — 15.10 две статьи удалили случайно,
+      // восстанавливать пришлось из словарей переводов. Восстановление — через шефа.
+      const { _docId, ...rest } = topic;
+      await setDoc(doc(db, 'guidebook_trash', _docId), {
+        ...rest,
+        deletedAtISO: new Date().toISOString(),
+        deletedBy: user?.email || '',
+        deletedByName: user?.displayName || '',
+      }).catch(() => {}); // корзина не должна блокировать удаление
       await deleteDoc(doc(db, 'guidebook', topic._docId));
       setGuidebookData(prev => prev.filter(item => item._docId !== topic._docId));
       if (selectedTopicId === topic.id) setSelectedTopicId(null);
