@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Dumbbell, Receipt, Plus, X, Clock, Check, Ban, Trash2, User, Camera, Wrench, LayoutGrid, List, Archive } from 'lucide-react';
+import { Dumbbell, Receipt, Plus, X, Clock, Check, Ban, Trash2, User, Camera, Wrench, LayoutGrid, List, Archive, Pencil } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { useTickets } from '../store/TicketContext';
@@ -94,6 +94,24 @@ const InvoicesPage = () => {
   const emptyInvoice = { workDesc: '', workDate: new Date().toISOString().slice(0, 10), amount: '', photos: [], club: myClub || '4YOU', problemIds: [] };
   const [pForm, setPForm] = useState(emptyProblem);
   const [iForm, setIForm] = useState(emptyInvoice);
+  // Редактирование: та же модалка, что и создание, но сохраняет в существующий документ
+  const [editingProblem, setEditingProblem] = useState(null);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const openEditProblem = (p) => {
+    setEditingProblem(p);
+    setPForm({ desc: p.desc || '', photos: p.photos || [], club: p.club || myClub || '4YOU' });
+    setShowAddProblem(true);
+  };
+  const openEditInvoice = (inv) => {
+    setEditingInvoice(inv);
+    setIForm({
+      workDesc: inv.workDesc || '', workDate: inv.workDateISO || '', amount: inv.amount != null ? String(inv.amount) : '',
+      photos: inv.photos || [], club: inv.club || myClub || '4YOU', problemIds: inv.problemIds || [],
+    });
+    setShowAddInvoice(true);
+  };
+  const closeProblemModal = () => { setShowAddProblem(false); setEditingProblem(null); setPForm({ ...emptyProblem }); };
+  const closeInvoiceModal = () => { setShowAddInvoice(false); setEditingInvoice(null); setIForm({ ...emptyInvoice }); };
 
   useEffect(() => {
     const h = () => setIsMobile(isMobileDevice());
@@ -145,8 +163,9 @@ const InvoicesPage = () => {
   // Согласованные проблемы клуба — их закрывает загружаемый счёт
   const attachableProblems = useMemo(() => {
     const club = isChef ? iForm.club : myClub;
-    return problems.filter(p => p.club === club && p.status === 'repair_approved');
-  }, [problems, isChef, myClub, iForm.club]);
+    // При редактировании счёта показываем и уже прикреплённые к нему проблемы — чтобы можно было снять
+    return problems.filter(p => p.club === club && (p.status === 'repair_approved' || (editingInvoice && p.invoiceId === editingInvoice.id)));
+  }, [problems, isChef, myClub, iForm.club, editingInvoice]);
 
   // ── Вложения ──
   const handleFiles = (setter, allowPdf) => async (ev) => {
@@ -194,6 +213,19 @@ const InvoicesPage = () => {
     const club = isChef ? pForm.club : myClub;
     if (!club) return toast.error('Не определён клуб');
     setSaving(true);
+    if (editingProblem) {
+      try {
+        await updateDoc(doc(db, 'equip_problems', editingProblem.id), {
+          desc: pForm.desc.trim(), photos: pForm.photos, ...(isChef ? { club } : {}),
+          editedByName: myName, editedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        });
+        toast.success('Изменения сохранены');
+        closeProblemModal();
+      } catch (e) { console.error(e); toast.error('Не удалось сохранить'); }
+      finally { setSaving(false); }
+      return;
+    }
     try {
       await addDoc(collection(db, 'equip_problems'), {
         club, desc: pForm.desc.trim(), photos: pForm.photos,
@@ -252,6 +284,28 @@ const InvoicesPage = () => {
     const club = isChef ? iForm.club : myClub;
     if (!club) return toast.error('Не определён клуб');
     setSaving(true);
+    if (editingInvoice) {
+      try {
+        await updateDoc(doc(db, 'invoices', editingInvoice.id), {
+          workDesc: iForm.workDesc.trim(), workDateISO: iForm.workDate || null, amount: amountNum,
+          photos: iForm.photos, problemIds: iForm.problemIds, ...(isChef ? { club } : {}),
+          editedByName: myName, editedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        });
+        // Перепривязка проблем: снятые возвращаются в «согласовано», добавленные — в «счёт загружен»
+        const was = editingInvoice.problemIds || [];
+        await Promise.all([
+          ...was.filter(pid => !iForm.problemIds.includes(pid)).map(pid =>
+            updateDoc(doc(db, 'equip_problems', pid), { status: 'repair_approved', invoiceId: null, updatedAt: serverTimestamp() }).catch(() => {})),
+          ...iForm.problemIds.filter(pid => !was.includes(pid)).map(pid =>
+            updateDoc(doc(db, 'equip_problems', pid), { status: 'invoiced', invoiceId: editingInvoice.id, updatedAt: serverTimestamp() }).catch(() => {})),
+        ]);
+        toast.success('Счёт обновлён');
+        closeInvoiceModal();
+      } catch (e) { console.error(e); toast.error('Не удалось сохранить счёт'); }
+      finally { setSaving(false); }
+      return;
+    }
     try {
       const ref = await addDoc(collection(db, 'invoices'), {
         club,
@@ -326,6 +380,10 @@ const InvoicesPage = () => {
     } catch { toast.error('Не удалось удалить'); }
   };
   const canDeleteProblem = (p) => isChef || ((p.createdByEmail || '').toLowerCase() === myEmail && (p.status || 'new') === 'new');
+  // Редактировать: шеф — любую; менеджер — проблемы своего клуба, пока по ним нет счёта;
+  // счета своего клуба, пока оплата не подтверждена
+  const canEditProblem = (p) => isChef || (p.club === myClub && (p.status || 'new') !== 'invoiced');
+  const canEditInvoice = (inv) => isChef || (inv.club === myClub && (inv.status || 'pending') !== 'approved');
 
   const fmtDate = (iso) => { try { return format(new Date(iso), 'd MMM HH:mm', { locale: ru }); } catch { return ''; } };
 
@@ -377,6 +435,7 @@ const InvoicesPage = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
           <User size={10} /> {p.createdByName} · <Clock size={10} /> {fmtDate(p.createdAtISO)}
           {p.decidedBy && p.status !== 'new' && <span>· {p.status === 'rejected' ? 'отклонил' : 'согласовал'} {p.decidedBy}</span>}
+          {p.editedAtISO && <span>· изменено {fmtDate(p.editedAtISO)}{p.editedByName ? ` (${p.editedByName})` : ''}</span>}
         </div>
         {p.rejectNote && p.status === 'rejected' && (
           <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: '#9c7d7d', background: 'rgba(156,125,125,0.08)', border: '1px solid rgba(156,125,125,0.25)', borderRadius: 8, padding: '6px 10px' }}>
@@ -396,8 +455,13 @@ const InvoicesPage = () => {
           {p.status === 'repair_approved' && (
             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>отметьте её при загрузке счёта</span>
           )}
+          {canEditProblem(p) && (
+            <button onClick={() => openEditProblem(p)} title="Редактировать" style={{ marginLeft: 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.6 }}>
+              <Pencil size={13} />
+            </button>
+          )}
           {(canDeleteProblem(p) || (isChef && p.status === 'rejected')) && (
-            <button onClick={() => deleteProblem(p)} title="Удалить" style={{ marginLeft: 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.5 }}>
+            <button onClick={() => deleteProblem(p)} title="Удалить" style={{ marginLeft: canEditProblem(p) ? 0 : 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.5 }}>
               <Trash2 size={13} />
             </button>
           )}
@@ -440,6 +504,7 @@ const InvoicesPage = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
           <User size={10} /> {inv.createdByName} · <Clock size={10} /> {fmtDate(inv.createdAtISO)}
           {inv.decidedBy && inv.status !== 'pending' && <span>· {inv.status === 'approved' ? 'подтвердил' : 'отклонил'} {inv.decidedBy}</span>}
+          {inv.editedAtISO && <span>· изменено {fmtDate(inv.editedAtISO)}{inv.editedByName ? ` (${inv.editedByName})` : ''}</span>}
         </div>
         {inv.rejectNote && inv.status === 'rejected' && (
           <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: '#9c7d7d', background: 'rgba(156,125,125,0.08)', border: '1px solid rgba(156,125,125,0.25)', borderRadius: 8, padding: '6px 10px' }}>
@@ -456,8 +521,13 @@ const InvoicesPage = () => {
           {isChef && inv.status === 'rejected' && (
             <button onClick={() => decideInvoice(inv, 'approved')} style={{ ...actionBtn('var(--text-secondary)'), border: '1px solid var(--border)', textTransform: 'none', letterSpacing: 0, fontWeight: 800 }}>↩ Всё-таки оплатить</button>
           )}
+          {canEditInvoice(inv) && (
+            <button onClick={() => openEditInvoice(inv)} title="Редактировать" style={{ marginLeft: 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.6 }}>
+              <Pencil size={13} />
+            </button>
+          )}
           {canDeleteInvoice(inv) && (
-            <button onClick={() => removeInvoice(inv)} title="Удалить" style={{ marginLeft: 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.5 }}>
+            <button onClick={() => removeInvoice(inv)} title="Удалить" style={{ marginLeft: canEditInvoice(inv) ? 0 : 'auto', padding: isMobile ? 9 : 5, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 0, opacity: 0.5 }}>
               <Trash2 size={13} />
             </button>
           )}
@@ -630,7 +700,7 @@ const InvoicesPage = () => {
       ), true)}
 
       {/* Модалка «Проблема» */}
-      {showAddProblem && modalShell(() => setShowAddProblem(false), 'Проблема тренажёра' + (!isChef && myClub ? ` · ${myClub}` : ''), (
+      {showAddProblem && modalShell(closeProblemModal, (editingProblem ? 'Редактировать проблему' : 'Проблема тренажёра') + (!isChef && myClub ? ` · ${myClub}` : ''), (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {clubSelect(pForm, setPForm)}
           <div>
@@ -647,13 +717,13 @@ const InvoicesPage = () => {
             padding: '13px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff',
             fontSize: 12.5, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: saving ? 0.6 : 1,
           }}>
-            {saving ? 'Сохранение…' : 'Отправить на согласование'}
+            {saving ? 'Сохранение…' : editingProblem ? 'Сохранить изменения' : 'Отправить на согласование'}
           </button>
         </div>
       ))}
 
       {/* Модалка «Счёт» */}
-      {showAddInvoice && modalShell(() => setShowAddInvoice(false), 'Счёт на оплату ремонта' + (!isChef && myClub ? ` · ${myClub}` : ''), (
+      {showAddInvoice && modalShell(closeInvoiceModal, (editingInvoice ? 'Редактировать счёт' : 'Счёт на оплату ремонта') + (!isChef && myClub ? ` · ${myClub}` : ''), (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {clubSelect(iForm, setIForm)}
           <div>
@@ -709,7 +779,7 @@ const InvoicesPage = () => {
             padding: '13px', borderRadius: 12, border: 'none', background: 'var(--accent-purple)', color: '#fff',
             fontSize: 12.5, fontWeight: 900, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: saving ? 0.6 : 1,
           }}>
-            {saving ? 'Сохранение…' : 'Отправить на согласование оплаты'}
+            {saving ? 'Сохранение…' : editingInvoice ? 'Сохранить изменения' : 'Отправить на согласование оплаты'}
           </button>
         </div>
       ))}
