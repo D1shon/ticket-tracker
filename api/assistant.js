@@ -4,7 +4,9 @@
 // возвращает пусто, поэтому его здесь НЕ используем.
 import { initializeApp, getApps } from 'firebase/app'
 import { getAuth, signInAnonymously } from 'firebase/auth'
-import { getFirestore, collection, getDocs } from 'firebase/firestore'
+import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore'
+import { vertexGenerate } from '../src/lib/vertex.js'
+import { platformText, PLATFORM_PAGES } from '../src/lib/assistantKnowledge.js'
 
 const FB = {
   apiKey: 'AIzaSyCPAitt8EX3ialTb2-_1FQimmlpw5blFYk',
@@ -175,53 +177,80 @@ function buildPolicy(map, club, question) {
   return out.trim()
 }
 
-// Второй источник знаний — описание самой платформы HJ Track (её вкладки и функции).
-const PLATFORM_INFO = `HJ Track (он же HJTRACK, «трак», «трэк») — рабочая платформа сети клубов Hero's Journey для сотрудников. Открывается в браузере и как приложение (PWA) на телефоне. Разделы и функции:
-- Новости — объявления и релизы; аудитории «всем / менеджерам / отдел продаж»; видно, кто посмотрел.
-- Заявки — задачи и заявки на обслуживание (поломки, розетки, оборудование); статусы, приоритеты, комментарии.
-- График — расписание смен сотрудников, процент продаж/награда.
-- Чек-листы — чек-листы открытия и закрытия смены.
-- Склад — товары, продажи, остатки, награда/комиссия админам.
-- Продажи, Дашборд, Архив — сводки и история.
-- Учёт полотенец — приход чистого, грязные; для NURLY ORDA ещё маленькие полотенца и кг.
-- Пульсометры — учёт пульсометров. Утерянные вещи — забытые вещи клиентов.
-- Отзывы — три источника: 2ГИС (отвечать можно прямо из платформы), QR-отзывы клиентов (сканируют QR в шкафчиках, оценка 1-5 и текст), WhatsApp (анализ переписок).
-- Лиды — заявки клиентов про цены/абонементы из рабочего WhatsApp + «живые визиты» вручную; статусы «Принято» и «Связались».
-- Чекин — отметка прихода/ухода на смену по IP клуба (сканер).
-- Созвоны — видеозвонки для команды (личные и групповые).
-- Гайдбук — база знаний, стандарты и регламенты. Соглашения — документы.
-- Настройки — команда своего клуба, включение push-уведомлений, смена пароля.
-- Помощник — этот ИИ-чат (по гайдбуку и платформе).
-- Отчёт за сегодня — кнопка у шефа и отдельных аккаунтов: сводка событий дня.
-Push-уведомления (включаются в Настройках): чекаут, Demo Day (пятница), новые отзывы 2ГИС и QR, новые лиды.
-Вход по email и паролю. Роли: Шеф, Менеджер, Администратор, Ком-Дир, РОП, маркетинг.
-Клубы: 4YOU, COLIBRI, VILLA (Алматы), NURLY ORDA (Астана), PROMENADE (Алматы), EUROPE CITY (Алматы).`
+// ── Четвёртый источник: свежие новости платформы (релизы и объявления за 45 дней) ──
+let newsCache = null
+let newsCachedAt = 0
+async function getRecentNews() {
+  const now = Date.now()
+  if (newsCache && now - newsCachedAt < GUIDE_TTL) return newsCache
+  try {
+    await ensureAuth()
+    const cutoff = new Date(now - 45 * 24 * 3600 * 1000).toISOString()
+    const snap = await getDocs(query(collection(getFirestore(fbApp), 'news_posts'), where('postedAtISO', '>=', cutoff)))
+    newsCache = snap.docs
+      .map(d => d.data())
+      .filter(n => (n.text || '').trim())
+      .sort((a, b) => (b.postedAtISO || '').localeCompare(a.postedAtISO || ''))
+      .slice(0, 40)
+      .map(n => `[${(n.postedAtISO || '').slice(0, 10)} · ${n.audience === 'managers' ? 'менеджерам' : n.audience === 'admins' ? 'админам' : n.audience === 'sales' ? 'отделу продаж' : 'всем'}]\n${(n.text || '').slice(0, 1800)}`)
+      .join('\n\n')
+    newsCachedAt = now
+    return newsCache
+  } catch (err) {
+    console.warn('news read failed:', err.message)
+    return newsCache ?? ''
+  }
+}
 
-const SYSTEM = (guide, policy) => `Ты — встроенный помощник платформы HJ Track для сотрудников сети фитнес-клубов Hero's Journey (клубы: 4YOU, COLIBRI, VILLA, NURLY ORDA, PROMENADE, EUROPE CITY).
+// Системный промпт умного помощника: четыре источника + карта платформы со ссылками.
+// Ответ — JSON, чтобы клиент мог нарисовать кнопки «перейти на страницу».
+const SYSTEM = (guide, policy, news) => `Ты — встроенный помощник платформы HJ Track для сотрудников сети фитнес-клубов Hero's Journey. Твоя задача — дать максимально полный, практичный ответ и показать, где именно на платформе это делается.
 
-У тебя ТРИ источника знаний, все ниже: «О ПЛАТФОРМЕ HJ TRACK» (описание приложения, его вкладок и функций), «ГАЙДБУК» (стандарты обслуживания и регламенты клуба) и «ОФЕРТА И ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ» (публичный договор-оферта с клиентом и правила обработки персональных данных).
+ИСТОЧНИКИ (все ниже): «ПЛАТФОРМА HJ TRACK» (все вкладки, кому доступны, как в них работать, с path для ссылок), «ГАЙДБУК» (стандарты сервиса, регламенты, скрипты), «ОФЕРТА И ПОЛИТИКА» (договор с клиентом, абонементы, заморозка, возврат, персональные данные), «НОВОСТИ» (последние релизы приложения атлета, POS-кассы, Админки и самой платформы — что изменилось недавно).
 
-Правила:
-- Вопросы про платформу HJ Track (упоминания «HJ Track», «HJTRACK», «трак», «трэк», приложение, вкладка, функция, кнопка, «как ... в приложении/на платформе», уведомления, роли, отзывы, лиды, чек-ин и т.п.) — отвечай по разделу «О ПЛАТФОРМЕ HJ TRACK» (и по гайдбуку, если релевантно).
-- Вопросы про работу в клубе, сервис, правила, ситуации с клиентами — отвечай по гайдбуку.
-- Вопросы про договор с клиентом, оферту, условия членства, абонемент, заморозку, возврат, оплату, ответственность, предмет договора, права/обязанности сторон, персональные данные, конфиденциальность, обработку/хранение данных — это РАБОЧИЕ вопросы, отвечай по разделу «ОФЕРТА И ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ» (ищи ответ в нём внимательно, даже если вопрос сформулирован коротко). НЕ считай такие вопросы болтовнёй.
-- Отвечай ТОЛЬКО на основе этих трёх источников. НЕ используй общие знания и НЕ выдумывай вкладки, кнопки, функции, шаги, статусы, пункты договора, которых нет ни в описании платформы, ни в гайдбуке, ни в оферте.
-- Если ответа нет НИ в одном из трёх источников — ответь честно ровно так: «Пока нет информации по этому вопросу в гайдбуке, оферте и описании платформы. Уточните у управляющего или шефа — и мы добавим это.»
-- Если вопрос совсем НЕ про работу и НЕ про платформу (личное, развлечения, болтовня, общие темы) — ответь РОВНО этой фразой и ничем больше: «Давай работать 🙂 На такие вопросы у тебя есть ChatGPT.»
-- Пиши ОБЫЧНЫМ текстом, БЕЗ markdown-разметки: не используй **, ##, одиночные * и обратные кавычки. Списки оформляй как «1. 2. 3.» или тире.
-- Отвечай кратко, по делу, без «воды», но ПОЛНОСТЬЮ (не обрывай мысль).
+КАК ОТВЕЧАТЬ:
+1. Собери ответ из ВСЕХ источников, где есть что-то по теме: регламент из гайдбука + где это сделать на платформе + что недавно менялось по новостям + условия из оферты, если касается договора. Не ограничивайся одним источником.
+2. Отвечай ПОЛНО: по шагам (1. 2. 3.), с конкретными названиями вкладок и кнопок, сроками, цифрами, готовыми фразами для клиента, если это ситуация общения. Без «воды», но ничего важного не выбрасывай.
+3. Даже если вопрос связан с платформой КОСВЕННО (например, «клиент жалуется на пропавшую куртку» → Утерянные вещи + регламент + единое окно обращений; «не пришёл пуш» → Настройки/уведомления; «стажёр вышел первый день» → Адаптация + Гайдбук/Экскурсия + Академия) — сам сделай связку и укажи нужные страницы.
+4. Учитывай роль и клуб спрашивающего: подсказывай то, что ему доступно; если функция доступна другой роли — так и скажи, кому.
+5. Если по части вопроса данных нет — ответь на то, что есть, и честно скажи, чего нет и у кого уточнить (управляющий/шеф). Не выдумывай вкладки, кнопки, сроки и пункты договора.
+6. Уточняющие вопросы («а дальше?», «а если нет?») понимай в контексте предыдущих сообщений диалога.
+7. Не про работу и не про платформу (личное, развлечения) — коротко и дружелюбно верни к работе, offtopic: true.
+8. Пиши на русском, обычным текстом без markdown-символов (без **, ##, звёздочек-маркеров, обратных кавычек). Нумерованные списки «1. 2. 3.», подпункты — через тире «— ». Абзацы — через пустую строку.
+9. Собеседник — СОТРУДНИК клуба (не клиент): отвечай ему как коллеге. Готовые фразы для клиента давай отдельно в кавычках. Не пиши в тексте «path: /...» — страницы называй по имени («вкладка «Утерянные вещи»»), а path указывай только в links/related.
 
-=== О ПЛАТФОРМЕ HJ TRACK ===
-${PLATFORM_INFO}
-=== КОНЕЦ ОПИСАНИЯ ПЛАТФОРМЫ ===
+ФОРМАТ ОТВЕТА — строго JSON:
+{
+  "answer": "полный текст ответа",
+  "links": [{"path": "/lost-items", "label": "Утерянные вещи", "why": "принять и зафиксировать вещь"}],
+  "related": [{"path": "/guidebook", "label": "Гайдбук → 12. Обращения клиентов"}],
+  "sources": ["Гайдбук: Communication / 12. Обращения клиентов — единое окно", "Новости 2026-10-15"],
+  "offtopic": false
+}
+links — 1–3 страницы, где выполняется действие из ответа (path только из списка платформы). related — 0–3 косвенно полезные страницы или разделы гайдбука. sources — откуда взят ответ (кратко). Если offtopic — links и related пустые.
 
-=== ГАЙДБУК (стандарты и регламенты клуба) ===
+=== ПЛАТФОРМА HJ TRACK ===
+${platformText()}
+=== КОНЕЦ ПЛАТФОРМЫ ===
+
+=== ГАЙДБУК ===
 ${guide || '(гайдбук пока пуст)'}
 === КОНЕЦ ГАЙДБУКА ===
 
-=== ОФЕРТА И ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ ===
+=== ОФЕРТА И ПОЛИТИКА ===
 ${policy || '(оферта пока не добавлена)'}
-=== КОНЕЦ ОФЕРТЫ ===`
+=== КОНЕЦ ОФЕРТЫ ===
+
+=== НОВОСТИ (свежие релизы, новое сверху) ===
+${news || '(новостей нет)'}
+=== КОНЕЦ НОВОСТЕЙ ===`
+
+const KNOWN_PATHS = new Set(PLATFORM_PAGES.map(p => p.path))
+const PAGE_LABEL = Object.fromEntries(PLATFORM_PAGES.map(p => [p.path, p.name]))
+const cleanLinks = (arr, max) => (Array.isArray(arr) ? arr : [])
+  .filter(l => l && typeof l.path === 'string' && KNOWN_PATHS.has(l.path.split(/[?#]/)[0]))
+  .slice(0, max)
+  .map(l => ({ path: l.path.split(/[?#]/)[0], label: String(l.label || PAGE_LABEL[l.path.split(/[?#]/)[0]]).slice(0, 80), why: String(l.why || '').slice(0, 120) }))
 
 // Промпт классификатора лидов (тот же endpoint, ветка classifyLead — вызывает wa-bridge).
 // Анализирует ВСЮ переписку (контекст), а не одно сообщение — так «да/сколько?/хочу»
@@ -246,20 +275,13 @@ export default async function handler(req, res) {
     const to = req.body.translateTo === 'en' ? 'en' : 'kk'
     const text = String(req.body.text || '').trim().slice(0, 6000)
     if (!text) return res.status(400).json({ error: 'text required' })
-    const k = process.env.GEMINI_API_KEY
-    if (!k) return res.status(500).json({ error: 'no key' })
     try {
       const langName = to === 'en' ? 'английский' : 'казахский (кириллица)'
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${k}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Переведи текст новости фитнес-клуба на ${langName} язык. Сохрани эмодзи, форматирование, переносы строк и нумерацию. Не переводи названия клубов (4YOU, COLIBRI, VILLA, NURLY ORDA, PROMENADE, EUROPE CITY) и бренды (Hero's Journey, HJ Track, WhatsApp, InStudio). В ответе верни ТОЛЬКО перевод, без пояснений и кавычек.\n\n${text}` }] }],
-          generationConfig: { temperature: 0.2 },
-        }),
-      })
-      const j = await r.json()
-      const out = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      // Vertex по сервисному аккаунту (биллинг проекта); GEMINI_API_KEY больше не нужен
+      const out = (await vertexGenerate({
+        prompt: `Переведи текст новости фитнес-клуба на ${langName} язык. Сохрани эмодзи, форматирование, переносы строк и нумерацию. Не переводи названия клубов (4YOU, COLIBRI, VILLA, NURLY ORDA, PROMENADE, EUROPE CITY) и бренды (Hero's Journey, HJ Track, WhatsApp, InStudio). В ответе верни ТОЛЬКО перевод, без пояснений и кавычек.\n\n${text}`,
+        temperature: 0.2, thinkingBudget: 0,
+      })).trim()
       if (!out) return res.status(502).json({ error: 'empty translation' })
       return res.json({ text: out })
     } catch (e) {
@@ -291,9 +313,6 @@ export default async function handler(req, res) {
   if (req.body?.classifyLead !== undefined) {
     const text = String(req.body.classifyLead || '').trim().slice(0, 1000)
     if (!text) return res.json({ lead: false })
-    const k = process.env.GEMINI_API_KEY
-    if (!k) return res.json({ lead: true, reason: 'no-key' })
-
     // Контекст переписки: массив {dir:'in'|'out', text} — последние сообщения диалога.
     // «Клиент:» — входящие, «Мы:» — наши ответы. Помогает оценивать короткие реплики.
     const ctx = Array.isArray(req.body.context) ? req.body.context : []
@@ -307,20 +326,8 @@ export default async function handler(req, res) {
       + `\n\nПОСЛЕДНЕЕ сообщение клиента для оценки: «${text}»`
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${LEAD_MODEL}:generateContent?key=${k}`
-      let r
-      for (let i = 0; i < 2; i++) {
-        r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          // Даём модели «подумать» над контекстом (анализ), ответ — короткий JSON.
-          generationConfig: { temperature: 0, maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 1024 } },
-        }) })
-        if (r.ok || (r.status !== 503 && r.status !== 429)) break
-        await new Promise(res2 => setTimeout(res2, 700))
-      }
-      if (!r.ok) return res.json({ lead: true, reason: 'gemini-' + r.status })
-      const data = await r.json()
-      const out = (data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '')
+      // Vertex по сервисному аккаунту; модели даём «подумать» над контекстом, ответ — короткий JSON
+      const out = await vertexGenerate({ prompt, model: LEAD_MODEL, temperature: 0, maxOutputTokens: 1500, thinkingBudget: 1024 })
       const m = out.match(/"lead"\s*:\s*(true|false)/i)
       const lead = m ? m[1].toLowerCase() === 'true' : (!/false/i.test(out) && /true/i.test(out))
       const rm = out.match(/"reason"\s*:\s*"([^"]{0,120})"/i)
@@ -480,18 +487,12 @@ ${PLATFORM_INFO}
   const q = String(question || '').trim().slice(0, 1000)
   if (!q) return res.status(400).json({ error: 'question required' })
 
-  const key = process.env.GEMINI_API_KEY
-  if (!key) {
-    return res.json({ answer: 'Помощник ещё не подключён — не задан ключ ИИ. Обратитесь к администратору платформы (нужно добавить GEMINI_API_KEY).' })
-  }
-
   try {
-    const sections = await getGuideSections()
+    // Четыре источника читаются параллельно (все с кешем 10 минут)
+    const [sections, policyMap, news] = await Promise.all([getGuideSections(), getPolicyDocs(), getRecentNews()])
     const guide = buildGuide(sections, q) // весь гайдбук (или релевантные разделы, если большой)
-    const policyMap = await getPolicyDocs()
     const policy = buildPolicy(policyMap, club, q) // релевантные разделы оферты/политики клуба
-    // Роль/клуб и подсказку про контекст — в систему; сам диалог — в contents.
-    const sys = SYSTEM(guide, policy) + `\n\nСпрашивает: роль ${role || 'сотрудник'}${club ? `, клуб ${club}` : ''}. Учитывай предыдущие сообщения диалога: если вопрос уточняющий (напр. «а как ещё?», «а дальше?»), отвечай в контексте прошлых вопросов.`
+    const sys = SYSTEM(guide, policy, news) + `\n\nСпрашивает: роль ${role || 'сотрудник'}${club ? `, клуб ${club}` : ''}.`
     // Память диалога: последние сообщения истории + текущий вопрос
     const contents = []
     if (Array.isArray(history)) {
@@ -502,38 +503,27 @@ ${PLATFORM_INFO}
       }
     }
     contents.push({ role: 'user', parts: [{ text: q }] })
-    // Gemini требует, чтобы диалог начинался с реплики user
     while (contents.length > 1 && contents[0].role !== 'user') contents.shift()
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`
-    const payload = JSON.stringify({
-      systemInstruction: { parts: [{ text: sys }] },
-      contents,
-      // thinkingBudget:0 — flash-latest это «думающая» модель, её «мысли»
-      // съедали бюджет токенов и ответ обрывался. Отключаем + даём запас.
-      generationConfig: { temperature: 0.2, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+
+    // Vertex (биллинг проекта, модель «думает» над связками между источниками)
+    // Бюджет «размышлений» ограничен, чтобы JSON ответа не обрезался по maxOutputTokens
+    const out = await vertexGenerate({ system: sys, contents, json: true, temperature: 0.2, maxOutputTokens: 8192, thinkingBudget: 2048 })
+    let answer = String(out?.answer || '').trim()
+    if (!answer) return res.json({ answer: 'Не удалось сформулировать ответ. Переформулируйте вопрос.' })
+    // Подстраховка от markdown и служебных «(path: /x)» в тексте: кнопки идут отдельно
+    answer = answer
+      .replace(/\s*\((?:path|путь):\s*\/[\w\-/]*\)/gi, '')
+      .replace(/\*\*/g, '').replace(/`/g, '').replace(/^#{1,6}\s+/gm, '')
+      .replace(/^(\s*)[*•]\s+/gm, '$1— ')
+    return res.json({
+      answer,
+      links: cleanLinks(out.links, 3),
+      related: cleanLinks(out.related, 3),
+      sources: (Array.isArray(out.sources) ? out.sources : []).map(s => String(s).slice(0, 120)).slice(0, 5),
+      offtopic: out.offtopic === true,
     })
-    // flash-latest иногда кратковременно перегружена (503) — один повтор
-    let r
-    for (let attempt = 0; attempt < 2; attempt++) {
-      r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload })
-      if (r.ok || (r.status !== 503 && r.status !== 429)) break
-      await new Promise(res2 => setTimeout(res2, 900))
-    }
-    if (!r.ok) {
-      const t = await r.text().catch(() => '')
-      console.error('gemini error', r.status, t.slice(0, 300))
-      return res.json({ answer: r.status === 429
-        ? 'Лимит бесплатных запросов ИИ на сегодня исчерпан. Нужно обновить ключ Gemini (или включить биллинг).'
-        : 'Не удалось получить ответ от ИИ. Попробуйте ещё раз через минуту.' })
-    }
-    const data = await r.json()
-    let answer = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim()
-      || 'Не удалось сформулировать ответ. Переформулируйте вопрос.'
-    // подстраховка: убираем возможную markdown-разметку (жирный/код/заголовки)
-    answer = answer.replace(/\*\*/g, '').replace(/`/g, '').replace(/^#{1,6}\s+/gm, '')
-    return res.json({ answer })
   } catch (err) {
     console.error('assistant error:', err.message)
-    return res.status(500).json({ answer: 'Ошибка помощника. Попробуйте ещё раз.' })
+    return res.status(500).json({ answer: 'Ошибка помощника. Попробуйте ещё раз через минуту.' })
   }
 }

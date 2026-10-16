@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useTickets } from '../store/TicketContext';
-import { Sparkles, Send, Loader2, RotateCcw, MessageSquare, BarChart3 } from 'lucide-react';
+import { navAllowed } from '../lib/navAccess';
+import { Sparkles, Send, Loader2, RotateCcw, MessageSquare, BarChart3, ArrowRight, Link2 } from 'lucide-react';
 import AssistantInsights from '../components/AssistantInsights';
 
 // ИИ-помощник для сотрудников. Вопрос уходит на /api/assistant (модель Gemini),
@@ -16,6 +18,7 @@ const AssistantPage = () => {
   const [view, setView] = useState('chat'); // 'chat' | 'stats' (аналитика — только шефу)
   const isChef = user?.role === 'chef';
   const endRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
@@ -35,7 +38,9 @@ const AssistantPage = () => {
       });
       const data = await res.json().catch(() => ({}));
       const answer = data.answer || 'Не удалось получить ответ. Попробуйте ещё раз.';
-      setMsgs(m => m.map((x, i) => (i === m.length - 1 ? { role: 'bot', text: answer } : x)));
+      setMsgs(m => m.map((x, i) => (i === m.length - 1
+        ? { role: 'bot', text: answer, links: data.links || [], related: data.related || [], sources: data.sources || [] }
+        : x)));
       // история вопросов (для анализа, что спрашивают)
       addDoc(collection(db, 'assistant_queries'), {
         question: question.slice(0, 1000),
@@ -67,7 +72,7 @@ const AssistantPage = () => {
         </div>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Помощник HJ Track</h1>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Спросите, как что сделать на платформе — отвечу по гайдбуку</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Отвечаю по всей платформе: гайдбук, регламенты, оферта, новости — и показываю, где это сделать</div>
         </div>
         {view === 'chat' && msgs.length > 0 && (
           <button onClick={() => { if (!busy) setMsgs([]); }} disabled={busy} title="Начать новый диалог (сбросить контекст)"
@@ -93,7 +98,7 @@ const AssistantPage = () => {
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 2px 12px' }}>
         {msgs.length === 0 && (
           <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, marginTop: 8, textAlign: 'center', padding: '24px 8px' }}>
-            Задайте вопрос по работе платформы — отвечу по гайдбуку.
+            Спросите что угодно по работе: «клиент потерял куртку», «как оформить возврат мерча», «стажёр вышел в первый день», «что изменилось в POS на этой неделе». Отвечу полностью и дам кнопки на нужные страницы.
           </div>
         )}
 
@@ -110,6 +115,31 @@ const AssistantPage = () => {
                     <Sparkles size={12} /> Помощник
                   </div>
                   {m.text}
+                  {/* Куда идти: кнопки-переходы на страницы платформы (только доступные этой роли) */}
+                  {m.links?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                      {m.links.map((l, j) => navAllowed(user, l.path) ? (
+                        <button key={j} onClick={() => navigate(l.path)} title={l.why || ''} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                          <ArrowRight size={13} /> {l.label}{l.why ? <span style={{ fontWeight: 500, opacity: 0.85 }}> · {l.why}</span> : null}
+                        </button>
+                      ) : (
+                        <span key={j} style={{ padding: '8px 12px', borderRadius: 10, border: '1px dashed var(--border)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 700 }}>{l.label} · недоступно вашей роли</span>
+                      ))}
+                    </div>
+                  )}
+                  {m.related?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Связано:</span>
+                      {m.related.filter(l => navAllowed(user, l.path)).map((l, j) => (
+                        <button key={j} onClick={() => navigate(l.path)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 999, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                          <Link2 size={11} /> {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {m.sources?.length > 0 && (
+                    <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>Источники: {m.sources.join(' · ')}</div>
+                  )}
                 </>
               )}
             </div>
@@ -136,7 +166,7 @@ const AssistantPage = () => {
         </button>
       </div>
       <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', marginTop: 6 }}>
-        Отвечаю только на вопросы по работе платформы HJ Track
+        Отвечаю по гайдбуку, оферте, новостям и описанию платформы HJ Track
       </div>
       </>)}
 
