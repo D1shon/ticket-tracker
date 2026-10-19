@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Star, Home, Edit2, Play, Pause, Clock, CheckCircle,
   Smile, Paperclip, Send, MessageSquare, User, Calendar, BookOpen,
-  Package, X, RefreshCw, Trash2, ShieldAlert
+  Package, X, RefreshCw, Trash2, ShieldAlert, Lightbulb, ChevronDown, ArrowRight, Loader2
 } from 'lucide-react';
 import { useTickets } from '../../store/TicketContext';
 import { formatAuthor } from '../../utils/formatters';
@@ -224,6 +224,56 @@ const TicketDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { tickets, user, loading, updateTicket, addComment, deleteComment, uploadFile, deleteTicket } = useTickets();
+
+  // ── Шторка «Совет помощника»: ИИ предлагает, как закрыть заявку (диагноз, шаги,
+  // что проверить, кого подключить). Совет считается один раз и хранится в заявке
+  // (aiAdvice) — остальные видят тот же; «Обновить» пересчитывает с учётом новой переписки.
+  const [adviceOpen, setAdviceOpen] = useState(false);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceError, setAdviceError] = useState('');
+  const tokenize = (s) => (s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length >= 4);
+  const findSimilarClosed = (t) => {
+    const q = new Set(tokenize(`${t.title} ${t.description || t.subtitle || ''}`));
+    if (!q.size) return [];
+    return (tickets || [])
+      .filter(x => x.id !== t.id && x.status === 'closed')
+      .map(x => {
+        const words = new Set(tokenize(`${x.title} ${x.description || x.subtitle || ''}`));
+        let hits = 0; q.forEach(w => { if (words.has(w)) hits++; });
+        return { x, hits };
+      })
+      .filter(s => s.hits >= 2)
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, 5)
+      .map(({ x }) => ({
+        title: x.title, club: x.club, status: 'закрыта',
+        resolution: (x.comments || []).slice(-2).map(c => c.text).filter(Boolean).join(' / '),
+      }));
+  };
+  const loadAdvice = async (t, force = false) => {
+    if (!t) return;
+    const comments = (t.comments || []).filter(c => c.text).slice(-12).map(c => ({ author: formatAuthor(c.author), text: c.text }));
+    const fingerprint = `${t.title}|${(t.description || t.subtitle || '').slice(0, 200)}|${comments.length}`;
+    if (!force && t.aiAdvice && t.aiAdvice.fingerprint === fingerprint) return;
+    setAdviceLoading(true); setAdviceError('');
+    try {
+      const r = await fetch('/api/assistant', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: user?.role || '',
+          ticketAdvice: {
+            title: t.title, description: t.description || t.subtitle || '', club: t.club, priority: t.priority,
+            status: t.status, assignee: t.assignee || '', comments, similar: findSimilarClosed(t),
+          },
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || 'ошибка');
+      await updateTicket(t.id, { aiAdvice: { ...j, fingerprint, atISO: new Date().toISOString(), byName: user?.displayName || '' } });
+    } catch (e) {
+      setAdviceError(e?.message || 'Не удалось получить совет');
+    } finally { setAdviceLoading(false); }
+  };
 
   // Find real ticket from context (id from URL is always a string)
   const ticket = tickets?.find(t => String(t.id) === String(id));
@@ -655,6 +705,48 @@ const TicketDetail = () => {
               <MessageSquare size={13} color="#5580A8" />
               <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: isMobile ? 900 : 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Чат / Обсуждение задачи</span>
             </div>
+
+            {/* Шторка «Совет помощника» — свёрнута по умолчанию, совет считается при первом открытии */}
+            {ticket.status !== 'closed' && (() => {
+              const adv = ticket.aiAdvice;
+              const toggle = () => { const next = !adviceOpen; setAdviceOpen(next); if (next) loadAdvice(ticket); };
+              return (
+                <div style={{ borderBottom: '1px solid var(--border)', background: 'rgba(192,143,79,0.05)' }}>
+                  <button onClick={toggle} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '10px 14px' : '10px 20px', background: 'none', border: 'none', cursor: 'pointer', color: '#C08F4F', textAlign: 'left' }}>
+                    <Lightbulb size={14} />
+                    <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.06em', textTransform: 'uppercase', flex: 1 }}>Совет помощника — как решить</span>
+                    {adv?.atISO && !adviceOpen && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>готов</span>}
+                    <ChevronDown size={15} style={{ transform: adviceOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                  </button>
+                  {adviceOpen && (
+                    <div style={{ padding: isMobile ? '0 14px 12px' : '0 20px 14px', fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.55, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {adviceLoading && <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 12 }}><Loader2 size={14} className="animate-spin" /> Изучаю заявку, гайдбук и похожие случаи…</div>}
+                      {adviceError && !adviceLoading && <div style={{ color: '#B06A6A', fontSize: 12 }}>{adviceError} <button onClick={() => loadAdvice(ticket, true)} style={{ background: 'none', border: 'none', color: '#5580A8', cursor: 'pointer', fontWeight: 800, fontSize: 12 }}>повторить</button></div>}
+                      {adv && !adviceLoading && (
+                        <>
+                          {adv.safety && <div style={{ background: 'rgba(176,106,106,0.1)', border: '1px solid rgba(176,106,106,0.35)', borderRadius: 10, padding: '8px 12px', color: '#B06A6A', fontWeight: 700, fontSize: 12.5 }}>⚠️ {adv.safety}</div>}
+                          {adv.diagnosis && <div><div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Что происходит</div>{adv.diagnosis}</div>}
+                          {adv.checks?.length > 0 && <div><div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Проверить в первую очередь</div>{adv.checks.map((c, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#C08F4F' }}>•</span><span>{c}</span></div>)}</div>}
+                          {adv.steps?.length > 0 && <div><div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Шаги решения</div>{adv.steps.map((s, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ fontWeight: 900, color: '#C08F4F', minWidth: 18 }}>{i + 1}.</span><span>{s}</span></div>)}</div>}
+                          {adv.involve && <div><div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Кого подключить</div>{adv.involve}</div>}
+                          {adv.pitfalls?.length > 0 && <div><div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Чего не делать</div>{adv.pitfalls.map((p, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#B06A6A' }}>✕</span><span>{p}</span></div>)}</div>}
+                          {adv.clientPhrase && <div><div style={{ fontSize: 10, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Фраза клиенту</div><span style={{ fontStyle: 'italic' }}>«{adv.clientPhrase}»</span></div>}
+                          {adv.links?.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {adv.links.map((l, i) => <button key={i} onClick={() => navigate(l.path)} title={l.why || ''} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: 9, border: '1px solid rgba(85,128,168,0.4)', background: 'rgba(85,128,168,0.1)', color: '#5580A8', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}><ArrowRight size={12} /> {l.label}</button>)}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>
+                            Совет ИИ по гайдбуку, похожим заявкам и общей практике — проверяйте перед действием.
+                            <button onClick={() => loadAdvice(ticket, true)} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#5580A8', cursor: 'pointer', fontWeight: 800, fontSize: 11 }}><RefreshCw size={11} /> Обновить</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 14px' : '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {messages.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', gap: 8 }}>

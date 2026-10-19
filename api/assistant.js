@@ -338,6 +338,76 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Ветка: совет по заявке (шторка «Совет помощника» в чате заявки) ──
+  // Вход: { ticketAdvice: { title, description, club, priority, status, assignee, comments[], similar[] }, role }.
+  // Здесь, в отличие от общего помощника, общие профессиональные знания РАЗРЕШЕНЫ:
+  // ценность совета — экспертиза по ремонту, хозяйству, клиентским ситуациям.
+  if (req.body?.ticketAdvice) {
+    const t = req.body.ticketAdvice || {}
+    const title = String(t.title || '').trim().slice(0, 300)
+    const description = String(t.description || '').trim().slice(0, 3000)
+    if (!title && !description) return res.status(400).json({ error: 'ticket required' })
+    try {
+      const sections = await getGuideSections()
+      const guide = buildGuide(sections, `${title} ${description}`, 30000)
+      const comments = (Array.isArray(t.comments) ? t.comments : []).slice(-12)
+        .map(c => `— ${String(c.author || '').slice(0, 40)}: ${String(c.text || '').slice(0, 500)}`).join('\n')
+      const similar = (Array.isArray(t.similar) ? t.similar : []).slice(0, 5)
+        .map(s => `• «${String(s.title || '').slice(0, 120)}» (${s.status || ''}, ${s.club || ''}): ${String(s.resolution || '').slice(0, 400)}`).join('\n')
+      const sys = `Ты — опытный управляющий сети фитнес-клубов Hero's Journey и технический эксперт по эксплуатации клубов (оборудование, тренажёры, сантехника, электрика, вентиляция, IT и турникеты, хозяйство, клиентские ситуации, персонал). Тебе дают заявку из платформы HJ Track. Дай самые грамотные решения, которые реально помогут её закрыть.
+
+Правила:
+- Сначала поставь «диагноз»: что скорее всего происходит и почему (1–3 предложения).
+- Затем конкретные шаги в порядке выполнения: что проверить первым (дешёвое и быстрое), что сделать, когда звать подрядчика/техника/разработчиков. Инструменты, материалы, типовые причины, ориентиры по времени — если уместно.
+- Используй общие профессиональные знания (как хороший мастер/управляющий), а по правилам сети, регламентам и тому, где что делается на платформе, — опирайся на ГАЙДБУК и ПЛАТФОРМУ ниже. Если есть похожие закрытые заявки — используй их опыт и так и скажи.
+- Безопасность: если есть риск травмы, поражения током, затопления, газа — скажи об этом первым пунктом.
+- Учитывай переписку в заявке: не повторяй то, что уже сделано, развивай с того места, где остановились.
+- Если заявка касается клиента — дай готовую фразу для клиента.
+- Пиши на русском, обычным текстом без markdown-символов. Конкретно, без воды.
+
+ФОРМАТ — строго JSON:
+{
+  "diagnosis": "что происходит и почему",
+  "steps": ["шаг 1", "шаг 2", "..."],
+  "checks": ["что проверить в первую очередь", "..."],
+  "involve": "кого подключить и когда (подрядчик, техник, InStudio, отдел продаж, шеф) или пусто",
+  "pitfalls": ["чего не делать", "..."],
+  "clientPhrase": "фраза клиенту, если уместно, иначе пустая строка",
+  "links": [{"path": "/instudio", "label": "InStudio", "why": "если это техника/софт"}],
+  "safety": "предупреждение по безопасности или пустая строка"
+}
+links — 0–3 страницы HJ Track только из списка платформы.
+
+=== ПЛАТФОРМА HJ TRACK ===
+${platformText()}
+=== ГАЙДБУК (релевантные разделы) ===
+${guide || '(нет)'}
+=== КОНЕЦ ===`
+      const prompt = `ЗАЯВКА
+Клуб: ${t.club || '—'} · Приоритет: ${t.priority || '—'} · Статус: ${t.status || '—'} · Исполнитель: ${t.assignee || '—'}
+Заголовок: ${title}
+Описание: ${description || '(нет)'}
+${comments ? `\nПЕРЕПИСКА В ЗАЯВКЕ (старые → новые):\n${comments}` : ''}
+${similar ? `\nПОХОЖИЕ ЗАКРЫТЫЕ ЗАЯВКИ И КАК ИХ РЕШАЛИ:\n${similar}` : ''}
+Спрашивает: ${req.body.role || 'сотрудник'}.`
+      const out = await vertexGenerate({ system: sys, prompt, json: true, temperature: 0.3, maxOutputTokens: 8192, thinkingBudget: 2048 })
+      const arr = (v, n) => (Array.isArray(v) ? v : []).map(x => String(x).trim()).filter(Boolean).slice(0, n)
+      return res.json({
+        diagnosis: String(out.diagnosis || '').trim().slice(0, 1500),
+        steps: arr(out.steps, 10),
+        checks: arr(out.checks, 6),
+        involve: String(out.involve || '').trim().slice(0, 500),
+        pitfalls: arr(out.pitfalls, 5),
+        clientPhrase: String(out.clientPhrase || '').trim().slice(0, 600),
+        safety: String(out.safety || '').trim().slice(0, 500),
+        links: cleanLinks(out.links, 3),
+      })
+    } catch (err) {
+      console.error('ticketAdvice error:', err.message)
+      return res.status(500).json({ error: 'Не удалось подготовить совет. Попробуйте ещё раз через минуту.' })
+    }
+  }
+
   // ── Ветка: свободный ИИ-чат (Claude, без привязки к гайдбуку/платформе) ──
   // Отдельная вкладка «ИИ-чат» — общий помощник для менеджеров без ограничения
   // тем, в отличие от /assistant (тот отвечает строго по гайдбуку).
