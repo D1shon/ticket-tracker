@@ -17,9 +17,14 @@ const ChecklistDetail = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { addTicket, updateTicket, addComment, user, tickets } = useTickets();
-  const { checklistData, updateCheckState, saveSessionInspector } = useChecklist();
+  const { checklistData, updateCheckState, saveSessionInspector, loadChecklistDate } = useChecklist();
   
   const dateKey = searchParams.get('date') || format(startOfToday(), 'yyyy-MM-dd');
+  // Старый чек-лист по ссылке: фоном грузятся только сегодня и вчера
+  useEffect(() => {
+    const yesterday = new Date(startOfToday().getTime() - 24 * 3600 * 1000);
+    if (dateKey < format(yesterday, 'yyyy-MM-dd')) loadChecklistDate?.(dateKey);
+  }, [dateKey, loadChecklistDate]);
   const club = searchParams.get('club') || '4YOU';
   const docId = `${dateKey}_${club}_${shiftId}_${cardId}`;
   

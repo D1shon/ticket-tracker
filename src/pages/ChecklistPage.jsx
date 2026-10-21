@@ -72,7 +72,7 @@ const ChecklistPage = () => {
   const [activeDate, setActiveDate] = useState(getInitialDate);
   // ?view=report (кнопка «+» в мобильной навигации) → сразу вкладка «Отчёт дня»
   const [view, setView] = useState(() => searchParams.get('view') === 'report' ? 'report' : 'shifts'); // 'shifts' | 'report'
-  const { checklistData } = useChecklist();
+  const { checklistData, loadChecklistDate } = useChecklist();
   const navigate = useNavigate();
 
   // Sync state changes back to searchParams
@@ -91,6 +91,10 @@ const ChecklistPage = () => {
   }, [userClub, isClubLocked]);
 
   const dateKey = format(activeDate, 'yyyy-MM-dd');
+  // Даты старше вчерашней фоном не грузятся — подтягиваем выбранный день по запросу
+  useEffect(() => {
+    if (dateKey < format(subDays(startOfToday(), 1), 'yyyy-MM-dd')) loadChecklistDate?.(dateKey);
+  }, [dateKey, loadChecklistDate]);
 
   const getCheckProgress = (shiftId, cardId) => {
     const docId = `${dateKey}_${activeClub}_${shiftId}_${cardId}`;

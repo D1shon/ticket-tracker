@@ -7,6 +7,7 @@ import {
   doc,
   documentId,
   where,
+  getDocs,
   serverTimestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -23,6 +24,27 @@ export const ChecklistProvider = ({ children }) => {
   const { user } = useTickets();
   const [checklistData, setChecklistData] = useState({});
   const [loading, setLoading] = useState(true);
+  // Живые данные (сегодня + вчера) и догруженные по запросу даты держим отдельно:
+  // живой снапшот всегда главнее, догруженное старое не затирается
+  const liveRef = React.useRef({});
+  const extraRef = React.useRef({});
+  const loadedDatesRef = React.useRef(new Set());
+  const merge = () => setChecklistData({ ...extraRef.current, ...liveRef.current });
+
+  // Чек-листы за конкретную дату старше вчерашней — по запросу (листание назад,
+  // открытие старого чек-листа по ссылке). Решение шефа 21.10.2026: фоном только 2 дня.
+  const loadChecklistDate = async (dateKey) => {
+    if (!dateKey || loadedDatesRef.current.has(dateKey)) return;
+    loadedDatesRef.current.add(dateKey);
+    try {
+      const snap = await getDocs(query(collection(db, 'checklists'), where(documentId(), '>=', `${dateKey}_`), where(documentId(), '<=', `${dateKey}_`)));
+      snap.docs.forEach(d => { extraRef.current[d.id] = d.data(); });
+      merge();
+    } catch (e) {
+      loadedDatesRef.current.delete(dateKey);
+      console.error('[ChecklistContext] date load error:', e.message);
+    }
+  };
 
   // Safely subscribe to checklists only after Firebase Auth credentials are fully established
   useEffect(() => {
@@ -34,9 +56,10 @@ export const ChecklistProvider = ({ children }) => {
         // Doc id = `${dateKey}_club_shift_card`, dateKey = yyyy-MM-dd — lexicographic
         // order matches chronological order, so a range on the doc id itself bounds
         // by date WITHOUT a composite index (single-field range, natively indexed).
-        // Without this the collection was read whole and grows every day forever;
-        // checklists older than 30 days are a rare lookup, not the everyday flow.
-        const cutoff = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+        // Without this the collection was read whole and grows every day forever.
+        // Фоном — только сегодня и вчера (по факту людям нужны именно они);
+        // всё старше подтягивается loadChecklistDate() при листании назад.
+        const cutoff = format(subDays(new Date(), 1), 'yyyy-MM-dd');
         const q = query(collection(db, 'checklists'), where(documentId(), '>=', cutoff));
 
         // Clean up previous subscription just in case
@@ -49,7 +72,8 @@ export const ChecklistProvider = ({ children }) => {
           snapshot.docs.forEach(doc => {
             data[doc.id] = doc.data();
           });
-          setChecklistData(data);
+          liveRef.current = data;
+          merge();
           setLoading(false);
         }, (error) => {
           console.error('[ChecklistContext] subscription error:', error);
@@ -63,6 +87,9 @@ export const ChecklistProvider = ({ children }) => {
           unsubscribeChecklists();
           unsubscribeChecklists = null;
         }
+        liveRef.current = {};
+        extraRef.current = {};
+        loadedDatesRef.current = new Set();
         setChecklistData({});
         setLoading(false);
       }
@@ -118,7 +145,8 @@ export const ChecklistProvider = ({ children }) => {
       checklistData,
       loading,
       updateCheckState,
-      saveSessionInspector
+      saveSessionInspector,
+      loadChecklistDate
     }}>
       {children}
     </ChecklistContext.Provider>
