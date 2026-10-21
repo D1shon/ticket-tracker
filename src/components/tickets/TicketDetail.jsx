@@ -223,7 +223,7 @@ const openFileAttachment = (att) => {
 const TicketDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { tickets, user, loading, updateTicket, addComment, deleteComment, uploadFile, deleteTicket } = useTickets();
+  const { tickets, user, loading, updateTicket, addComment, deleteComment, uploadFile, deleteTicket, loadTicketById } = useTickets();
 
   // ── Шторка «Совет помощника»: ИИ предлагает, как закрыть заявку (диагноз, шаги,
   // что проверить, кого подключить). Совет считается один раз и хранится в заявке
@@ -277,6 +277,15 @@ const TicketDetail = () => {
 
   // Find real ticket from context (id from URL is always a string)
   const ticket = tickets?.find(t => String(t.id) === String(id));
+  // Старая закрытая заявка (ссылка из пуша/архива) фоном не грузится — тянем по ID
+  const [fetchingById, setFetchingById] = useState(false);
+  useEffect(() => {
+    if (ticket || loading || !id || !loadTicketById) return;
+    let alive = true;
+    setFetchingById(true);
+    loadTicketById(id).finally(() => { if (alive) setFetchingById(false); });
+    return () => { alive = false; };
+  }, [ticket, loading, id, loadTicketById]);
 
   // Открытая заявка = прочитанная: гасим точку «новые сообщения» на карточке.
   // Срабатывает и на приход новых сообщений, пока заявка открыта.
@@ -495,7 +504,7 @@ const TicketDetail = () => {
     .filter(Boolean).map(c => String(c).toUpperCase());
   const hasAccess = !isClubBound || !ticket?.club || myClubs.includes(ticket.club.toUpperCase());
 
-  if (loading) {
+  if (loading || (!ticket && fetchingById)) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
         <div style={{ width: 40, height: 40, border: '3px solid rgba(85,128,168,0.2)', borderTop: '3px solid #5580A8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>

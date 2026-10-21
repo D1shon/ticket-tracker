@@ -109,6 +109,7 @@ function isEmailAllowed(email) {
 import {
   collection,
   query,
+  where,
   onSnapshot,
   addDoc,
   updateDoc,
@@ -515,67 +516,97 @@ export const TicketProvider = ({ children }) => {
   }, [enrichUserWithRole]);
 
   // ─── Firestore live listener ──────────────────────────────────────────────
+  // Фоном — только рабочий набор (решение шефа 21.10.2026): все открытые заявки
+  // + закрытые за последние 7 дней. Раньше при каждом открытии приложения читались
+  // все ~570 заявок за всё время — это был самый тяжёлый запрос платформы.
+  // Старое закрытое хранится в базе и догружается по запросу: Архив — loadArchive(),
+  // ссылка на старую заявку — loadTicketById(). Эти догрузки лежат в extraRef и
+  // не затираются живыми слушателями (живые данные всегда главнее).
+  const liveOpenRef = useRef({});
+  const liveClosedRef = useRef({});
+  const extraRef = useRef({});
+  const archiveLoadedAtRef = useRef(0);
+  const [archiveLoaded, setArchiveLoaded] = useState(false);
+
+  const mergeTickets = useCallback(() => {
+    setTickets(prev => {
+      const map = { ...extraRef.current, ...liveClosedRef.current, ...liveOpenRef.current };
+      prev.forEach(t => {
+        if (!map[t.id] && String(t.id).startsWith('temp_')) {
+          const age = Date.now() - new Date(t.createdAt || 0).getTime();
+          if (age < 30_000) map[t.id] = t;
+        }
+      });
+      return sortByRecentActivity(Object.values(map));
+    });
+  }, []);
+
   useEffect(() => {
-    let unsubTickets = null;
+    let unsubOpen = null;
+    let unsubClosed = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        if (unsubTickets) return; // Already listening
+        if (unsubOpen) return; // Already listening
 
-        const q = query(collection(db, 'tickets'));
-        unsubTickets = onSnapshot(q, (snapshot) => {
-          // Determine session user's club for toast filtering
-          let sessionClub = null;
-          try {
-            const raw = localStorage.getItem('app_session_user');
-            if (raw) {
-              const { email } = JSON.parse(raw);
-              const profile = USER_ROLES[(email || '').toLowerCase().trim()];
-              sessionClub = profile?.club ?? null;
-            }
-          } catch {}
-
-          // Toasts on status/ticket changes are now handled cleanly by NotificationContext.jsx
-          const fresh = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const apply = (ref) => (snapshot) => {
           if (!snapshot.metadata.fromCache) serverConfirmedRef.current = true;
-          setTickets(prev => {
-            // If Firestore returned real data — use it as the single source of truth.
-            // Only fall back to cached/demo data when Firestore is completely empty.
-            if (fresh.length === 0) {
-              // Пусто из локального кеша (оффлайн/старт) — держим прежнее состояние.
-              // Пусто С СЕРВЕРА — реально нет заявок: очищаем (иначе удалённая
-              // последняя заявка вечно висела бы у всех остальных клиентов).
-              return snapshot.metadata.fromCache ? prev : [];
-            }
+          // Пусто из локального кеша (оффлайн/старт) — держим прежнее состояние;
+          // пусто С СЕРВЕРА — реально пусто, очищаем (иначе удалённая заявка висела бы у всех)
+          if (snapshot.docs.length === 0 && snapshot.metadata.fromCache) return;
+          const next = {};
+          snapshot.docs.forEach(d => { next[d.id] = { id: d.id, ...d.data() }; });
+          ref.current = next;
+          mergeTickets();
+        };
+        const onErr = (error) => console.error('[TicketContext] listener error:', error.code, error.message);
 
-            // Merge: Firestore data wins; also keep any temp_ (optimistic) tickets
-            // that haven't been confirmed yet (< 30s old).
-            const map = {};
-            fresh.forEach(t => { map[t.id] = t; });
-            prev.forEach(t => {
-              if (!map[t.id] && String(t.id).startsWith('temp_')) {
-                const age = Date.now() - new Date(t.createdAt || 0).getTime();
-                if (age < 30_000) map[t.id] = t;
-              }
-            });
-            return sortByRecentActivity(Object.values(map));
-          });
-        }, (error) => {
-          console.error('[TicketContext] listener error:', error.code, error.message);
-        });
+        unsubOpen = onSnapshot(query(collection(db, 'tickets'), where('status', '!=', 'closed')), apply(liveOpenRef), onErr);
+        const cutoff = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+        unsubClosed = onSnapshot(query(collection(db, 'tickets'), where('closedAt', '>=', cutoff)), apply(liveClosedRef), onErr);
       } else {
-        if (unsubTickets) {
-          unsubTickets();
-          unsubTickets = null;
-        }
+        if (unsubOpen) { unsubOpen(); unsubOpen = null; }
+        if (unsubClosed) { unsubClosed(); unsubClosed = null; }
       }
     });
 
     return () => {
       unsubscribeAuth();
-      if (unsubTickets) unsubTickets();
+      if (unsubOpen) unsubOpen();
+      if (unsubClosed) unsubClosed();
     };
-  }, []);
+  }, [mergeTickets]);
+
+  // Архив: все закрытые заявки одним запросом, не чаще раза в 10 минут за сессию
+  const loadArchive = useCallback(async () => {
+    if (Date.now() - archiveLoadedAtRef.current < 10 * 60 * 1000) return;
+    archiveLoadedAtRef.current = Date.now();
+    try {
+      const snap = await getDocs(query(collection(db, 'tickets'), where('status', '==', 'closed')));
+      snap.docs.forEach(d => { extraRef.current[d.id] = { id: d.id, ...d.data() }; });
+      setArchiveLoaded(true);
+      mergeTickets();
+    } catch (e) {
+      archiveLoadedAtRef.current = 0;
+      console.error('[TicketContext] archive load error:', e.message);
+    }
+  }, [mergeTickets]);
+
+  // Одна заявка по ID (ссылка из пуша на старую закрытую заявку)
+  const loadTicketById = useCallback(async (ticketId) => {
+    const id = String(ticketId || '');
+    if (!isFirebaseId(id) || extraRef.current[id]) return !!extraRef.current[id];
+    try {
+      const snap = await getDoc(doc(db, 'tickets', id));
+      if (!snap.exists()) return false;
+      extraRef.current[id] = { id: snap.id, ...snap.data() };
+      mergeTickets();
+      return true;
+    } catch (e) {
+      console.error('[TicketContext] ticket load error:', e.message);
+      return false;
+    }
+  }, [mergeTickets]);
 
   // Fire-and-forget push. roles=null → всем сотрудникам клуба; иначе только указанным ролям.
   const sendPush = useCallback((title, body, club, url, tag, roles = null) => {
@@ -903,7 +934,7 @@ export const TicketProvider = ({ children }) => {
   }, [user?.email]);
 
   return (
-    <TicketContext.Provider value={{ user, tickets, loading, checkEmail, createPassword, loginWithPassword, loginAsGuest, resetPassword, logout, switchClub, addTicket, updateTicket, deleteTicket, addComment, deleteComment, uploadFile, updateDisplayName }}>
+    <TicketContext.Provider value={{ user, tickets, loading, checkEmail, createPassword, loginWithPassword, loginAsGuest, resetPassword, logout, switchClub, addTicket, updateTicket, deleteTicket, addComment, deleteComment, uploadFile, updateDisplayName, loadArchive, loadTicketById, archiveLoaded }}>
       {children}
     </TicketContext.Provider>
   );

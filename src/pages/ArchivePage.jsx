@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Archive as ArchiveIcon } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
@@ -26,8 +26,10 @@ const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CI
 const ArchivePage = () => {
   const [search, setSearch] = useState('');
   const [clubFilter, setClubFilter] = useState('ALL');
-  const { tickets, user } = useTickets();
+  const { tickets, user, loadArchive, archiveLoaded } = useTickets();
   const navigate = useNavigate();
+  // Закрытые заявки старше недели фоном не грузятся — Архив подтягивает их сам
+  useEffect(() => { loadArchive?.(); }, [loadArchive]);
 
   const userClub = user?.club?.toUpperCase();
 
@@ -35,7 +37,8 @@ const ArchivePage = () => {
   const allTickets = tickets || [];
 
   const todayStart = new Date().setHours(0,0,0,0);
-  
+  const archiveLoading = !archiveLoaded;
+
   let archivedTickets = allTickets.filter(t => {
     if (t.status !== 'closed') return false;
     
@@ -118,7 +121,7 @@ const ArchivePage = () => {
         {archivedTickets.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
             <ArchiveIcon size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
-            <p>В архиве вашего клуба пока нет заявок.</p>
+            <p>{archiveLoading ? 'Загружаю архив…' : 'В архиве вашего клуба пока нет заявок.'}</p>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', paddingBottom: '40px' }}>
