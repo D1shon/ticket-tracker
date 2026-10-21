@@ -81,7 +81,9 @@ const Dashboard = () => {
       // Только неисправности (нужен лишь счётчик) — вся доска с фото весит сотни КБ
       onSnapshot(query(collection(db, 'shift_board'), where('type', '==', 'issue')), s => setBoardEntries(s.docs.map(d => d.data())), () => {}),
       onSnapshot(collection(db, 'merch_transfers'), s => setTransfers(s.docs.map(d => d.data())), () => {}),
-      onSnapshot(collection(db, 'hr_monitors'), s => setMonitors(s.docs.map(d => d.data())), () => {}),
+      // Сводка парка пульсометров по клубам (hrm_summary/{клуб}, пишет страница
+      // «Пульсометры» при каждом изменении) — 7 документов вместо всех 473 устройств
+      onSnapshot(collection(db, 'hrm_summary'), s => setMonitors(s.docs.map(d => ({ club: d.id, ...d.data() }))), () => {}),
       onSnapshot(query(collection(db, 'towel_records'), where('date', '==', todayLocal)), s => setTowelsToday(s.docs.map(d => d.data())), () => {}),
       onSnapshot(query(collection(db, 'merch_sales'), where('createdAt', '>=', new Date(new Date().setHours(0, 0, 0, 0)))), s => setSalesToday(s.docs.map(d => d.data())), () => {}),
     ];
@@ -136,9 +138,9 @@ const Dashboard = () => {
   const hrmPct = cov?.pctWithout ?? null;
   // Пульсометры-устройства (учёт в клубах)
   const monF = monitors.filter(m => !selClub || (m.club || '').toUpperCase() === selClub);
-  const monWorking = monF.filter(m => (m.status || 'working') === 'working').length;
-  const monBroken = monF.filter(m => m.status === 'broken').length;
-  const monLost = monF.filter(m => m.status === 'lost').length;
+  const monWorking = monF.reduce((s, m) => s + (m.working || 0), 0);
+  const monBroken = monF.reduce((s, m) => s + (m.broken || 0), 0);
+  const monLost = monF.reduce((s, m) => s + (m.lost || 0), 0);
   // Полотенца: кто заполнил учёт за сегодня
   const towelClubsFilled = new Set(towelsToday.map(r => (r.club || '').toUpperCase()));
   const towelFilledSel = selClub ? towelClubsFilled.has(selClub) : towelClubsFilled.size;

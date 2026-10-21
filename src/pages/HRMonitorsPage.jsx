@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Heart, Plus, Trash2, ChevronDown, CheckCircle2, Wrench, AlertTriangle, History, ArrowRight, Pencil, Check, X, Activity, LogIn, Eye, Timer, Package } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
@@ -238,6 +238,7 @@ const HRMonitorsPage = () => {
   const [activeTab,      setActiveTab]      = useState('monitors'); // 'monitors' | 'history' | 'activity'
   const [activeClub,     setActiveClub]     = useState(userClub || 'COLIBRI');
   const [monitors,       setMonitors]       = useState([]);
+  const summaryWrittenRef = useRef({}); // hrm_summary: последняя записанная сводка по клубу
   const [historyItems,   setHistoryItems]   = useState([]);
   const [activityItems,  setActivityItems]  = useState([]);
   const [openDropdown,   setOpenDropdown]   = useState(null);
@@ -288,11 +289,21 @@ const HRMonitorsPage = () => {
     // остаётся клиентской, как и раньше. Раньше грузилась вся сеть разом.
     const q = query(collection(db, 'hr_monitors'), where('club', '==', activeClub));
     return onSnapshot(q, snap => {
-      setMonitors(
-        snap.docs
-          .map(d => ({ docId: d.id, ...d.data() }))
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-      );
+      const list = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
+      setMonitors(list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+      // Сводка парка для Дашборда (hrm_summary/{клуб}): пишем только по данным с сервера
+      // и только когда цифры изменились — Дашборд читает 7 документов вместо всех устройств
+      if (snap.metadata.fromCache) return;
+      const summary = {
+        total: list.length,
+        working: list.filter(m => (m.status || 'working') === 'working').length,
+        broken: list.filter(m => m.status === 'broken').length,
+        lost: list.filter(m => m.status === 'lost').length,
+      };
+      const key = `${summary.total}|${summary.working}|${summary.broken}|${summary.lost}`;
+      if (summaryWrittenRef.current[activeClub] === key) return;
+      summaryWrittenRef.current[activeClub] = key;
+      setDoc(doc(db, 'hrm_summary', activeClub), { ...summary, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
     }, err => console.error('[hr_monitors]', err));
   }, [activeClub]);
 
