@@ -4,7 +4,12 @@ import { Newspaper, Send, Plus, Trash2, X, Eye, Check, Edit3, Sparkles } from 'l
 import { isMobileDevice } from '../lib/isMobile';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
 import { db, auth } from '../lib/firebase';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
+
+// Лента живёт 45 дней: старше — удаляется ночным сервисом (решение шефа 21.10.2026),
+// а клиент и не запрашивает — экономим чтения Firestore
+const NEWS_DAYS = 45;
+const newsCutoffISO = () => new Date(Date.now() - NEWS_DAYS * 24 * 3600 * 1000).toISOString();
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -205,7 +210,7 @@ const NewsPage = () => {
   }, [canSeeViews]);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'news_posts'), snap => {
+    return onSnapshot(query(collection(db, 'news_posts'), where('postedAtISO', '>=', newsCutoffISO())), snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       list.sort((a, b) => (b.postedAtISO || '').localeCompare(a.postedAtISO || ''));
       setPosts(list);
@@ -254,7 +259,8 @@ const NewsPage = () => {
 
   // Подтверждения «Ознакомлен» — нужны и сотруднику (состояние кнопки), и панели просмотров
   useEffect(() => {
-    return onSnapshot(collection(db, 'news_acks'), snap => {
+    // Отметки только за период ленты: раньше читались все 2 000+ при каждом открытии
+    return onSnapshot(query(collection(db, 'news_acks'), where('ackedAtISO', '>=', newsCutoffISO())), snap => {
       const m = {};
       snap.docs.forEach(d => {
         const a = d.data();

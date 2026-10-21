@@ -346,6 +346,45 @@ export default async function handler(req, res) {
       }
     }
 
+    // 8. Ночная уборка базы (решение шефа 21.10.2026), окно 03:00 Алматы, раз в день:
+    //    новости старше 45 дней (+ их отметки «Ознакомлен»), возвращённые находки
+    //    старше 31 дня (+ полные фото). Расписания и заявки НЕ трогаем — хранятся полностью.
+    //    Окно 10:00 — в нём есть пинги от открытых клиентов (ночью функцию никто не дёргает).
+    if (inWin(600)) {
+      const marker = `${dateStr}_cleanup`
+      let run = true
+      try {
+        await admin.firestore().collection('checklist_reminders').doc(marker).create({ sentAtISO: new Date().toISOString(), title: '🧹 Уборка базы' })
+      } catch (e) {
+        if (String(e.code) === '6' || /already exists/i.test(e.message || '')) run = false
+      }
+      if (run) {
+        const fs = admin.firestore()
+        const stats = { news: 0, acks: 0, lost: 0, photos: 0 }
+        try {
+          const newsCutoff = new Date(Date.now() - 45 * 864e5).toISOString()
+          const oldNews = await fs.collection('news_posts').where('postedAtISO', '<', newsCutoff).select().get()
+          for (const d of oldNews.docs) {
+            const acks = await fs.collection('news_acks').where('postId', '==', d.id).select().get()
+            for (const a of acks.docs) { await a.ref.delete(); stats.acks++ }
+            await d.ref.delete(); stats.news++
+          }
+          const lostCutoff = new Date(Date.now() - 31 * 864e5).toISOString()
+          const returned = await fs.collection('lost_items').where('status', '==', 'returned').select('returnedAtISO', 'acceptedAtISO').get()
+          for (const d of returned.docs) {
+            const x = d.data()
+            if ((x.returnedAtISO || x.acceptedAtISO || '') >= lostCutoff) continue
+            await fs.collection('lost_item_photos').doc(d.id).delete().then(() => { stats.photos++ }).catch(() => {})
+            await d.ref.delete(); stats.lost++
+          }
+          results.push({ id: marker, cleanup: stats })
+        } catch (e) {
+          console.warn('cleanup failed:', e.message)
+          results.push({ id: marker, cleanup: stats, error: e.message })
+        }
+      }
+    }
+
     if (!due.length && !results.length) return res.json({ ok: true, reason: 'no due reminders' })
     return res.json({ ok: true, results })
   } catch (err) {

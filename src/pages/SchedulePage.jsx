@@ -447,9 +447,13 @@ const SchedulePage = () => {
   const [merchSales, setMerchSales] = useState([]);
   useEffect(() => {
     let unsub = null;
+    // Только продажи выбранного месяца: процент продавца считается по месяцу,
+    // а раньше читалась вся история продаж сети при каждом открытии Графика
+    const from = startOfMonth(currentMonth);
+    const to = addMonths(from, 1);
     const unsubAuth = auth.onAuthStateChanged(firebaseUser => {
       if (firebaseUser) {
-        unsub = onSnapshot(query(collection(db, 'merch_sales')), snap => {
+        unsub = onSnapshot(query(collection(db, 'merch_sales'), where('createdAt', '>=', from), where('createdAt', '<', to)), snap => {
           setMerchSales(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
       } else {
@@ -458,7 +462,7 @@ const SchedulePage = () => {
       }
     });
     return () => { unsubAuth(); if (unsub) unsub(); };
-  }, []);
+  }, [monthKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Commission Rates — ТОЛЬКО текущий месяц и клуб ──────────────────────────
   // Раньше карта строилась по ВСЕМ месяцам/клубам с ключом «имя»: ставка из

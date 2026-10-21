@@ -18,6 +18,7 @@ import { db, auth } from '../lib/firebase';
 import { useTickets } from './TicketContext';
 import { toast } from 'sonner';
 import { format, subMonths } from 'date-fns';
+import { where as whereField } from 'firebase/firestore';
 
 const ScheduleContext = createContext();
 export const useSchedule = () => useContext(ScheduleContext);
@@ -156,10 +157,20 @@ export const ScheduleProvider = ({ children }) => {
       if (firebaseUser) {
         // Start listeners
         if (!unsubSchedules) {
-          unsubSchedules = onSnapshot(query(collection(db, 'schedules')), (snapshot) => {
+          // Фоном — только текущий и прошлый месяц (решение шефа 21.10.2026): раньше
+          // при каждом открытии приложения читались расписания за всё время.
+          // Более старые месяцы догружаются по запросу при навигации (эффект ниже),
+          // в базе они хранятся полностью.
+          const baseFrom = format(subMonths(new Date(), 1), 'yyyy-MM');
+          unsubSchedules = onSnapshot(query(collection(db, 'schedules'), whereField('monthKey', '>=', baseFrom)), (snapshot) => {
             const remoteData = {};
             snapshot.docs.forEach(d => { remoteData[d.id] = d.data(); });
-            setScheduleData(remoteData);
+            setScheduleData(prev => {
+              // старые месяцы, подгруженные по запросу, не затираем
+              const kept = {};
+              for (const [id, v] of Object.entries(prev)) if ((v?.monthKey || '') < baseFrom) kept[id] = v;
+              return { ...kept, ...remoteData };
+            });
             setLoading(false);
           }, (error) => {
             console.error('[ScheduleContext] schedules load error:', error);
@@ -190,6 +201,22 @@ export const ScheduleProvider = ({ children }) => {
       if (unsubDailyRazvozka) unsubDailyRazvozka();
     };
   }, []);
+
+  // ─── Старый месяц по запросу: открыли в Графике месяц старше прошлого — подгружаем его ──
+  useEffect(() => {
+    const baseFrom = format(subMonths(new Date(), 1), 'yyyy-MM');
+    if (monthKey >= baseFrom) return;
+    let unsub = null;
+    const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
+      if (!firebaseUser) return;
+      unsub = onSnapshot(query(collection(db, 'schedules'), whereField('monthKey', '==', monthKey)), (snapshot) => {
+        const add = {};
+        snapshot.docs.forEach(d => { add[d.id] = d.data(); });
+        setScheduleData(prev => ({ ...prev, ...add }));
+      }, (error) => console.error('[ScheduleContext] old month load error:', error));
+    });
+    return () => { unsubscribeAuth(); if (unsub) unsub(); };
+  }, [monthKey]);
 
   // ─── Load employee list listener scoped to active monthKey ──────────
   useEffect(() => {
