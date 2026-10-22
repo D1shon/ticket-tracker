@@ -81,9 +81,14 @@ export function applyDynamicUsers(usersMap) {
       }
       continue;
     }
+    // Шеф из app_users (22.10.2026, по просьбе шефа): принимаем ТОЛЬКО если запись
+    // создал один из шефов, зашитых в код (addedBy). Это мягкая защита при открытых
+    // правилах Firestore — подделать addedBy можно, но случайно/через UI не выйдет.
+    const STATIC_CHEFS = Object.entries(STATIC_USER_ROLES).filter(([, p]) => p.role === 'chef').map(([e]) => e);
+    const dynChefOk = profile.role === 'chef' && STATIC_CHEFS.includes((profile.addedBy || '').toLowerCase().trim());
     USER_ROLES[key] = {
-      role: ALLOWED_DYN_ROLES.includes(profile.role) ? profile.role : 'admin',
-      club: profile.club || null,
+      role: dynChefOk ? 'chef' : (ALLOWED_DYN_ROLES.includes(profile.role) ? profile.role : 'admin'),
+      club: dynChefOk ? null : (profile.club || null),
       displayName: profile.displayName || key.split('@')[0],
       mop: !!profile.mop,
       dev: !!profile.dev, // Разработчик: tech + права команды разработки в InStudio

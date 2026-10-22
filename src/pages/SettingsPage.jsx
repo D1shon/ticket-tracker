@@ -1111,6 +1111,9 @@ const SettingsPage = () => {
 // ─── Сотрудники и доступы: добавление аккаунтов любой роли + поштучный доступ
 // к вкладкам (tabsExtra/tabsHidden в app_users). Видит только Дильшат. ───────
 const ACCESS_ROLES = [
+  // Шеф: полный доступ ко всем клубам. Принимается платформой только если
+  // запись создал шеф из кода (проверка addedBy в TicketContext.applyDynamicUsers).
+  { id: 'chef',       label: 'Шеф (полный доступ)', needsClub: false },
   { id: 'manager',    label: 'Менеджер',    needsClub: true },
   { id: 'admin',      label: 'Администратор', needsClub: true },
   { id: 'rop',        label: 'РОП',         needsClub: true },
@@ -1221,6 +1224,7 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     const phone = phoneDigits || null;
     try {
       if (roleUser.isStatic) {
+        if (realRole === 'chef') { toast.error('Повысить зашитый в код аккаунт до шефа можно только в коде'); return; }
         // Зашитый аккаунт: роль из кода не трогаем, кладём перекрытие
         await setDoc(doc(db, 'app_users', roleUser.email), {
           roleOverride: realRole, mopOverride: isMop, devOverride: isDev, clubOverride: club, phone,
@@ -1230,6 +1234,8 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
         await setDoc(doc(db, 'app_users', roleUser.email), {
           role: realRole, mop: isMop, dev: isDev, club, phone,
           roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
+          // Роль «шеф» платформа принимает только у записей, созданных шефом из кода
+          ...(realRole === 'chef' ? { addedBy: myEmail } : {}),
         }, { merge: true });
       }
       toast.success(`${roleUser.displayName}: теперь ${ROLE_LABEL[roleDraft.role]}${club ? ' · ' + club : ''}`);
