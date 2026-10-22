@@ -244,6 +244,32 @@ const AuthSplash = () => (
 const AppContent = () => {
   const { user, loading } = useTickets();
 
+  // iOS PWA: при фокусе на поле ввода (чат тикета и т.п.) система прокручивает
+  // ВЕСЬ документ вверх, а после закрытия клавиатуры в standalone-режиме не
+  // возвращает его — шапка уезжает под статус-бар, и свайпом её не вернуть,
+  // потому что сам документ пальцем не прокручивается. Возвращаем документ
+  // на место, как только фокус уходит из поля ввода или клавиатура закрылась.
+  React.useEffect(() => {
+    if (!isMobileDevice()) return;
+    const isTyping = () => {
+      const el = document.activeElement;
+      return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
+    const reset = () => { if (!isTyping() && window.scrollY > 0) window.scrollTo(0, 0); };
+    const onFocusOut = () => setTimeout(reset, 80);
+    const vv = window.visualViewport;
+    const onViewport = () => { if (vv && vv.height >= window.innerHeight - 60) setTimeout(reset, 80); };
+    const onScroll = () => reset();
+    document.addEventListener('focusout', onFocusOut);
+    window.addEventListener('scroll', onScroll);
+    vv?.addEventListener('resize', onViewport);
+    return () => {
+      document.removeEventListener('focusout', onFocusOut);
+      window.removeEventListener('scroll', onScroll);
+      vv?.removeEventListener('resize', onViewport);
+    };
+  }, []);
+
   // Prefetch all pages after start: navigation then never hits the network,
   // so a fresh deploy mid-session can't break it (or drop a call).
   // 15s (не 2.5s): на медленном канале ранний прогрев ~1.3МБ чанков душил
