@@ -246,26 +246,33 @@ const AppContent = () => {
 
   // iOS PWA: при фокусе на поле ввода (чат тикета и т.п.) система прокручивает
   // ВЕСЬ документ вверх, а после закрытия клавиатуры в standalone-режиме не
-  // возвращает его — шапка уезжает под статус-бар, и свайпом её не вернуть,
-  // потому что сам документ пальцем не прокручивается. Возвращаем документ
-  // на место, как только фокус уходит из поля ввода или клавиатура закрылась.
+  // возвращает его — шапка уезжает под статус-бар. Запоминаем позицию документа
+  // в момент фокуса и восстанавливаем её после закрытия клавиатуры.
+  // ВАЖНО: страницы прокручиваются самим документом, поэтому никакого
+  // обработчика на событие scroll здесь быть не должно — он блокировал
+  // прокрутку вниз на всех вкладках на мобильных.
   React.useEffect(() => {
     if (!isMobileDevice()) return;
     const isTyping = () => {
       const el = document.activeElement;
       return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     };
-    const reset = () => { if (!isTyping() && window.scrollY > 0) window.scrollTo(0, 0); };
-    const onFocusOut = () => setTimeout(reset, 80);
+    let savedY = null; // позиция документа до открытия клавиатуры
+    const onFocusIn = () => { if (isTyping() && savedY === null) savedY = window.scrollY; };
+    const restore = () => {
+      if (savedY === null) return;
+      window.scrollTo(0, savedY);
+      savedY = null;
+    };
+    const onFocusOut = () => setTimeout(() => { if (!isTyping()) restore(); }, 80);
     const vv = window.visualViewport;
-    const onViewport = () => { if (vv && vv.height >= window.innerHeight - 60) setTimeout(reset, 80); };
-    const onScroll = () => reset();
+    const onViewport = () => { if (vv && vv.height >= window.innerHeight - 60) setTimeout(restore, 80); };
+    document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
-    window.addEventListener('scroll', onScroll);
     vv?.addEventListener('resize', onViewport);
     return () => {
+      document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
-      window.removeEventListener('scroll', onScroll);
       vv?.removeEventListener('resize', onViewport);
     };
   }, []);
