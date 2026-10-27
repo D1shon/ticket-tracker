@@ -5,7 +5,8 @@ import {
   eachMonthOfInterval,
 } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ChevronDown, Check, X } from 'lucide-react';
+import { SIZES } from '../../lib/merchSizes';
 
 // Вкладка «Аналитика» на Складе — только шеф и маркетинг (гейт в MerchPage).
 // Считает по merch_sales, которые MerchPage уже держит подпиской — своей подписки нет.
@@ -247,6 +248,67 @@ function BarList({ rows, metric, total }) {
 
 const Empty = () => <div className="text-xs font-bold text-[var(--text-muted)] py-8 text-center">Нет продаж за выбранный период и фильтры</div>;
 
+// ─── Компактный фильтр-выпадашка ────────────────────────────────────────────
+// Одна кнопка «Клубы: Все ▾» вместо ряда чипов; открыт максимум один (openId у страницы).
+function FilterMenu({ id, label, value, active, openId, setOpenId, width = 280, children }) {
+  const ref = useRef(null);
+  const open = openId === id;
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpenId(null); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpenId(null); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, setOpenId]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpenId(open ? null : id)}
+        className={`flex items-center gap-1.5 h-9 px-3 rounded-xl border text-[11px] font-bold whitespace-nowrap transition-all ${active
+          ? 'bg-[var(--accent-purple)] text-white border-transparent'
+          : 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border)] hover:border-[var(--accent-purple)]'}`}
+      >
+        <span className={active ? 'opacity-80' : 'text-[var(--text-muted)]'}>{label}:</span>
+        <span className="max-w-[160px] truncate">{value}</span>
+        <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-30 left-0 mt-1.5 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl p-2"
+          style={{ width, maxWidth: 'calc(100vw - 32px)' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Строка-чекбокс внутри выпадашки
+const CheckRow = ({ on, onClick, children, hint }) => (
+  <button onClick={onClick}
+    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+    <span className={`w-4 h-4 shrink-0 rounded-md border flex items-center justify-center ${on ? 'bg-[var(--accent-purple)] border-transparent text-white' : 'border-[var(--border)]'}`}>
+      {on && <Check size={11} strokeWidth={3} />}
+    </span>
+    <span className="flex-1 min-w-0 truncate">{children}</span>
+    {hint != null && <span className="text-[10px] font-bold text-[var(--text-muted)] shrink-0">{hint}</span>}
+  </button>
+);
+
+const MenuHead = ({ title, onReset }) => (
+  <div className="flex items-center justify-between px-2 pt-1 pb-1.5">
+    <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)]">{title}</span>
+    {onReset && <button onClick={onReset} className="text-[10px] font-bold text-[var(--accent-purple)] hover:underline">Сбросить</button>}
+  </div>
+);
+
+const summary = (list, all = 'Все') => (!list.length ? all : list.length === 1 ? list[0] : `${list[0]} +${list.length - 1}`);
+
 // ─── Страница ────────────────────────────────────────────────────────────────
 export default function MerchAnalytics({ sales, clubs, categories, canSeeCost }) {
   const [preset, setPreset] = useState('30d');
@@ -255,7 +317,8 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
   const [selClubs, setSelClubs] = useState([]); // пусто = все
   const [selCats, setSelCats] = useState([]);
   const [selProducts, setSelProducts] = useState([]); // названия товаров; пусто = все
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [selSizes, setSelSizes] = useState([]); // размеры; пусто = все (вкл. товары без размера)
+  const [openMenu, setOpenMenu] = useState(null);
   const [productQuery, setProductQuery] = useState('');
   const [metric, setMetric] = useState('revenue');
   const [split, setSplit] = useState('category');
@@ -280,14 +343,15 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
   const passFilters = (s) =>
     (!selClubs.length || selClubs.includes(s.club))
     && (!selCats.length || selCats.includes(catOf(s)))
-    && (!selProducts.length || selProducts.includes(s.productName));
+    && (!selProducts.length || selProducts.includes(s.productName))
+    && (!selSizes.length || selSizes.includes(s.size));
 
   const cur = useMemo(() => realSales.filter(s => s._d >= from && s._d <= to && passFilters(s)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [realSales, from, to, selClubs, selCats, selProducts]);
+    [realSales, from, to, selClubs, selCats, selProducts, selSizes]);
   const prev = useMemo(() => realSales.filter(s => s._d >= prevRange[0] && s._d <= prevRange[1] && passFilters(s)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [realSales, prevRange, selClubs, selCats, selProducts]);
+    [realSales, prevRange, selClubs, selCats, selProducts, selSizes]);
 
   // Бесплатные выдачи и возвраты — в том же периоде и фильтрах
   const extras = useMemo(() => {
@@ -305,7 +369,7 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
     }
     return { freeQty, freeCost, retCount, retSum };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, from, to, selClubs, selCats, selProducts]);
+  }, [sales, from, to, selClubs, selCats, selProducts, selSizes]);
 
   const totals = (list) => {
     const revenue = list.reduce((a, s) => a + (s.totalSum || 0), 0);
@@ -439,96 +503,125 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
     if (!next.length && split === 'product') setSplit('category');
     if (next.length && selProducts.length === 0) setSplit('product');
   };
+  // Размеры, которые реально встречались в продажах: сначала по сетке, потом прочие
+  const sizeOptions = useMemo(() => {
+    const cnt = new Map();
+    for (const s of realSales) if (s.size) cnt.set(s.size, (cnt.get(s.size) || 0) + (s.qty || 0));
+    const known = SIZES.filter(z => cnt.has(z));
+    const extra = [...cnt.keys()].filter(z => !SIZES.includes(z)).sort();
+    return [...known, ...extra].map(z => ({ size: z, qty: cnt.get(z) }));
+  }, [realSales]);
+  const bySize = useMemo(() => {
+    const m = new Map();
+    for (const s of cur) if (s.size) m.set(s.size, (m.get(s.size) || 0) + metricOf(s, metric));
+    return sizeOptions.filter(o => m.has(o.size)).map(o => ({ name: o.size, value: m.get(o.size), color: 'var(--accent-purple)' }));
+  }, [cur, metric, sizeOptions]);
+  const activeFilters = selClubs.length + selCats.length + selProducts.length + selSizes.length;
+  const resetAll = () => { setSelClubs([]); setSelCats([]); setSelSizes([]); changeProducts([]); };
+
   const splits = SPLITS.filter(sp => sp.id !== 'product' || selProducts.length);
   const metrics = METRICS.filter(m => !m.cost || canSeeCost);
+  const periodShort = `${format(from, 'dd.MM.yy')} — ${format(to, 'dd.MM.yy')}`;
   const periodLabel = `${format(from, 'd MMM yyyy', { locale: ru })} — ${format(to, 'd MMM yyyy', { locale: ru })}`;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Фильтры */}
-      <Card>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Период</span>
-            {PRESETS.map(p => <button key={p.id} className={pill(preset === p.id)} onClick={() => setPreset(p.id)}>{p.label}</button>)}
-            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-xl border ${preset === 'custom' ? 'border-[var(--accent-purple)]' : 'border-[var(--border)]'} bg-[var(--bg-card)]`}>
+      {/* Фильтры — одна компактная строка выпадашек */}
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterMenu id="period" label="Период" openId={openMenu} setOpenId={setOpenMenu} active={false} width={260}
+          value={preset === 'custom' ? periodShort : PRESETS.find(p => p.id === preset)?.label}>
+          <MenuHead title="Период" />
+          {PRESETS.map(p => (
+            <button key={p.id} onClick={() => { setPreset(p.id); setOpenMenu(null); }}
+              className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-[var(--bg-hover)] ${preset === p.id ? 'text-[var(--accent-purple)]' : 'text-[var(--text-primary)]'}`}>
+              {p.label}{preset === p.id && <Check size={13} strokeWidth={3} />}
+            </button>
+          ))}
+          <div className="border-t border-[var(--border)] mt-1.5 pt-2 px-2 pb-1 flex flex-col gap-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)]">Свой период</span>
+            <div className="flex items-center gap-1.5">
               <input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPreset('custom'); }}
                 onClick={e => { try { e.target.showPicker(); } catch { /* старые браузеры */ } }}
-                className="bg-transparent outline-none text-[11px] font-bold text-[var(--text-primary)] w-[110px]" title="С" />
+                className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-[var(--bg-hover)] border border-[var(--border)] outline-none text-[11px] font-bold text-[var(--text-primary)]" title="С" />
               <span className="text-[var(--text-muted)] text-xs">—</span>
               <input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPreset('custom'); }}
                 onClick={e => { try { e.target.showPicker(); } catch { /* старые браузеры */ } }}
-                className="bg-transparent outline-none text-[11px] font-bold text-[var(--text-primary)] w-[110px]" title="По" />
+                className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-[var(--bg-hover)] border border-[var(--border)] outline-none text-[11px] font-bold text-[var(--text-primary)]" title="По" />
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Клубы</span>
-            <button className={pill(!selClubs.length)} onClick={() => setSelClubs([])}>Все</button>
-            {clubs.map(c => <button key={c} className={pill(selClubs.includes(c))} onClick={() => toggle(selClubs, setSelClubs, c)}>{c}</button>)}
+        </FilterMenu>
+
+        <FilterMenu id="clubs" label="Клубы" openId={openMenu} setOpenId={setOpenMenu} active={!!selClubs.length} value={summary(selClubs)}>
+          <MenuHead title="Клубы" onReset={selClubs.length ? () => setSelClubs([]) : null} />
+          {clubs.map(c => <CheckRow key={c} on={selClubs.includes(c)} onClick={() => toggle(selClubs, setSelClubs, c)}>{c}</CheckRow>)}
+        </FilterMenu>
+
+        <FilterMenu id="cats" label="Виды" openId={openMenu} setOpenId={setOpenMenu} active={!!selCats.length} value={summary(selCats)}>
+          <MenuHead title="Виды товара" onReset={selCats.length ? () => changeCats([]) : null} />
+          {categories.map(c => (
+            <CheckRow key={c} on={selCats.includes(c)} onClick={() => changeCats(selCats.includes(c) ? selCats.filter(x => x !== c) : [...selCats, c])}>{c}</CheckRow>
+          ))}
+        </FilterMenu>
+
+        <FilterMenu id="products" label="Товары" openId={openMenu} setOpenId={setOpenMenu} active={!!selProducts.length} value={summary(selProducts)} width={340}>
+          <MenuHead title={selCats.length ? `Товары · ${selCats.join(', ')}` : 'Товары'} onReset={selProducts.length ? () => changeProducts([]) : null} />
+          <div className="px-1 pb-1.5">
+            <input value={productQuery} onChange={e => setProductQuery(e.target.value)} placeholder="Поиск товара..." autoFocus
+              className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-hover)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-purple)]" />
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Виды</span>
-            <button className={pill(!selCats.length)} onClick={() => changeCats([])}>Все</button>
-            {categories.map(c => <button key={c} className={pill(selCats.includes(c))} onClick={() => changeCats(selCats.includes(c) ? selCats.filter(x => x !== c) : [...selCats, c])}>{c}</button>)}
+          <div className="max-h-80 overflow-y-auto">
+            {pickerGroups.length ? pickerGroups.map(g => {
+              const allOn = g.items.every(p => selProducts.includes(p.name));
+              return (
+                <div key={g.category} className="mb-1">
+                  <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)]">{g.category}</span>
+                    <button className="text-[10px] font-bold text-[var(--accent-purple)] hover:underline"
+                      onClick={() => changeProducts(allOn
+                        ? selProducts.filter(n => !g.items.some(p => p.name === n))
+                        : [...selProducts, ...g.items.map(p => p.name).filter(n => !selProducts.includes(n))])}>
+                      {allOn ? 'Снять все' : 'Выбрать все'}
+                    </button>
+                  </div>
+                  {g.items.map(p => (
+                    <CheckRow key={p.name} on={selProducts.includes(p.name)} hint={`${p.qty} шт`}
+                      onClick={() => changeProducts(selProducts.includes(p.name) ? selProducts.filter(x => x !== p.name) : [...selProducts, p.name])}>
+                      {p.name}
+                    </CheckRow>
+                  ))}
+                </div>
+              );
+            }) : <div className="text-xs font-bold text-[var(--text-muted)] text-center py-4">Ничего не найдено</div>}
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Товары</span>
-            <button className={pill(!selProducts.length)} onClick={() => changeProducts([])}>Все</button>
-            {selProducts.map((n, i) => (
-              <button key={n} className={`${pill(true)} flex items-center gap-1.5`} onClick={() => changeProducts(selProducts.filter(x => x !== n))} title="Убрать">
-                <span className="w-2 h-2 rounded-sm ring-1 ring-white/80" style={{ background: i < 8 ? seriesColor(i) : 'var(--text-muted)' }} />{n} <span className="opacity-70">✕</span>
-              </button>
-            ))}
-            <button className={pill(productPickerOpen)} onClick={() => setProductPickerOpen(o => !o)}>
-              {productPickerOpen ? 'Готово' : '+ Выбрать товары'}
-            </button>
-          </div>
-          {productPickerOpen && (
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-hover)] p-3 flex flex-col gap-3">
-              <input
-                value={productQuery}
-                onChange={e => setProductQuery(e.target.value)}
-                placeholder="Поиск товара..."
-                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-purple)]"
-              />
-              <div className="max-h-72 overflow-y-auto flex flex-col gap-3 pr-1">
-                {pickerGroups.length ? pickerGroups.map(g => {
-                  const allOn = g.items.every(p => selProducts.includes(p.name));
-                  return (
-                    <div key={g.category}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)]">{g.category}</span>
-                        <button className="text-[10px] font-bold text-[var(--accent-purple)] hover:underline"
-                          onClick={() => changeProducts(allOn
-                            ? selProducts.filter(n => !g.items.some(p => p.name === n))
-                            : [...selProducts, ...g.items.map(p => p.name).filter(n => !selProducts.includes(n))])}>
-                          {allOn ? 'Снять все' : 'Выбрать все'}
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {g.items.map(p => (
-                          <button key={p.name} className={pill(selProducts.includes(p.name))}
-                            onClick={() => changeProducts(selProducts.includes(p.name) ? selProducts.filter(x => x !== p.name) : [...selProducts, p.name])}>
-                            {p.name} <span className="opacity-60">· {p.qty} шт</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }) : <div className="text-xs font-bold text-[var(--text-muted)] text-center py-4">Ничего не найдено</div>}
-              </div>
-              {selProducts.length > 8 && (
-                <div className="text-[10px] font-bold text-[var(--text-muted)]">На графике «По товарам» отдельной линией идут первые 8 выбранных, остальные — общей серой линией «Остальные выбранные».</div>
-              )}
-            </div>
+          {selProducts.length > 8 && (
+            <div className="px-2 pt-1.5 text-[10px] font-bold text-[var(--text-muted)]">На графике отдельно идут первые 8 выбранных, остальные — серой линией «Остальные выбранные».</div>
           )}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Метрика</span>
-            {metrics.map(m => <button key={m.id} className={pill(metric === m.id)} onClick={() => setMetric(m.id)}>{m.label}</button>)}
-            <span className="ml-auto text-[11px] font-bold text-[var(--text-muted)]">{periodLabel}</span>
-          </div>
+        </FilterMenu>
+
+        <FilterMenu id="sizes" label="Размеры" openId={openMenu} setOpenId={setOpenMenu} active={!!selSizes.length} value={summary(selSizes)} width={220}>
+          <MenuHead title="Размеры" onReset={selSizes.length ? () => setSelSizes([]) : null} />
+          {sizeOptions.length ? sizeOptions.map(o => (
+            <CheckRow key={o.size} on={selSizes.includes(o.size)} hint={`${o.qty} шт`} onClick={() => toggle(selSizes, setSelSizes, o.size)}>{o.size}</CheckRow>
+          )) : <div className="text-xs font-bold text-[var(--text-muted)] text-center py-3">Продаж с размером пока нет</div>}
+          <div className="px-2 pt-1.5 text-[10px] font-bold text-[var(--text-muted)]">С выбранным размером товары без размерной сетки (кепки, ручки…) не учитываются.</div>
+        </FilterMenu>
+
+        <div className="flex h-9 p-0.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+          {metrics.map(m => (
+            <button key={m.id} onClick={() => setMetric(m.id)}
+              className={`px-3 rounded-[10px] text-[11px] font-bold transition-all ${metric === m.id ? 'bg-[var(--accent-purple)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
+              {m.label}
+            </button>
+          ))}
         </div>
-      </Card>
+
+        {activeFilters > 0 && (
+          <button onClick={resetAll} className="flex items-center gap-1 h-9 px-2.5 rounded-xl text-[11px] font-bold text-[var(--text-muted)] hover:text-[var(--accent-red)]">
+            <X size={13} /> Сбросить фильтры
+          </button>
+        )}
+        <span className="ml-auto text-[11px] font-bold text-[var(--text-muted)]">{periodLabel}</span>
+      </div>
 
       {/* KPI */}
       <div className={`grid gap-3 ${canSeeCost ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'}`}>
@@ -648,7 +741,10 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
             </div>
           ) : <Empty />}
         </Card>
-        <Card title="Способы оплаты"><BarList rows={byPayment} metric={metric} total={metricTotal} /></Card>
+        <div className="flex flex-col gap-4 min-w-0">
+          <Card title="По размерам"><BarList rows={bySize} metric={metric} total={bySize.reduce((a, r) => a + r.value, 0)} /></Card>
+          <Card title="Способы оплаты"><BarList rows={byPayment} metric={metric} total={metricTotal} /></Card>
+        </div>
       </div>
     </div>
   );
