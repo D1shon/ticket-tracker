@@ -389,8 +389,10 @@ const SettingsPage = () => {
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>{userName}</h2>
-                  {user?.role === 'admin' && (
-                    <button onClick={() => { setNameInput(userName); setEditingName(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
+                  {/* Любой сотрудник может переименовать себя (решение шефа 27.10.2026). Гость — нет:
+                      у общего guest@hj.fit имя стажёра живёт в localStorage, а не в user_profiles. */}
+                  {!user?.isGuest && (
+                    <button onClick={() => { setNameInput(userName); setEditingName(true); }} title="Изменить имя" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
                       <Pencil size={14} />
                     </button>
                   )}
