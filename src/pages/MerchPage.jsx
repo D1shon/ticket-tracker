@@ -38,9 +38,10 @@ const MerchPage = () => {
 
   // Role & Permissions check
   const isMarketing = useMemo(() => user?.role === 'marketing', [user]);
-  // Гульдана (маркетинг): ПОЛНОЕ управление складом — на этой странице у неё права
-  // шефа (все клубы + ГОЛОВНОЙ СКЛАД, финансы, продажи, удаление, пересортица).
-  const marketingExtra = isMarketing && (user?.email || '').toLowerCase() === 'guldana.k@hj.fit';
+  // Маркетинг: ПОЛНОЕ управление складом — на этой странице права шефа
+  // (все клубы + ГОЛОВНОЙ СКЛАД, финансы, выручка, продажи, удаление, пересортица).
+  // До 27.10.2026 полный доступ был только у Гульданы, остальной маркетинг — просмотр.
+  const marketingExtra = isMarketing;
   // Маркетинг БЕЗ полного доступа — только просмотр (гейты «!marketingReadOnly» ниже)
   const marketingReadOnly = isMarketing && !marketingExtra;
   const isChef = user?.role === 'chef' || user?.role === 'viewer' || marketingExtra;
