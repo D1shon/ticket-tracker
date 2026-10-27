@@ -35,6 +35,7 @@ const SPLITS = [
   { id: 'total', label: 'Всего' },
   { id: 'category', label: 'По видам' },
   { id: 'club', label: 'По клубам' },
+  { id: 'product', label: 'По товарам' }, // только когда выбраны конкретные товары
 ];
 
 // Цвет закреплён за сущностью (индекс в справочнике), а не за местом в топе —
@@ -253,6 +254,9 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
   const [customTo, setCustomTo] = useState('');
   const [selClubs, setSelClubs] = useState([]); // пусто = все
   const [selCats, setSelCats] = useState([]);
+  const [selProducts, setSelProducts] = useState([]); // названия товаров; пусто = все
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productQuery, setProductQuery] = useState('');
   const [metric, setMetric] = useState('revenue');
   const [split, setSplit] = useState('category');
   const [hiddenSeries, setHiddenSeries] = useState([]);
@@ -274,14 +278,16 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
   }, [from, to]);
 
   const passFilters = (s) =>
-    (!selClubs.length || selClubs.includes(s.club)) && (!selCats.length || selCats.includes(catOf(s)));
+    (!selClubs.length || selClubs.includes(s.club))
+    && (!selCats.length || selCats.includes(catOf(s)))
+    && (!selProducts.length || selProducts.includes(s.productName));
 
   const cur = useMemo(() => realSales.filter(s => s._d >= from && s._d <= to && passFilters(s)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [realSales, from, to, selClubs, selCats]);
+    [realSales, from, to, selClubs, selCats, selProducts]);
   const prev = useMemo(() => realSales.filter(s => s._d >= prevRange[0] && s._d <= prevRange[1] && passFilters(s)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [realSales, prevRange, selClubs, selCats]);
+    [realSales, prevRange, selClubs, selCats, selProducts]);
 
   // Бесплатные выдачи и возвраты — в том же периоде и фильтрах
   const extras = useMemo(() => {
@@ -299,7 +305,7 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
     }
     return { freeQty, freeCost, retCount, retSum };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, from, to, selClubs, selCats]);
+  }, [sales, from, to, selClubs, selCats, selProducts]);
 
   const totals = (list) => {
     const revenue = list.reduce((a, s) => a + (s.totalSum || 0), 0);
@@ -318,12 +324,18 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
     let groups;
     if (split === 'category') groups = categories.map((c, i) => ({ key: c, name: c, color: seriesColor(i) }));
     else if (split === 'club') groups = clubs.map((c, i) => ({ key: c, name: c, color: seriesColor(i) }));
+    // Цвет товара — по порядку выбора, поэтому не меняется при добавлении следующих
+    // 9-й и дальше не получают новых цветов — сворачиваются в «Остальные выбранные»
+    else if (split === 'product') {
+      groups = selProducts.slice(0, 8).map((n, i) => ({ key: n, name: n, color: seriesColor(i) }));
+      if (selProducts.length > 8) groups.push({ key: '__rest', name: 'Остальные выбранные', color: 'var(--text-muted)' });
+    }
     else groups = [{ key: '__all', name: METRICS.find(m => m.id === metric).label, color: 'var(--accent-purple)' }];
     const vals = new Map(groups.map(g => [g.key, new Array(n).fill(0)]));
     for (const s of cur) {
       const i = idx.get(buckets.keyOf(s._d));
       if (i == null) continue;
-      const g = split === 'category' ? catOf(s) : split === 'club' ? s.club : '__all';
+      const g = split === 'category' ? catOf(s) : split === 'club' ? s.club : split === 'product' ? (selProducts.indexOf(s.productName) < 8 ? s.productName : '__rest') : '__all';
       const arr = vals.get(g);
       if (arr) arr[i] += metricOf(s, metric);
     }
@@ -332,7 +344,7 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
     const present = split === 'total' ? all : all.filter(s => s.values.some(v => v !== 0));
     return { labels: buckets.keys.map(buckets.label), series: present };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cur, buckets, split, metric, clubs, categories]);
+  }, [cur, buckets, split, metric, clubs, categories, selProducts]);
 
   const visibleSeries = chart.series.filter(s => !hiddenSeries.includes(s.name));
 
@@ -386,6 +398,48 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
   }, [cur, metric, clubs, categories]);
 
   const toggle = (list, setList, v) => setList(list.includes(v) ? list.filter(x => x !== v) : [...list, v]);
+
+  // Справочник товаров для выбора: все, что когда-либо продавались, по видам
+  // (в рамках выбранных видов). Одно название в разных клубах = одна модель.
+  const productCatalog = useMemo(() => {
+    const m = new Map();
+    for (const s of realSales) {
+      if (!s.productName) continue;
+      const r = m.get(s.productName) || { name: s.productName, category: catOf(s), qty: 0 };
+      r.qty += s.qty || 0;
+      m.set(s.productName, r);
+    }
+    return [...m.values()];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realSales, categories]);
+  const pickerGroups = useMemo(() => {
+    const q = productQuery.trim().toLowerCase();
+    return categories
+      .filter(c => !selCats.length || selCats.includes(c))
+      .map(c => ({
+        category: c,
+        items: productCatalog
+          .filter(p => p.category === c && (!q || p.name.toLowerCase().includes(q)))
+          .sort((a, b) => b.qty - a.qty),
+      }))
+      .filter(g => g.items.length);
+  }, [productCatalog, categories, selCats, productQuery]);
+
+  // Сменили виды — выкидываем выбранные товары других видов, иначе фильтр молча обнулит всё
+  const changeCats = (next) => {
+    setSelCats(next);
+    if (next.length) {
+      const allowed = new Set(productCatalog.filter(p => next.includes(p.category)).map(p => p.name));
+      setSelProducts(prev => prev.filter(n => allowed.has(n)));
+    }
+  };
+  const changeProducts = (next) => {
+    setSelProducts(next);
+    setHiddenSeries([]);
+    if (!next.length && split === 'product') setSplit('category');
+    if (next.length && selProducts.length === 0) setSplit('product');
+  };
+  const splits = SPLITS.filter(sp => sp.id !== 'product' || selProducts.length);
   const metrics = METRICS.filter(m => !m.cost || canSeeCost);
   const periodLabel = `${format(from, 'd MMM yyyy', { locale: ru })} — ${format(to, 'd MMM yyyy', { locale: ru })}`;
 
@@ -414,9 +468,60 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Виды</span>
-            <button className={pill(!selCats.length)} onClick={() => setSelCats([])}>Все</button>
-            {categories.map(c => <button key={c} className={pill(selCats.includes(c))} onClick={() => toggle(selCats, setSelCats, c)}>{c}</button>)}
+            <button className={pill(!selCats.length)} onClick={() => changeCats([])}>Все</button>
+            {categories.map(c => <button key={c} className={pill(selCats.includes(c))} onClick={() => changeCats(selCats.includes(c) ? selCats.filter(x => x !== c) : [...selCats, c])}>{c}</button>)}
           </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Товары</span>
+            <button className={pill(!selProducts.length)} onClick={() => changeProducts([])}>Все</button>
+            {selProducts.map((n, i) => (
+              <button key={n} className={`${pill(true)} flex items-center gap-1.5`} onClick={() => changeProducts(selProducts.filter(x => x !== n))} title="Убрать">
+                <span className="w-2 h-2 rounded-sm ring-1 ring-white/80" style={{ background: i < 8 ? seriesColor(i) : 'var(--text-muted)' }} />{n} <span className="opacity-70">✕</span>
+              </button>
+            ))}
+            <button className={pill(productPickerOpen)} onClick={() => setProductPickerOpen(o => !o)}>
+              {productPickerOpen ? 'Готово' : '+ Выбрать товары'}
+            </button>
+          </div>
+          {productPickerOpen && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-hover)] p-3 flex flex-col gap-3">
+              <input
+                value={productQuery}
+                onChange={e => setProductQuery(e.target.value)}
+                placeholder="Поиск товара..."
+                className="w-full px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-purple)]"
+              />
+              <div className="max-h-72 overflow-y-auto flex flex-col gap-3 pr-1">
+                {pickerGroups.length ? pickerGroups.map(g => {
+                  const allOn = g.items.every(p => selProducts.includes(p.name));
+                  return (
+                    <div key={g.category}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)]">{g.category}</span>
+                        <button className="text-[10px] font-bold text-[var(--accent-purple)] hover:underline"
+                          onClick={() => changeProducts(allOn
+                            ? selProducts.filter(n => !g.items.some(p => p.name === n))
+                            : [...selProducts, ...g.items.map(p => p.name).filter(n => !selProducts.includes(n))])}>
+                          {allOn ? 'Снять все' : 'Выбрать все'}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {g.items.map(p => (
+                          <button key={p.name} className={pill(selProducts.includes(p.name))}
+                            onClick={() => changeProducts(selProducts.includes(p.name) ? selProducts.filter(x => x !== p.name) : [...selProducts, p.name])}>
+                            {p.name} <span className="opacity-60">· {p.qty} шт</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }) : <div className="text-xs font-bold text-[var(--text-muted)] text-center py-4">Ничего не найдено</div>}
+              </div>
+              {selProducts.length > 8 && (
+                <div className="text-[10px] font-bold text-[var(--text-muted)]">На графике «По товарам» отдельной линией идут первые 8 выбранных, остальные — общей серой линией «Остальные выбранные».</div>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] w-16 shrink-0">Метрика</span>
             {metrics.map(m => <button key={m.id} className={pill(metric === m.id)} onClick={() => setMetric(m.id)}>{m.label}</button>)}
@@ -439,7 +544,7 @@ export default function MerchAnalytics({ sales, clubs, categories, canSeeCost })
       {/* Динамика */}
       <Card
         title={`Динамика · ${METRICS.find(m => m.id === metric).label.toLowerCase()} · по ${buckets.unit === 'day' ? 'дням' : buckets.unit === 'week' ? 'неделям' : 'месяцам'}`}
-        right={<div className="flex gap-1">{SPLITS.map(s => <button key={s.id} className={pill(split === s.id)} onClick={() => { setSplit(s.id); setHiddenSeries([]); }}>{s.label}</button>)}</div>}
+        right={<div className="flex gap-1">{splits.map(s => <button key={s.id} className={pill(split === s.id)} onClick={() => { setSplit(s.id); setHiddenSeries([]); }}>{s.label}</button>)}</div>}
       >
         {cur.length ? (
           <>
