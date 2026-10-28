@@ -22,6 +22,7 @@ export const PUSH_CATEGORIES = [
   { id: '/attendance',     label: 'Чекин' },
   { id: '/service-report', label: 'Отчет смены' },
   { id: '/calendar',       label: 'Календарь' },
+  { id: '/schedule',       label: 'График (обмен сменами)' },
   { id: '/news',           label: 'Новости' },
   { id: '/onboarding',     label: 'Адаптация' },
 ];

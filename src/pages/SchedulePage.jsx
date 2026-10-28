@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useSchedule } from '../store/ScheduleContext';
 import { useTickets } from '../store/TicketContext';
+import ShiftSwapPanel from '../components/schedule/ShiftSwap';
 import { toast } from 'sonner';
 import ScrollContainer from 'react-indiana-drag-scroll';
 import { collection, query, onSnapshot, where } from 'firebase/firestore';
@@ -1247,6 +1248,10 @@ const SchedulePage = () => {
           )}
         </div>
       </div>
+
+      {/* Обмен сменами: админ отправляет запрос, менеджер подтверждает — ячейки
+          меняются через updateCell (см. components/schedule/ShiftSwap.jsx) */}
+      <ShiftSwapPanel club={selectedClub} monthKey={monthKey} employees={clubEmployees} scheduleData={scheduleData} user={user} canEditSchedule={canEditSchedule} updateCell={updateCell} />
 
       {/* Europe City: план продаж на месяц. План и факт вводятся вручную;
           при факт >= план каждому сотруднику со сменами +100 000 ₸ (авто). */}
