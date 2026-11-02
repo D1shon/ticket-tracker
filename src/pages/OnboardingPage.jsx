@@ -9,7 +9,7 @@ import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { ONBOARDING_SECTIONS, ONBOARDING_TOTAL, ONBOARDING_POSITIONS } from '../data/onboardingChecklist';
+import { ONBOARDING_SECTIONS, ONBOARDING_TOTAL, ONBOARDING_POSITIONS, ONBOARDING_DAYS } from '../data/onboardingChecklist';
 
 const CLUBS = ['4YOU', 'COLIBRI', 'VILLA', 'NURLY ORDA', 'PROMENADE', 'EUROPE CITY', 'DUBAI'];
 const GREEN = '#5F9C81';
@@ -225,14 +225,25 @@ const OnboardingPage = () => {
           </div>
         </div>
 
-        {/* Секции чек-листа */}
-        {ONBOARDING_SECTIONS.map(sec => {
+        {/* Секции чек-листа, сгруппированы по дням обучения (День 1…4) */}
+        {ONBOARDING_SECTIONS.map((sec, idx) => {
           const secDone = sec.items.filter(i => t.checks?.[i.id]).length;
           const all = secDone === sec.items.length;
           // Полностью пройденная группа сворачивается сама; вручную можно раскрыть/свернуть любую
           const isOpen = openSec[sec.id] ?? !all;
+          // Заголовок дня — перед первой секцией каждого дня, с прогрессом по дню
+          const dayDef = (idx === 0 || ONBOARDING_SECTIONS[idx - 1].day !== sec.day) ? ONBOARDING_DAYS.find(d => d.day === sec.day) : null;
+          const dayItems = dayDef ? ONBOARDING_SECTIONS.filter(x => x.day === sec.day).flatMap(x => x.items) : [];
+          const dayDone = dayItems.filter(i => t.checks?.[i.id]).length;
           return (
-            <div key={sec.id} style={{ background: 'var(--bg-card)', border: '1px solid ' + (all ? `${GREEN}55` : 'var(--border)'), borderRadius: 16, padding: isMobile ? '12px 12px' : '16px 18px' }}>
+            <React.Fragment key={sec.id}>
+            {dayDef && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: idx === 0 ? 0 : 10, padding: '0 4px' }}>
+                <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--accent-purple)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{dayDef.title}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 900, color: dayDone === dayItems.length ? GREEN : 'var(--text-muted)' }}>{dayDone}/{dayItems.length}</span>
+              </div>
+            )}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid ' + (all ? `${GREEN}55` : 'var(--border)'), borderRadius: 16, padding: isMobile ? '12px 12px' : '16px 18px' }}>
               <button onClick={() => setOpenSec(o => ({ ...o, [sec.id]: !isOpen }))} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', marginBottom: isOpen ? (sec.intro ? 2 : 8) : 0 }}>
                 {all
                   ? <span style={{ width: 20, height: 20, borderRadius: 6, background: GREEN, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Check size={13} color="#fff" strokeWidth={3} /></span>
@@ -265,6 +276,7 @@ const OnboardingPage = () => {
                 })}
               </div>}
             </div>
+            </React.Fragment>
           );
         })}
       </div>
