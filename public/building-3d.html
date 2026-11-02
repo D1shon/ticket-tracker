@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>HJ Инвиктус — 3D схема инженерки</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#111827; --panel2:#1f2937; --line:#374151;
+    --txt:#e5e7eb; --mut:#9ca3af; --acc:#f97316;
+    --water:#38bdf8; --heat:#f87171; --cold:#60a5fa; --vent:#4ade80; --elec:#facc15;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; overflow:hidden; background:var(--bg); color:var(--txt);
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;}
+  #c3d{position:fixed; inset:0; display:block;}
+
+  /* ---------- top bar ---------- */
+  #topbar{position:fixed; top:0; left:0; right:0; z-index:20; display:flex; gap:8px; align-items:center;
+    padding:10px 12px; background:linear-gradient(180deg,rgba(11,15,23,.92),rgba(11,15,23,.55) 75%,transparent);
+    pointer-events:none;}
+  #topbar>*{pointer-events:auto;}
+  #title{font-weight:700; font-size:15px; white-space:nowrap;}
+  #title small{display:block; font-weight:400; font-size:11px; color:var(--mut);}
+  #chips{display:flex; gap:6px; flex-wrap:wrap; margin-left:auto;}
+  .chip{border:1px solid var(--line); background:rgba(17,24,39,.85); color:var(--txt);
+    border-radius:999px; padding:5px 11px; font-size:12px; cursor:pointer; user-select:none;}
+  .chip .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px;}
+  .chip.off{opacity:.35;}
+
+  /* ---------- scenarios ---------- */
+  #scen{position:fixed; left:12px; top:64px; z-index:20; display:flex; flex-direction:column; gap:6px;}
+  .scbtn{border:1px solid var(--line); background:rgba(17,24,39,.9); color:var(--txt); text-align:left;
+    border-radius:10px; padding:8px 12px; font-size:13px; cursor:pointer;}
+  .scbtn:hover{border-color:var(--acc);}
+  .scbtn.active{border-color:var(--acc); background:rgba(249,115,22,.15);}
+
+  /* ---------- object list ---------- */
+  #listwrap{position:fixed; left:12px; bottom:12px; z-index:20; width:252px; max-height:44vh;
+    display:flex; flex-direction:column; background:rgba(17,24,39,.92); border:1px solid var(--line);
+    border-radius:12px; overflow:hidden;}
+  #listhead{padding:8px 12px; font-size:12px; color:var(--mut); border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;}
+  #list{overflow-y:auto; padding:4px 0;}
+  .li{display:flex; align-items:center; gap:8px; padding:6px 12px; font-size:12.5px; cursor:pointer;}
+  .li:hover{background:rgba(249,115,22,.12);}
+  .li .dot{width:9px; height:9px; border-radius:50%; flex:none;}
+  .li.sel{background:rgba(249,115,22,.22);}
+
+  /* ---------- info card ---------- */
+  #card{position:fixed; right:12px; top:64px; bottom:12px; z-index:25; width:min(380px,92vw);
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow-y:auto;
+    padding:16px; display:none; box-shadow:0 10px 40px rgba(0,0,0,.6);}
+  #card.open{display:block;}
+  #card h2{font-size:17px; line-height:1.25; padding-right:30px;}
+  #card .sys{display:inline-block; margin:8px 0 2px; font-size:11px; border-radius:999px; padding:3px 10px;
+    font-weight:600; color:#0b0f17;}
+  #card .loc{font-size:12px; color:var(--mut); margin:8px 0 10px;}
+  #card .sect{margin-top:12px;}
+  #card .sect h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin-bottom:6px;}
+  #card .sect p{font-size:13.5px; line-height:1.5;}
+  #card ol{padding-left:20px; display:flex; flex-direction:column; gap:6px;}
+  #card ol li{font-size:13.5px; line-height:1.45;}
+  #card .warn{margin-top:14px; border:1px solid rgba(248,113,113,.5); background:rgba(248,113,113,.1);
+    border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.45;}
+  #card .warn b{color:#fca5a5;}
+  #xcard{position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:15px; cursor:pointer;}
+  #flybtn{margin-top:14px; width:100%; padding:9px; border-radius:10px; border:1px solid var(--acc);
+    background:rgba(249,115,22,.15); color:var(--acc); font-weight:600; font-size:13px; cursor:pointer;}
+
+  /* ---------- scenario panel ---------- */
+  #scenpanel{position:fixed; right:12px; top:64px; z-index:24; width:min(380px,92vw); max-height:70vh; overflow-y:auto;
+    background:var(--panel); border:1px solid var(--acc); border-radius:14px; padding:16px; display:none;}
+  #scenpanel.open{display:block;}
+  #scenpanel h2{font-size:16px; padding-right:28px;}
+  #scenpanel .step{display:flex; gap:10px; margin-top:12px; cursor:pointer; align-items:flex-start;}
+  #scenpanel .step .n{flex:none; width:24px; height:24px; border-radius:50%; background:var(--acc); color:#0b0f17;
+    font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;}
+  #scenpanel .step p{font-size:13.5px; line-height:1.45;}
+  #scenpanel .step p b{color:var(--acc);}
+  #xscen{position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:15px; cursor:pointer;}
+
+  /* ---------- hover tooltip ---------- */
+  #tip{position:fixed; z-index:30; pointer-events:none; background:rgba(17,24,39,.95); border:1px solid var(--line);
+    border-radius:8px; padding:5px 10px; font-size:12.5px; display:none; white-space:nowrap;}
+
+  #hint{position:fixed; bottom:12px; right:12px; z-index:15; font-size:11px; color:var(--mut);
+    background:rgba(11,15,23,.6); padding:6px 10px; border-radius:8px;}
+
+  @media (max-width:760px){
+    #listwrap{display:none;}
+    #scen{top:auto; bottom:12px; left:12px; right:12px; flex-direction:row; flex-wrap:wrap;}
+    .scbtn{font-size:11.5px; padding:7px 9px;}
+    #card,#scenpanel{top:auto; bottom:64px; max-height:55vh;}
+    #hint{display:none;}
+    #title small{display:none;}
+  }
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<div id="topbar">
+  <div id="title">HJ «Инвиктус» · Валиханова 170<small>3D-схема инженерных систем — нажми на кран или пульт</small></div>
+  <div id="chips"></div>
+</div>
+
+<div id="scen"></div>
+
+<div id="listwrap">
+  <div id="listhead"><span>Оборудование</span><span id="listarrow">▾</span></div>
+  <div id="list"></div>
+</div>
+
+<div id="card">
+  <button id="xcard">✕</button>
+  <h2 id="cName"></h2>
+  <span class="sys" id="cSys"></span>
+  <div class="loc" id="cLoc"></div>
+  <div class="sect"><h3>Что это</h3><p id="cDesc"></p></div>
+  <div class="sect"><h3>Если перекрыть / нажать</h3><p id="cOff"></p></div>
+  <div class="sect"><h3>Инструкция</h3><ol id="cSteps"></ol></div>
+  <div class="warn" id="cWarn"></div>
+  <button id="flybtn">📍 Подлететь к объекту</button>
+</div>
+
+<div id="scenpanel">
+  <button id="xscen">✕</button>
+  <h2 id="spTitle"></h2>
+  <div id="spSteps"></div>
+</div>
+
+<div id="tip"></div>
+<div id="hint">ЛКМ — вращать · колесо — зум · ПКМ — сдвиг · клик по маркеру — инструкция</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ================= данные систем ================= */
+const SYS = {
+  water:{ label:'Вода',        color:0x38bdf8, css:'#38bdf8' },
+  heat: { label:'Тепло',       color:0xf87171, css:'#f87171' },
+  cold: { label:'Холод',       color:0x60a5fa, css:'#60a5fa' },
+  vent: { label:'Вентиляция',  color:0x4ade80, css:'#4ade80' },
+  elec: { label:'Электрика',   color:0xfacc15, css:'#facc15' },
+};
+
+/* Здание: X 0..54 м (вдоль), Z 0..22.5 м (поперёк), Y вверх. Потолок 4.8 м. */
+const L=54, W=22.5, H=4.8;
+
+/* ================= оборудование =================
+   type: 'valve' кран | 'panel' пульт/щит | 'pump' насос | 'unit' агрегат | 'damper' клапан */
+const ITEMS = [
+{ id:'vvod-v1', sys:'water', type:'valve', pos:[2.2,0.5,20.5],
+  name:'Главный кран ввода воды В1 Ø50',
+  loc:'У главного входа, в нише у пола (ввод от городской сети)',
+  desc:'Шаровый кран на вводе холодной воды в клуб. Через него питаются душевые, санузлы, подпитка горячей воды и узел холода.',
+  off:'Перекрывает ВСЮ воду в клубе: не работают души, туалеты, питьевые фонтанчики, подпитка систем. Горячая вода тоже закончится — она греется из этой же воды.',
+  steps:['Поверни рукоятку по часовой стрелке до упора (¼ оборота — рукоятка поперёк трубы).',
+    'Открой ближайший смеситель, чтобы сбросить давление.',
+    'Сообщи менеджеру смены и создай заявку в HJ Track → «Заявки».',
+    'Открывать обратно — ПЛАВНО, чтобы не было гидроудара.'],
+  warn:'<b>Перекрывай только при аварии</b> (прорыв трубы, потоп). Просто так не трогать — без воды остановится и горячее водоснабжение.' },
+
+{ id:'uzel-t3', sys:'water', type:'valve', pos:[45,0.9,1.6],
+  name:'Водомерный узел Т3 (ГВС, Ду50)',
+  loc:'Тепловой пункт (правый дальний угол здания)',
+  desc:'Узел учёта горячей воды: шаровый кран → фильтр-грязевик → водомер → шаровый кран. Через него горячая вода уходит из теплового пункта к душевым.',
+  off:'Закрытие любого из двух кранов полностью останавливает горячую воду в клубе. Холодная при этом работает.',
+  steps:['Чистка фильтра: закрой ОБА крана узла.',
+    'Подставь ведро, открути крышку грязевика, промой сетку.',
+    'Собери обратно, открой краны плавно, проверь отсутствие капель.',
+    'Если меняли водомер — зафиксируй показания до/после и сообщи в заявке.'],
+  warn:'Вода в узле <b>горячая (до 60–65°C)</b> — работай в перчатках. После работ убедись, что краны открыты полностью, иначе в душах будет слабый напор.' },
+
+{ id:'uzel-t4', sys:'water', type:'valve', pos:[47.2,0.9,1.6],
+  name:'Водомерный узел Т4 (циркуляция ГВС, Ду25)',
+  loc:'Тепловой пункт, рядом с узлом Т3',
+  desc:'Учёт циркуляционной линии горячей воды: вода, которая не разобрана в душах, возвращается в тепловой пункт на подогрев.',
+  off:'Горячая вода НЕ пропадёт, но будет долго «прогоняться»: из лейки сначала потечёт остывшая вода, жалобы «долго ждать горячую».',
+  steps:['При обслуживании закрой оба крана узла.',
+    'Промой сетку фильтра так же, как на узле Т3.',
+    'Открой краны, проверь, что через 10–15 минут вода в дальних душах идёт горячая сразу.'],
+  warn:'Если после работ горячая вода «доходит» дольше минуты — циркуляция не восстановилась, создай заявку.' },
+
+{ id:'drain-pump', sys:'water', type:'pump', pos:[8,0.35,7.5],
+  name:'Дренажный насос Grundfos Unilift AP 12.40.06',
+  loc:'Приямок в зоне санузлов/душевых (под съёмной крышкой)',
+  desc:'Автоматический насос (0.6 кВт, 1.5 л/с): откачивает воду из приямка, куда стекают трапы душевых. Включается сам по поплавку.',
+  off:'Если его обесточить — приямок переполнится, вода пойдёт на пол душевых, появится запах канализации.',
+  steps:['Насос работает сам — вмешательство не нужно.',
+    'Если в душевых стоит вода: проверь, гудит ли насос (слышно из приямка).',
+    'Не гудит — проверь его автомат в электрощите (подпись «дренажный насос»).',
+    'Автомат включён, но насос молчит — возможно заклинил поплавок: подними крышку и аккуратно пошевели поплавок.',
+    'Не помогло — заявка в HJ Track с пометкой «срочно».'],
+  warn:'<b>Не отключай его автомат</b> в щите «для экономии» — затопит душевые. В приямок руками не лезть при включённом питании.' },
+
+{ id:'kran-gvs-dush', sys:'water', type:'valve', pos:[11.5,1.6,4.5],
+  name:'Гребёнка душевых (краны по группам)',
+  loc:'Техшкаф у душевых, за люком',
+  desc:'Распределительные краны горячей и холодной воды по группам душевых леек (мужские/женские блоки).',
+  off:'Закрытие одного крана отключает только свою группу душей — остальные продолжают работать. Удобно при ремонте одного смесителя.',
+  steps:['Определи, какая лейка течёт/сломана.',
+    'Закрой кран её группы (подписаны на гребёнке).',
+    'Повесь табличку «ремонт» на душевую.',
+    'Создай заявку; после ремонта открой кран обратно.'],
+  warn:'Не путай с общими кранами ГВС — если закрыть всю гребёнку, встанут все души блока.' },
+
+/* ---------------- ТЕПЛО ---------------- */
+{ id:'btp-shkaf', sys:'heat', type:'panel', pos:[46.5,1.5,2.6],
+  name:'Шкаф управления БТП «ЭнКо» (пульт теплового пункта)',
+  loc:'Тепловой пункт, на стене',
+  desc:'Мозг отопления и горячей воды: управляет 4 циркуляционными насосами и регуляторами «Тритон» (погодозависимая автоматика — сам подбирает температуру по погоде).',
+  off:'Отключение шкафа останавливает насосы → через 1–2 часа клуб начнёт остывать, горячая вода пропадёт. Самостоятельно уставки НЕ менять.',
+  steps:['Если в клубе холодно: открой дверцу, посмотри индикаторы — горят ли «работа» на насосах, нет ли красных «авария».',
+    'Красная авария — сфотографируй табло и код ошибки.',
+    'Нажми «сброс аварии» ОДИН раз. Повторилась — не трогай.',
+    'Создай заявку в HJ Track, приложи фото. Переключение на резервный насос делает только инженер.'],
+  warn:'<b>Не менять уставки температуры</b> и не выключать автоматы внутри шкафа. Любая «подкрутка» собьёт погодозависимый график всего клуба.' },
+
+{ id:'btp-vvod', sys:'heat', type:'valve', pos:[44.3,0.7,0.9],
+  name:'Краны ввода теплосети Т1/Т2 (Ду65)',
+  loc:'Тепловой пункт, у стены со стороны улицы',
+  desc:'Два шаровых крана на вводе городской теплосети. По подающей трубе Т1 идёт вода 132°C под давлением ~4.6 бар.',
+  off:'Перекрытие отрезает клуб от городского тепла: остановится отопление И нагрев горячей воды. Закрывать только при аварии в тепловом пункте.',
+  steps:['Закрывай ТОЛЬКО при явной аварии: свищ, парение, кипяток хлещет из трубы.',
+    'Надень плотные перчатки, не вставай напротив струи/пара.',
+    'Закрой оба крана (подача и обратка) до упора.',
+    'Немедленно позвони инженеру и в теплоснабжающую организацию, создай заявку «срочно».'],
+  warn:'<b>КИПЯТОК 132°C ПОД ДАВЛЕНИЕМ.</b> Ожог за секунду. Без аварийной необходимости эти краны не трогает никто, кроме инженера.' },
+
+{ id:'btp-nasos', sys:'heat', type:'pump', pos:[48.5,0.6,2.6],
+  name:'Насосы отопления IMP NMT Smart 32/100 (раб. + резерв)',
+  loc:'Тепловой пункт, на раме БТП',
+  desc:'Пара циркуляционных насосов гоняет горячую воду по батареям и фанкойлам клуба. Один работает, второй в резерве — переключает автоматика.',
+  off:'Остановка обоих насосов = отопление встанет, даже если теплосеть на месте. Батареи остынут за пару часов.',
+  steps:['Шум, скрежет или течь из-под насоса — сфотографируй.',
+    'Проверь на шкафу БТП, не горит ли «авария насоса».',
+    'Создай заявку. Вручную насосы не переключать.'],
+  warn:'Корпус насоса горячий (до 70°C) — не хвататься голой рукой.' },
+
+{ id:'btp-predohr', sys:'heat', type:'valve', pos:[49.8,1.1,1.0],
+  name:'Предохранительный клапан Ду20 (6 бар)',
+  loc:'Тепловой пункт, на трубопроводе у расширительного бака',
+  desc:'Аварийный клапан: если давление в системе отопления превысит 6 бар — сам сбросит лишнее в дренаж.',
+  off:'Его нельзя «перекрыть» и нельзя заглушать. Если из него капает — система сигналит о проблеме с давлением.',
+  steps:['Единичные капли после нагрева — норма.',
+    'Течёт постоянно или струйкой — сфотографируй манометры рядом (их показания).',
+    'Создай заявку «срочно» — вероятен перегрев или отказ расширительного бака.'],
+  warn:'<b>НИКОГДА не заглушать и не подвязывать клапан.</b> Это единственная защита от разрыва труб.' },
+
+/* ---------------- ХОЛОД ---------------- */
+{ id:'chiller', sys:'cold', type:'unit', pos:[56.5,1.4,1.8],
+  name:'Чиллер 151 кВт (холодильная машина)',
+  loc:'Снаружи здания, за тепловым пунктом',
+  desc:'Готовит холодный гликоль (5/10°C) для всех фанкойлов — именно он «кондиционирует» залы летом.',
+  off:'Остановка чиллера = через 30–60 минут в залах станет жарко и душно. Зимой он штатно выключен.',
+  steps:['Если летом жарко: подойди, проверь — крутятся ли вентиляторы сверху.',
+    'На боковой панели есть дисплей: сфотографируй код ошибки, если горит.',
+    'Проверь автомат чиллера в электрощитовой (подписан).',
+    'Создай заявку с фото. Сам чиллер не перезапускать больше одного раза.'],
+  warn:'Внутри — хладагент под давлением и 380В. <b>Кожух не открывать.</b> Не складировать ничего вплотную — ему нужен обдув.' },
+
+{ id:'glycol-pumps', sys:'cold', type:'pump', pos:[52.5,0.6,1.2],
+  name:'Насосы гликоля (2 × 26 м³/ч)',
+  loc:'Помещение холодильной станции (рядом с тепловым пунктом)',
+  desc:'Качают холодный гликоль от чиллера к теплообменникам и дальше по фанкойлам залов.',
+  off:'Стоят насосы — холод не доходит до залов, даже если чиллер работает.',
+  steps:['При жаре в зале проверь: гудят ли насосы (ровный гул — норма).',
+    'Течь гликоля (цветная жидкость на полу) — огороди место, создай заявку «срочно».',
+    'Автоматы насосов — в щите холодстанции, выбило → поднять один раз.'],
+  warn:'Гликоль скользкий и не должен попадать в канализацию вёдрами — при большой течи просто закрой дверь и вызывай инженера.' },
+
+{ id:'collector-hs', sys:'cold', type:'valve', pos:[51.2,1.0,2.8],
+  name:'Коллектор холодоснабжения (ветки А / Б)',
+  loc:'Холодильная станция, у стены',
+  desc:'Распределительная «гребёнка» холодного гликоля с кранами на две ветки фанкойлов (разные половины клуба).',
+  off:'Закрытие крана ветки А или Б отключает охлаждение соответствующей половины залов. Вторая половина продолжает охлаждаться.',
+  steps:['Если течёт фанкойл в зале и капает на тренажёры: закрой кран его ветки на коллекторе (подписаны А/Б).',
+    'Подставь ёмкость под течь в зале.',
+    'Создай заявку; после ремонта кран открыть полностью.'],
+  warn:'Не закрывай обе ветки сразу при работающем чиллере — автоматика уйдёт в аварию по протоку.' },
+
+{ id:'podpitka', sys:'cold', type:'valve', pos:[53.5,0.9,2.8],
+  name:'Узел подпитки + бак гликоля 30 л',
+  loc:'Холодильная станция',
+  desc:'Автоматический клапан подпитки держит давление в контуре холода, рядом бак с запасом гликоля и счётчик воды.',
+  off:'Без подпитки при утечке давление в контуре упадёт и чиллер отключится по аварии.',
+  steps:['Посмотри манометр контура: норма указана биркой (~1.5 бар).',
+    'Давление ниже нормы и падает — ищи течь, создай заявку.',
+    'Доливку гликоля выполняет только инженер.'],
+  warn:'Не доливать простую воду в гликолевый контур — зимой контур замёрзнет.' },
+
+{ id:'fancoil', sys:'cold', type:'valve', pos:[27,4.2,6],
+  name:'Краны фанкойлов (под потолком залов)',
+  loc:'Над подвесным потолком, у каждого фанкойла (FT, Legs, Upper/FFB, Bootcamp)',
+  desc:'У каждого внутреннего блока охлаждения — пара кранов Т91/Т92 (подача/обратка гликоля). Позволяют отключить один блок, не трогая остальные.',
+  off:'Закрытие пары кранов отключает только этот фанкойл: его зона станет теплее, остальные работают.',
+  steps:['Если фанкойл капает: подставь ведро, огороди зону.',
+    'Доступ к кранам — с стремянки через потолочный люк. Только при выключенном блоке.',
+    'Закрой оба крана блока, создай заявку с номером/местом блока.'],
+  warn:'Работа на высоте — только вдвоём и со стремянкой, не со стула.' },
+
+/* ---------------- ВЕНТИЛЯЦИЯ ---------------- */
+{ id:'pv1', sys:'vent', type:'unit', pos:[5,6.2,4],
+  name:'Приточно-вытяжная установка ПВ1',
+  loc:'Венткамера на антресоли (2-й уровень) над раздевалками',
+  desc:'Главная «лёгкая» клуба: подаёт свежий воздух и забирает отработанный из всех залов. Зимой догревает воздух теплом из ТП (контур Т12/Т22).',
+  off:'Остановка = через час в залах душно, запотевают окна/зеркала, у клиентов жалобы «нечем дышать».',
+  steps:['Душно в клубе: поднимись к щиту автоматики ПВ1 — горит ли «работа».',
+    'Авария по фильтрам (перепад давления) — фильтры забиты, нужна замена: заявка.',
+    'Кнопкой «пуск» перезапусти ОДИН раз после аварии.',
+    'Не запустилась — заявка с фото щита.'],
+  warn:'Не выключать на день «для тишины/экономии» — без притока CO₂ в залах растёт очень быстро.' },
+
+{ id:'p2', sys:'vent', type:'unit', pos:[9,6.2,4],
+  name:'Приточная установка П2 + вытяжки В1–В3',
+  loc:'Антресоль / кровля',
+  desc:'П2 обслуживает раздевалки и душевые, вытяжки В1–В3 удаляют влажный воздух из душевых и санузлов.',
+  off:'Если встанут — в душевых сырость, конденсат, запахи; плесень на швах за пару недель.',
+  steps:['Запах сырости/затхлости в раздевалках — проверь щиты В1–В3 (горит «работа»?).',
+    'Перезапуск кнопкой — один раз.',
+    'Создай заявку, укажи какая система не работает.'],
+  warn:'Вытяжки санузлов должны работать всё время работы клуба.' },
+
+{ id:'kpd1', sys:'vent', type:'damper', pos:[20,4.4,11],
+  name:'Огнезадерживающий клапан КПД4-03 (EI45)',
+  loc:'Воздуховод над коридором (4 шт. по зданию)',
+  desc:'Автоматический клапан в воздуховоде: при пожаре закрывается сам и 45 минут не пускает огонь и дым по вентиляции в другие зоны.',
+  off:'Срабатывает автоматически от пожарной сигнализации. Вручную его не «нажимают» — только проверяют при обслуживании.',
+  steps:['При пожарной тревоге клапаны закрываются сами — делать ничего не нужно.',
+    'После любой тревоги (даже ложной) инженер проверяет, что клапаны вернулись в открытое положение.',
+    'Если после тревоги в какой-то зоне «не дует» — вероятно, клапан остался закрыт: заявка.'],
+  warn:'Не подвешивать и не крепить ничего к воздуховодам рядом с клапанами.' },
+
+{ id:'vd', sys:'vent', type:'unit', pos:[34,6.2,11],
+  name:'Дымоудаление ВД1–ВД5',
+  loc:'Вентиляторы на кровле, кнопки пуска — у эвакуационных выходов',
+  desc:'Система противодымной защиты: при пожаре мощные вентиляторы вытягивают дым из залов, чтобы люди успели выйти.',
+  off:'Включается автоматически от пожарной сигнализации. Есть красные кнопки ручного пуска у выходов.',
+  steps:['При задымлении: нажми красную кнопку дымоудаления у ближайшего выхода (если не включилось само).',
+    'Организуй эвакуацию по плану, двери не блокировать.',
+    'Звони 101 (112). После — заявка и акт.'],
+  warn:'<b>Кнопки — только при реальном задымлении.</b> Ложный пуск — это остановка клуба и перезарядка системы.' },
+
+/* ---------------- ЭЛЕКТРИКА ---------------- */
+{ id:'grshch', sys:'elec', type:'panel', pos:[4.5,1.5,21.3],
+  name:'Электрощитовая / вводной щит (ГРЩ)',
+  loc:'У главного входа (дверь «Электрощитовая»)',
+  desc:'Главный распределительный щит: вводной автомат всего клуба и групповые автоматы (свет, розетки, вентиляция, насосы, чиллер).',
+  off:'Вводной автомат вниз = полное обесточивание клуба: свет, турникеты, кассы, насосы, вентиляция. Аварийное освещение держится на аккумуляторах ~1 час.',
+  steps:['Запах гари/искры/дым из щита: отключи ВВОДНОЙ автомат (большой, сверху).',
+    'Эвакуируй людей из помещения, звони 101 (112).',
+    'Тушить только углекислотным/порошковым огнетушителем — НЕ водой.',
+    'Выбило групповой автомат: подними его ОДИН раз. Выбивает снова — не поднимать, заявка.'],
+  warn:'<b>380В.</b> Внутрь щита не лезть, с мокрыми руками не трогать. Дверь щитовой не загромождать и держать закрытой.' },
+
+{ id:'shchit-zone', sys:'elec', type:'panel', pos:[33,1.6,11.3],
+  name:'Зональные щиты (Шкаф №11 и др.)',
+  loc:'В коридоре между залами и в подсобках',
+  desc:'Щиты освещения и розеток по зонам: FT, Bootcamp, Legs, Upper/FFB, раздевалки. Каждый автомат подписан.',
+  off:'Автомат вниз = погасла своя группа света или розеток конкретной зоны. Остальной клуб работает.',
+  steps:['Погас свет в зоне: найди в щите автомат с подписью зоны.',
+    'Если он выбит (посередине/вниз) — подними один раз.',
+    'Выбивает повторно — НЕ поднимать (где-то КЗ), создай заявку.',
+    'Автоматы беговых дорожек не трогать при занимающихся клиентах.'],
+  warn:'Поднимать автомат больше одного раза нельзя — сгорит проводка.' },
+
+{ id:'pult-recep', sys:'elec', type:'panel', pos:[6,1.2,16.5],
+  name:'Пульт ресепшн (свет/музыка/турникет)',
+  loc:'Стойка ресепшн у входа',
+  desc:'Выключатели основного света залов, управление музыкой и ручное открытие турникета.',
+  off:'Кнопка турникета открывает проход без браслета (гость, курьер). Свет залов гасить только после последнего клиента.',
+  steps:['Открытие турникета: короткое нажатие = один проход.',
+    'Вечером: свет гасится по зонам после выхода последнего клиента, порядок — на чек-листе закрытия в HJ Track.',
+    'Утром: включи свет зон до открытия (чек-лист открытия).'],
+  warn:'Не оставляй турникет в «постоянно открыто».' },
+];
+
+/* ================= сценарии ================= */
+const SCENARIOS = [
+{ id:'flood', btn:'🚨 Потоп / течь воды', title:'Потоп или сильная течь',
+  steps:[
+    {ref:'vvod-v1', text:'<b>Перекрой главный кран ввода В1</b> у входа — рукоятку по часовой до упора.'},
+    {ref:'grshch', text:'Если вода рядом с розетками/щитами — <b>отключи автоматы этой зоны</b> в щите.'},
+    {ref:'drain-pump', text:'Проверь, что <b>дренажный насос</b> в душевых работает (гудит).'},
+    {text:'Убери воду, выставь таблички «мокрый пол», создай заявку в HJ Track с фото.'}]},
+{ id:'fire', btn:'🔥 Запах гари / пожар', title:'Запах гари или возгорание',
+  steps:[
+    {text:'Подними тревогу, начни эвакуацию, звони <b>101 (112)</b>.'},
+    {ref:'grshch', text:'Если горит электрика — <b>отключи вводной автомат</b> в ГРЩ.'},
+    {ref:'vd', text:'Если дым пошёл по залу и система сама не включилась — <b>красная кнопка дымоудаления</b> у выхода.'},
+    {ref:'kpd1', text:'Огнезадерживающие клапаны вентиляции <b>закроются сами</b> — вентиляцию трогать не нужно.'},
+    {text:'Тушить только порошковым/углекислотным огнетушителем и только очаг размером «с ведро».'}]},
+{ id:'nohot', btn:'🚿 Нет горячей воды', title:'Нет или слабая горячая вода',
+  steps:[
+    {ref:'uzel-t3', text:'Проверь <b>узел Т3</b> в тепловом пункте: оба крана открыты (рукоятки вдоль трубы)?'},
+    {ref:'btp-shkaf', text:'На <b>шкафу БТП</b> посмотри: нет ли красной аварии, работают ли насосы ГВС.'},
+    {ref:'uzel-t4', text:'Вода есть, но долго прогоняется? Проверь краны <b>узла циркуляции Т4</b>.'},
+    {text:'Сфотографируй табло шкафа и манометры, создай заявку «срочно».'}]},
+{ id:'hot', btn:'🥵 Жарко в залах', title:'Жарко и душно в залах (лето)',
+  steps:[
+    {ref:'chiller', text:'Проверь <b>чиллер</b> за зданием: крутятся ли вентиляторы, нет ли ошибки на дисплее.'},
+    {ref:'glycol-pumps', text:'Зайди в холодстанцию: <b>насосы гликоля</b> гудят ровно?'},
+    {ref:'collector-hs', text:'На <b>коллекторе</b> обе ветки А и Б открыты?'},
+    {ref:'pv1', text:'Проверь, что <b>ПВ1</b> работает — без притока тоже душно.'},
+    {text:'Всё работает, но жарко — заявка с указанием зоны и температуры.'}]},
+{ id:'cold', btn:'🥶 Холодно в клубе', title:'Холодно в клубе (зима)',
+  steps:[
+    {ref:'btp-shkaf', text:'<b>Шкаф БТП</b>: индикаторы насосов горят? Красных аварий нет?'},
+    {ref:'btp-nasos', text:'<b>Насосы отопления</b> гудят? Тишина = стоят.'},
+    {ref:'btp-vvod', text:'Краны <b>ввода теплосети</b> открыты (рукоятки вдоль трубы)? Трубы горячие?'},
+    {text:'Сфотографируй манометры и термометры БТП, создай заявку «срочно».'}]},
+];
+
+/* ================= three.js сцена ================= */
+const canvas = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f17);
+scene.fog = new THREE.Fog(0x0b0f17, 90, 220);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
+camera.position.set(L/2-38, 42, W+42);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(L/2, 0, W/2);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI/2 - 0.04;
+controls.minDistance = 6; controls.maxDistance = 140;
+
+scene.add(new THREE.HemisphereLight(0x8899bb, 0x223344, 1.1));
+const sun = new THREE.DirectionalLight(0xffeedd, 1.6);
+sun.position.set(-30, 60, 40);
+scene.add(sun);
+
+/* земля */
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(160, 48),
+  new THREE.MeshStandardMaterial({color:0x101722, roughness:1}));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.02;
+scene.add(ground);
+const grid = new THREE.GridHelper(160, 64, 0x1f2937, 0x16202e);
+grid.position.y = 0;
+scene.add(grid);
+
+/* ----- корпус здания ----- */
+const bld = new THREE.Group(); scene.add(bld);
+
+function box(w,h,d, x,y,z, color, opacity=1, rough=.85){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshStandardMaterial({color, roughness:rough, transparent:opacity<1, opacity}));
+  m.position.set(x,y,z); bld.add(m); return m;
+}
+/* пол */
+box(L, .2, W, L/2, .1, W/2, 0x2a3443);
+/* наружные стены (полупрозрачные, чтобы видеть внутрь) */
+const wallMat = new THREE.MeshStandardMaterial({color:0x8fa3bd, transparent:true, opacity:.16, roughness:.4, side:THREE.DoubleSide, depthWrite:false});
+function wall(w,h,d,x,y,z){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat); m.position.set(x,y,z); bld.add(m); return m; }
+wall(L,H,.3, L/2,H/2,0);        // задняя (север)
+wall(L,H,.3, L/2,H/2,W);        // фасад (юг)
+wall(.3,H,W, 0,H/2,W/2);        // левый торец
+wall(.3,H,W, L,H/2,W/2);        // правый торец
+/* каркас-рёбра */
+const edge = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(L,H,W)),
+  new THREE.LineBasicMaterial({color:0x4b5a70}));
+edge.position.set(L/2,H/2,W/2); bld.add(edge);
+
+/* внутренние перегородки (приблизительно по проекту) */
+const partMat = new THREE.MeshStandardMaterial({color:0x5b6c84, transparent:true, opacity:.35, roughness:.7});
+function part(w,d,x,z,h=H){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), partMat); m.position.set(x,h/2,z); bld.add(m); }
+part(.25, 14.5, 15.5, 7.25);   // раздевалки | залы
+part(15.5,.25, 7.75, 10.2);    // раздевалки низ
+part(.25, 8.4, 37.5, 6.0);     // FT | Legs
+part(.25, 10.0, 37.5, 17.3);   // Bootcamp | Upper
+part(21.5,.25, 26.5, 10.2);    // FT низ (коридор)
+part(38,.25, 35, 12.2);        // коридор низ
+part(10.2,.25, 48.9, 3.2);     // ТП+ХС передняя стена
+part(.25, 3.2, 43.8, 1.6);     // ТП левая стена
+part(.25, 3.2, 50.2, 1.6);     // ТП | ХС
+part(8,.25, 4, 14.8);          // ресепшн/вестибюль
+part(2.5,.25, 3.5, 19.9);      // электрощитовая
+part(.25, 2.6, 2.25+2.5/2+.9, 21.2, 3);
+
+/* антресоль (2-й уровень, венткамера) */
+box(13, .25, 9, 6.5, H+0.1, 4.5, 0x33404f, .9);
+const mezzWall = new THREE.Mesh(new THREE.BoxGeometry(13,2.6,9),
+  new THREE.MeshStandardMaterial({color:0x8fa3bd, transparent:true, opacity:.10, roughness:.4, depthWrite:false}));
+mezzWall.position.set(6.5, H+1.4, 4.5); bld.add(mezzWall);
+const mezzEdge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(13,2.6,9)),
+  new THREE.LineBasicMaterial({color:0x4b5a70}));
+mezzEdge.position.copy(mezzWall.position); bld.add(mezzEdge);
+
+/* зоны-подсветки пола */
+const ZONES = [
+  {n:'FT zone',        x:26.5, z:6.0,  w:21,  d:8,   c:0x2d3b31},
+  {n:'Bootcamp zone',  x:26.5, z:17.2, w:21,  d:9.5, c:0x3b332d},
+  {n:'Legs zone',      x:46,   z:6.0,  w:16,  d:8,   c:0x2d333b},
+  {n:'Upper / FFB',    x:46,   z:17.2, w:16,  d:9.5, c:0x3b2d33},
+  {n:'Раздевалки',     x:7.75, z:5,    w:15,  d:9.5, c:0x33313b},
+  {n:'Вестибюль',      x:7.75, z:18,   w:15,  d:8,   c:0x313b3b},
+  {n:'Тепловой пункт', x:47,   z:1.6,  w:6.2, d:3,   c:0x45302c},
+  {n:'Холодстанция',   x:52.2, z:1.6,  w:3.8, d:3,   c:0x2c3845},
+];
+function makeLabel(text, scale=1, color='#cbd5e1'){
+  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+  const fs = 44; ctx.font = `600 ${fs}px system-ui`;
+  c.width = Math.ceil(ctx.measureText(text).width)+28; c.height = fs+22;
+  const ctx2 = c.getContext('2d');
+  ctx2.font = `600 ${fs}px system-ui`; ctx2.fillStyle = color;
+  ctx2.textBaseline='middle'; ctx2.fillText(text, 14, c.height/2);
+  const tex = new THREE.CanvasTexture(c); tex.anisotropy=4;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthWrite:false}));
+  sp.scale.set(c.width/55*scale, c.height/55*scale, 1);
+  return sp;
+}
+for (const z of ZONES){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(z.w, .06, z.d),
+    new THREE.MeshStandardMaterial({color:z.c, roughness:1}));
+  m.position.set(z.x, .22, z.z); bld.add(m);
+  const lb = makeLabel(z.n, 1.15, '#8b98ab');
+  lb.position.set(z.x, .9, z.z); bld.add(lb);
+}
+/* вход */
+const entr = makeLabel('⬇ Вход', 1.3, '#f97316');
+entr.position.set(4, 1.2, 23.8); bld.add(entr);
+/* чиллер снаружи — площадка */
+box(5, .15, 3.4, 56.5, .08, 1.8, 0x1c2531);
+
+/* ----- маркеры оборудования ----- */
+const pickables = [];
+const markers = {};
+const geoByType = {
+  valve: new THREE.SphereGeometry(.42, 20, 16),
+  panel: new THREE.BoxGeometry(.85, 1.1, .3),
+  pump:  new THREE.CylinderGeometry(.38, .38, .7, 18),
+  unit:  new THREE.BoxGeometry(1.5, 1.1, 1.0),
+  damper:new THREE.CylinderGeometry(.34, .34, .5, 14),
+};
+for (const it of ITEMS){
+  const col = SYS[it.sys].color;
+  const g = new THREE.Group();
+  const mesh = new THREE.Mesh(geoByType[it.type],
+    new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:.35, roughness:.4}));
+  if (it.type==='damper') mesh.rotation.z = Math.PI/2;
+  g.add(mesh);
+  /* пульсирующее кольцо на полу */
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.55,.75,32),
+    new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:.8, side:THREE.DoubleSide, depthWrite:false}));
+  ring.rotation.x = -Math.PI/2; ring.position.y = -it.pos[1]+.26;
+  g.add(ring);
+  /* стойка-линия от пола */
+  const lineG = new THREE.BufferGeometry().setFromPoints(
+    [new THREE.Vector3(0,-it.pos[1]+.25,0), new THREE.Vector3(0,0,0)]);
+  g.add(new THREE.Line(lineG, new THREE.LineBasicMaterial({color:col, transparent:true, opacity:.5})));
+  /* невидимая зона клика побольше */
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(1.0, 8, 8),
+    new THREE.MeshBasicMaterial({visible:false}));
+  hit.userData.item = it;
+  g.add(hit); pickables.push(hit);
+  g.position.set(...it.pos);
+  scene.add(g);
+  markers[it.id] = {group:g, mesh, ring, item:it, badge:null};
+}
+
+/* ================= UI ================= */
+const $ = s => document.querySelector(s);
+const sysFilter = Object.fromEntries(Object.keys(SYS).map(k=>[k,true]));
+
+/* чипы систем */
+for (const [k,s] of Object.entries(SYS)){
+  const b = document.createElement('button');
+  b.className = 'chip';
+  b.innerHTML = `<span class="dot" style="background:${s.css}"></span>${s.label}`;
+  b.onclick = () => { sysFilter[k]=!sysFilter[k]; b.classList.toggle('off',!sysFilter[k]); applyFilter(); };
+  $('#chips').appendChild(b);
+}
+function applyFilter(){
+  for (const m of Object.values(markers)) m.group.visible = sysFilter[m.item.sys];
+  renderList();
+}
+
+/* список */
+function renderList(){
+  const el = $('#list'); el.innerHTML='';
+  for (const it of ITEMS){
+    if (!sysFilter[it.sys]) continue;
+    const d = document.createElement('div');
+    d.className = 'li'; d.dataset.id = it.id;
+    d.innerHTML = `<span class="dot" style="background:${SYS[it.sys].css}"></span><span>${it.name}</span>`;
+    d.onclick = () => { openCard(it); flyTo(it); };
+    el.appendChild(d);
+  }
+}
+renderList();
+let listOpen = true;
+$('#listhead').onclick = () => {
+  listOpen = !listOpen;
+  $('#list').style.display = listOpen?'block':'none';
+  $('#listarrow').textContent = listOpen?'▾':'▸';
+};
+
+/* карточка */
+let selected = null;
+function openCard(it){
+  closeScenario();
+  selected = it;
+  $('#cName').textContent = it.name;
+  const s = SYS[it.sys];
+  $('#cSys').textContent = s.label + ' · ' + ({valve:'кран',panel:'пульт/щит',pump:'насос',unit:'агрегат',damper:'клапан'})[it.type];
+  $('#cSys').style.background = s.css;
+  $('#cLoc').textContent = '📍 ' + it.loc;
+  $('#cDesc').textContent = it.desc;
+  $('#cOff').textContent = it.off;
+  $('#cSteps').innerHTML = it.steps.map(x=>`<li>${x}</li>`).join('');
+  $('#cWarn').innerHTML = '⚠️ ' + it.warn;
+  $('#card').classList.add('open');
+  document.querySelectorAll('.li').forEach(e=>e.classList.toggle('sel', e.dataset.id===it.id));
+}
+$('#xcard').onclick = () => { $('#card').classList.remove('open'); selected=null;
+  document.querySelectorAll('.li').forEach(e=>e.classList.remove('sel')); };
+$('#flybtn').onclick = () => selected && flyTo(selected);
+
+/* сценарии */
+let activeScen = null;
+const badges = [];
+for (const sc of SCENARIOS){
+  const b = document.createElement('button');
+  b.className='scbtn'; b.textContent = sc.btn; b.dataset.id = sc.id;
+  b.onclick = () => activeScen===sc.id ? closeScenario() : openScenario(sc);
+  $('#scen').appendChild(b);
+}
+function openScenario(sc){
+  closeScenario(); $('#card').classList.remove('open');
+  activeScen = sc.id;
+  document.querySelectorAll('.scbtn').forEach(e=>e.classList.toggle('active', e.dataset.id===sc.id));
+  $('#spTitle').textContent = sc.title;
+  const wrap = $('#spSteps'); wrap.innerHTML='';
+  let n = 0;
+  for (const st of sc.steps){
+    n++;
+    const d = document.createElement('div');
+    d.className='step';
+    d.innerHTML = `<div class="n">${n}</div><p>${st.text}</p>`;
+    if (st.ref){
+      const it = ITEMS.find(i=>i.id===st.ref);
+      d.onclick = () => { flyTo(it); };
+      /* номерной бейдж в 3D */
+      const bg = makeBadge(n, SYS[it.sys].css);
+      bg.position.set(it.pos[0], it.pos[1]+1.5, it.pos[2]);
+      scene.add(bg); badges.push(bg);
+    }
+    wrap.appendChild(d);
+  }
+  $('#scenpanel').classList.add('open');
+}
+function closeScenario(){
+  activeScen = null;
+  $('#scenpanel').classList.remove('open');
+  document.querySelectorAll('.scbtn').forEach(e=>e.classList.remove('active'));
+  for (const b of badges) scene.remove(b);
+  badges.length = 0;
+}
+$('#xscen').onclick = closeScenario;
+function makeBadge(n, css){
+  const c = document.createElement('canvas'); c.width=c.height=96;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = css; ctx.beginPath(); ctx.arc(48,48,44,0,7); ctx.fill();
+  ctx.fillStyle = '#0b0f17'; ctx.font='700 52px system-ui';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(n, 48, 52);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c), depthTest:false, transparent:true}));
+  sp.scale.set(1.6,1.6,1); sp.renderOrder = 99;
+  return sp;
+}
+
+/* перелёт камеры */
+let flight = null;
+function flyTo(it){
+  const p = new THREE.Vector3(...it.pos);
+  const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  const camTo = p.clone().add(dir.multiplyScalar(14)).add(new THREE.Vector3(0,7,0));
+  flight = { t:0, c0:camera.position.clone(), c1:camTo, g0:controls.target.clone(), g1:p };
+}
+
+/* ================= взаимодействие ================= */
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+const tip = $('#tip');
+let downAt = null;
+
+function setPtr(e){
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  const y = e.touches ? e.touches[0].clientY : e.clientY;
+  ptr.x = (x/innerWidth)*2-1; ptr.y = -(y/innerHeight)*2+1;
+  return {x,y};
+}
+function pick(){
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(pickables, false)
+    .filter(h=>h.object.parent.visible);
+  return hits[0]?.object.userData.item || null;
+}
+canvas.addEventListener('pointermove', e=>{
+  const {x,y} = setPtr(e);
+  const it = pick();
+  canvas.style.cursor = it ? 'pointer' : 'grab';
+  if (it){ tip.textContent = it.name; tip.style.display='block';
+    tip.style.left = Math.min(x+14, innerWidth-tip.offsetWidth-8)+'px'; tip.style.top = (y+14)+'px'; }
+  else tip.style.display='none';
+});
+canvas.addEventListener('pointerdown', e=>{ downAt=[e.clientX,e.clientY]; });
+canvas.addEventListener('pointerup', e=>{
+  if (!downAt) return;
+  const moved = Math.hypot(e.clientX-downAt[0], e.clientY-downAt[1]);
+  downAt=null;
+  if (moved>6) return;         // это было вращение, не клик
+  setPtr(e);
+  const it = pick();
+  if (it) openCard(it);
+});
+
+/* ================= цикл ================= */
+function resize(){
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const clock = new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  const t = clock.getElapsedTime();
+  /* пульс */
+  for (const m of Object.values(markers)){
+    const k = 1 + Math.sin(t*3 + m.group.position.x)*0.12;
+    m.ring.scale.setScalar(k);
+    m.mesh.material.emissiveIntensity = (selected && selected.id===m.item.id) ? .9+.4*Math.sin(t*6) : .35;
+    if (selected && selected.id===m.item.id) m.mesh.rotation.y = t*1.5;
+  }
+  for (const b of badges) b.position.y += Math.sin(t*2.5)*0.002;
+  /* перелёт */
+  if (flight){
+    flight.t = Math.min(1, flight.t + 0.025);
+    const e = flight.t<.5 ? 2*flight.t*flight.t : 1-Math.pow(-2*flight.t+2,2)/2;
+    camera.position.lerpVectors(flight.c0, flight.c1, e);
+    controls.target.lerpVectors(flight.g0, flight.g1, e);
+    if (flight.t>=1) flight=null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+loop();
+</script>
+</body>
+</html>

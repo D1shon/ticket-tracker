@@ -35,6 +35,7 @@ export const NAV_ITEMS = [
   { path: '/calls',           label: 'Созвоны' },
   { path: '/guidebook',       label: 'Гайдбук' },
   { path: '/academy',         label: 'Академия' },
+  { path: '/club-model',      label: 'Модель клуба' },
   { path: '/injury-protocol', label: 'Регламент травм' },
   { path: '/policy',          label: 'Соглашение' },
   { path: '/settings',        label: 'Настройки' },
@@ -60,6 +61,14 @@ export function baseNavAllowed(user, path) {
   if (path === '/invoices') return user?.role === 'manager' || user?.role === 'chef';
   // Адаптация стажёров — менеджерский состав
   if (path === '/onboarding') return user?.role === 'manager' || user?.role === 'chef';
+  // Модель клуба — 3D-схема инженерки, пока есть только у Colibri:
+  // видна шефу и всем, у кого среди клубов есть COLIBRI (включая мультиклубных)
+  if (path === '/club-model') {
+    if (user?.role === 'chef') return true;
+    if (user?.role === 'guest' || user?.role === 'lostviewer' || user?.role === 'marketing') return false;
+    const clubs = [user?.club, ...(Array.isArray(user?.clubs) ? user.clubs : [])];
+    return clubs.some(c => (c || '').toUpperCase() === 'COLIBRI');
+  }
   if (user?.role === 'admin') {
     // Чек-листы — только админам Europe City
     if (path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';

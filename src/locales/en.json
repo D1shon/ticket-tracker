@@ -4369,5 +4369,11 @@
   "Вход в Академию проходит автоматически — регистрироваться и вводить пароль не нужно. При первом входе укажите свой номер телефона: по нему Академия подтвердит аккаунт и подтянет ваш прогресс.": "Signing in to the Academy is automatic — no registration or password needed. On your first visit, enter your phone number: the Academy uses it to confirm your account and pull up your progress.",
   "Сотрудники клуба": "Club staff",
   "Аккаунты с доступом к платформе · менеджер управляет сотрудниками своего клуба": "Accounts with platform access · the manager controls their own club staff",
-  "Пока нет сотрудников": "No staff yet"
+  "Пока нет сотрудников": "No staff yet",
+  "Модель клуба": "Club model",
+  "Модель клуба · COLIBRI": "Club model · COLIBRI",
+  "3D-схема инженерки": "3D utilities map",
+  "Нажмите на кран или пульт — появится инструкция": "Tap a valve or control panel to see its instructions",
+  "Загружаем модель…": "Loading the model…",
+  "3D-модель пока есть только у клуба COLIBRI. Для вашего клуба появится позже.": "The 3D model is only available for COLIBRI for now. It will arrive for your club later."
 }

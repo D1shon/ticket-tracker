@@ -11,7 +11,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search, Bot, Dumbbell, GraduationCap
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search, Bot, Dumbbell, GraduationCap, Building2
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -133,6 +133,7 @@ const ALL_NAV = [
   { icon: Phone,           label: 'Созвоны',     path: '/calls',       primary: false },
   { icon: BookOpen,        label: 'Гайдбук',     path: '/guidebook',   primary: false },
   { icon: GraduationCap,   label: 'Академия',    path: '/academy',     primary: false },
+  { icon: Building2,       label: 'Модель клуба', path: '/club-model', primary: false },
   { icon: ShieldAlert,     label: 'Регламент травм', path: '/injury-protocol', primary: false },
   { icon: FileText,        label: 'Соглашение',  path: '/policy',      primary: false },
   { icon: Settings,        label: 'Настройки',   path: '/settings',    primary: false },
@@ -188,6 +189,7 @@ const MOBILE_META = {
   '/calls':       { sub: 'видеосвязь', sect: 3 },
   '/guidebook':   { sub: 'база знаний', sect: 3 },
   '/academy':     { sub: 'курсы и обучение', sect: 3 },
+  '/club-model':  { sub: '3D-схема инженерки', sect: 3 },
   '/injury-protocol': { sub: 'действия при травмах', sect: 3 },
   '/policy':      { sub: 'правила платформы', sect: 3 },
   '/assistant':   { sub: 'ИИ по гайдбуку', sect: 3 },
