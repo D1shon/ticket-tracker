@@ -101,13 +101,23 @@
   @media (max-width:760px){ #zoomctl{bottom:auto; top:64px; right:12px; padding:6px 10px;}
     #zoomctl input[type=range]{width:90px;} }
 
+  /* кнопка-шторка сценариев (только мобила) */
+  #scentoggle{display:none; position:fixed; left:12px; bottom:12px; z-index:21; width:46px; height:46px;
+    border-radius:50%; border:1px solid var(--line); background:rgba(17,24,39,.92); font-size:20px; cursor:pointer;}
+
   @media (max-width:760px){
     #listwrap{display:none;}
-    #scen{top:auto; bottom:12px; left:12px; right:12px; flex-direction:row; flex-wrap:wrap;}
+    #chips{flex-wrap:nowrap; overflow-x:auto; max-width:62vw; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+    #chips::-webkit-scrollbar{display:none;}
+    #scentoggle{display:block;}
+    #scen{display:none; top:auto; bottom:68px; left:12px; right:12px; flex-direction:row; flex-wrap:wrap;}
+    #scen.show{display:flex;}
     .scbtn{font-size:11.5px; padding:7px 9px;}
     #card,#scenpanel{top:auto; bottom:64px; max-height:55vh;}
     #hint{display:none;}
     #title small{display:none;}
+    #zoomctl{opacity:.92;}
+    #zoomctl .zlabel{display:none;}
   }
 </style>
 </head>
@@ -120,6 +130,7 @@
 </div>
 
 <div id="scen"></div>
+<button id="scentoggle" title="Аварийные сценарии">🚨</button>
 
 <div id="listwrap">
   <div id="listhead"><span>Оборудование</span><span id="listarrow">▾</span></div>
@@ -532,8 +543,10 @@ const SCENARIOS = [
 
 /* ================= three.js сцена ================= */
 const canvas = document.getElementById('c3d');
+const isMobileView = matchMedia('(max-width:760px)').matches;
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+/* на телефонах рендерим в меньшем разрешении — заметно легче */
+renderer.setPixelRatio(Math.min(devicePixelRatio, isMobileView ? 1.3 : 2));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0f17);
 scene.fog = new THREE.Fog(0x0b0f17, 90, 220);
@@ -668,16 +681,21 @@ function makeLabel(text, scale=1, color='#cbd5e1'){
   sp.scale.set(c.width/55*scale, c.height/55*scale, 1);
   return sp;
 }
+/* подписи помещений собираем отдельно — их можно скрыть кнопкой «Подписи»
+   (на телефоне по умолчанию выключены, чтобы не мешали обзору) */
+const roomLabels = [];
 for (const z of ZONES){
   const m = new THREE.Mesh(new THREE.BoxGeometry(z.w, .06, z.d),
     new THREE.MeshStandardMaterial({color:z.c, roughness:1}));
   m.position.set(z.x, .22, z.z); bld.add(m);
   const lb = makeLabel(z.n, 1.15, '#8b98ab');
   lb.position.set(z.x, .9, z.z); bld.add(lb);
+  roomLabels.push(lb);
 }
 for (const m of MEZZ){
   const lb = makeLabel(m.n, 0.9, '#8b98ab');
   lb.position.set(2.4, H + 1.1, m.z); bld.add(lb);
+  roomLabels.push(lb);
 }
 /* вход */
 const entr = makeLabel('⬇ Вход', 1.3, '#f97316');
@@ -759,6 +777,19 @@ for (const [k,s] of Object.entries(SYS)){
   b.onclick = () => { sysFilter[k]=!sysFilter[k]; b.classList.toggle('off',!sysFilter[k]); applyFilter(); };
   $('#chips').appendChild(b);
 }
+
+/* переключатель подписей помещений: на телефоне старт — выключено */
+let labelsOn = !isMobileView;
+const lblBtn = document.createElement('button');
+lblBtn.className = 'chip' + (labelsOn ? '' : ' off');
+lblBtn.textContent = '🏷 Подписи';
+const applyLabels = () => { for (const l of roomLabels) l.visible = labelsOn; };
+lblBtn.onclick = () => { labelsOn = !labelsOn; lblBtn.classList.toggle('off', !labelsOn); applyLabels(); };
+$('#chips').appendChild(lblBtn);
+applyLabels();
+
+/* мобильная шторка сценариев */
+$('#scentoggle').onclick = () => $('#scen').classList.toggle('show');
 function applyFilter(){
   for (const m of Object.values(markers)) m.group.visible = sysFilter[m.item.sys];
   renderList();
@@ -816,6 +847,7 @@ for (const sc of SCENARIOS){
 }
 function openScenario(sc){
   closeScenario(); $('#card').classList.remove('open');
+  if (isMobileView) $('#scen').classList.remove('show'); // шторку прячем — остаются шаги
   activeScen = sc.id;
   document.querySelectorAll('.scbtn').forEach(e=>e.classList.toggle('active', e.dataset.id===sc.id));
   $('#spTitle').textContent = sc.title;
