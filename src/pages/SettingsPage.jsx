@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { NAV_ITEMS, navAllowed, baseNavAllowed } from '../lib/navAccess';
 import { User, Mail, Globe, Bell, Shield, LogOut, CheckCircle2, Sliders, Edit3, Link2, Check, X, MapPin, Plus, Trash2, Pencil, UserPlus, Users, FileText } from 'lucide-react';
 import { useTickets, USER_ROLES } from '../store/TicketContext';
+import { USER_ROLES as CODE_USER_ROLES } from '../lib/userRoles'; // аккаунты, зашитые в код (без рантайм-патчей)
 import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { PUSH_CATEGORIES } from '../lib/pushPrefs';
@@ -210,7 +211,7 @@ const SettingsPage = () => {
           revoked: true,
           revokedBy: user?.email || '',
           revokedAtISO: new Date().toISOString(),
-        });
+        }, { merge: true }); // merge: не стирать телефон/вкладки — шеф потом включит обратно кнопкой «Включить»
       }
       toast.success(`Доступ для ${a.name} удалён`);
     } catch (e) {
@@ -1178,14 +1179,22 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     const roleDef = ACCESS_ROLES.find(r => r.id === form.role);
     setSaving(true);
     try {
+      const realRole = form.role === 'mop' ? 'rop' : form.role === 'dev' ? 'tech' : form.role;
+      const club = roleDef?.needsClub ? form.club : null;
+      // Повторное добавление отключённого аккаунта = включить обратно (revoked снимаем).
+      // Для аккаунта, зашитого в код, платформа читает роль только из *Override —
+      // пишем и обычные поля (для списка), и перекрытия (для входа).
+      const inCode = email in CODE_USER_ROLES;
       await setDoc(doc(db, 'app_users', email), {
-        role: form.role === 'mop' ? 'rop' : form.role === 'dev' ? 'tech' : form.role,
+        role: realRole,
         mop: form.role === 'mop',
         dev: form.role === 'dev',
-        club: roleDef?.needsClub ? form.club : null,
+        club,
         displayName: form.name.trim() || email.split('@')[0],
         addedBy: myEmail,
         createdAtISO: new Date().toISOString(),
+        revoked: false,
+        ...(inCode && realRole !== 'chef' ? { roleOverride: realRole, mopOverride: form.role === 'mop', devOverride: form.role === 'dev', clubOverride: club } : {}),
       }, { merge: true });
       toast.success(`${form.name.trim() || email} добавлен(а): ${ROLE_LABEL[form.role]}${roleDef?.needsClub ? ' · ' + form.club : ''}`);
       setForm({ email: '', name: '', role: 'admin', club: '4YOU' });
@@ -1204,6 +1213,18 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
       if (!window.confirm(`Удалить аккаунт ${u.displayName} (${u.email})?`)) return;
       try { await deleteDoc(doc(db, 'app_users', u.email)); toast.success('Удалён'); } catch { toast.error('Ошибка'); }
     }
+  };
+
+  // ── Включить обратно отключённый аккаунт (revoked → false) ──
+  // Нужно шефу с телефона: менеджер может отключить зашитого админа из «Ролей»,
+  // а включить обратно раньше можно было только правкой базы.
+  const restoreUser = async (u) => {
+    try {
+      await setDoc(doc(db, 'app_users', u.email), {
+        revoked: false, restoredBy: myEmail, restoredAtISO: new Date().toISOString(),
+      }, { merge: true });
+      toast.success(`${u.displayName}: доступ включён`);
+    } catch { toast.error('Ошибка'); }
   };
 
   // ── Повышение / смена роли ──
@@ -1225,22 +1246,20 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
     if (phoneDigits.length === 11 && phoneDigits.startsWith('8')) phoneDigits = '7' + phoneDigits.slice(1); // 8747… → 7747…
     const phone = phoneDigits || null;
     try {
-      if (roleUser.isStatic) {
-        if (realRole === 'chef') { toast.error('Повысить зашитый в код аккаунт до шефа можно только в коде'); return; }
-        // Зашитый аккаунт: роль из кода не трогаем, кладём перекрытие
-        await setDoc(doc(db, 'app_users', roleUser.email), {
-          roleOverride: realRole, mopOverride: isMop, devOverride: isDev, clubOverride: club, phone,
-          roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
-        }, { merge: true });
-      } else {
-        await setDoc(doc(db, 'app_users', roleUser.email), {
-          role: realRole, mop: isMop, dev: isDev, club, phone,
-          roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
-          // Роль «шеф» платформа принимает только у записей, созданных шефом из кода
-          ...(realRole === 'chef' ? { addedBy: myEmail } : {}),
-        }, { merge: true });
-      }
-      toast.success(`${roleUser.displayName}: теперь ${ROLE_LABEL[roleDraft.role]}${club ? ' · ' + club : ''}`);
+      // «Зашит в код» определяем по самому коду, а не по наличию role в доке:
+      // после повторного добавления у такого аккаунта в доке есть role, но вход
+      // всё равно читает только *Override. Пишем оба набора полей.
+      const inCode = roleUser.email in CODE_USER_ROLES;
+      if (inCode && realRole === 'chef') { toast.error('Повысить зашитый в код аккаунт до шефа можно только в коде'); return; }
+      await setDoc(doc(db, 'app_users', roleUser.email), {
+        role: realRole, mop: isMop, dev: isDev, club, phone,
+        ...(inCode ? { roleOverride: realRole, mopOverride: isMop, devOverride: isDev, clubOverride: club } : {}),
+        revoked: false, // смена роли = аккаунт точно должен работать
+        roleEditedBy: myEmail, roleEditedAtISO: new Date().toISOString(),
+        // Роль «шеф» платформа принимает только у записей, созданных шефом из кода
+        ...(realRole === 'chef' ? { addedBy: myEmail } : {}),
+      }, { merge: true });
+      toast.success(`${roleUser.displayName}: теперь ${ROLE_LABEL[roleDraft.role]}${club ? ' · ' + club : ''}${roleUser.revoked ? ' · доступ включён' : ''}`);
       setRoleUser(null);
     } catch { toast.error('Не удалось изменить роль'); }
   };
@@ -1326,6 +1345,11 @@ const StaffAccessPanel = ({ appUsers, isMobile, myEmail }) => {
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}{u.isStatic ? ' · зашит в код' : ''}</div>
                 </div>
+                {u.revoked && (
+                  <button onClick={() => restoreUser(u)} title="Включить доступ обратно" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 11px', borderRadius: 10, border: '1px solid rgba(192,143,79,0.5)', background: 'rgba(192,143,79,0.12)', color: '#C08F4F', fontSize: 11, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
+                    <Check size={12} /> Включить
+                  </button>
+                )}
                 <button onClick={() => openRoleEditor(u)} title="Повысить / сменить роль" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 11px', borderRadius: 10, border: '1px solid rgba(95,156,129,0.4)', background: 'rgba(95,156,129,0.08)', color: '#5F9C81', fontSize: 11, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
                   <Pencil size={12} /> Роль
                 </button>
