@@ -5,7 +5,7 @@ import { useTickets } from '../store/TicketContext';
 import { pushNotify } from '../lib/pushNotify';
 import { db } from '../lib/firebase';
 import {
-  collection, onSnapshot, doc, setDoc, addDoc, deleteDoc, query, where, getDocs,
+  collection, onSnapshot, doc, setDoc, addDoc, deleteDoc, query, where, getDocs, getDoc,
 } from 'firebase/firestore';
 import { format, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -221,16 +221,25 @@ const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, 
   const [newDelivered,     setNewDelivered]     = useState(''); // поставка новых полотенец
   const [newTaken,         setNewTaken]         = useState(''); // взято новых в оборот
 
+  // Какие поля трогали руками НА ЭТОМ устройстве. В базу уходят только они:
+  // раньше при любом blur писался весь снимок дня из локальной памяти, и вкладка,
+  // открытая с утра на ресепшене (не успевшая подтянуть чужое «получено»),
+  // затирала его пустым значением, когда вечером вводили остаток.
+  const dirtyRef = useRef(new Set());
+  const setters = {
+    cleanReceived: setCleanReceived, cleanTotalManual: setCleanTotalManual, actualCount: setActualCount,
+    smallReceived: setSmallReceived, smallTotalManual: setSmallTotalManual, smallActual: setSmallActual,
+    laundryKg: setLaundryKg, newDelivered: setNewDelivered, newTaken: setNewTaken,
+  };
+  const touch = (field) => (v) => { dirtyRef.current.add(field); setters[field](v); };
+
+  // Синхронизация с базой: нетронутые локально поля всегда берём из записи
+  // (включая «пусто»), чтобы открытая вкладка показывала то, что ввели с другого устройства.
   useEffect(() => {
-    if (record?.cleanReceived    != null) setCleanReceived(String(record.cleanReceived));
-    if (record?.cleanTotalManual != null) setCleanTotalManual(String(record.cleanTotalManual));
-    if (record?.actualCount      != null) setActualCount(String(record.actualCount));
-    if (record?.smallReceived    != null) setSmallReceived(String(record.smallReceived));
-    if (record?.smallTotalManual != null) setSmallTotalManual(String(record.smallTotalManual));
-    if (record?.smallActual      != null) setSmallActual(String(record.smallActual));
-    if (record?.laundryKg        != null) setLaundryKg(String(record.laundryKg));
-    if (record?.newDelivered     != null) setNewDelivered(String(record.newDelivered));
-    if (record?.newTaken         != null) setNewTaken(String(record.newTaken));
+    Object.entries(setters).forEach(([f, set]) => {
+      if (dirtyRef.current.has(f)) return;
+      set(record?.[f] != null ? String(record[f]) : '');
+    });
   }, [record?.cleanReceived, record?.cleanTotalManual, record?.actualCount, record?.smallReceived, record?.smallTotalManual, record?.smallActual, record?.laundryKg, record?.newDelivered, record?.newTaken]);
 
   const num = (v) => (v === '' ? null : Number(v));
@@ -238,19 +247,14 @@ const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, 
   // Остаток новых на складе к концу этого дня = было + поставка − взято
   const newBalance = (newCarryIn || 0) + (num(newDelivered) ?? 0) - (num(newTaken) ?? 0);
 
-  // Любое поле теряет фокус → сохраняем весь снимок дня
-  const saveAll = () => {
-    onSave(date, {
-      cleanReceived:    num(cleanReceived),
-      cleanTotalManual: num(cleanTotalManual),
-      actualCount:      num(actualCount),
-      smallReceived:    num(smallReceived),
-      smallTotalManual: num(smallTotalManual),
-      smallActual:      num(smallActual),
-      laundryKg:        num(laundryKg),
-      newDelivered:     num(newDelivered),
-      newTaken:         num(newTaken),
-    });
+  // Любое поле теряет фокус → сохраняем ТОЛЬКО тронутые на этом устройстве поля
+  const saveAll = async () => {
+    const local = { cleanReceived, cleanTotalManual, actualCount, smallReceived, smallTotalManual, smallActual, laundryKg, newDelivered, newTaken };
+    const touched = {};
+    dirtyRef.current.forEach(f => { touched[f] = num(local[f]); });
+    if (!Object.keys(touched).length) return;
+    const ok = await onSave(date, touched);
+    if (ok) dirtyRef.current.clear(); // дальше поля снова ведёт база
   };
 
   const dateLabel = format(new Date(date + 'T12:00:00'), 'd MMMM yyyy', { locale: ru });
@@ -287,9 +291,9 @@ const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, 
           title={hasSmall ? '🛁 Большие полотенца' : null}
           prevCarry={prevCarry}
           canEdit={canEdit}
-          received={cleanReceived}       setReceived={setCleanReceived}
-          totalManual={cleanTotalManual} setTotalManual={setCleanTotalManual}
-          actual={actualCount}           setActual={setActualCount}
+          received={cleanReceived}       setReceived={touch('cleanReceived')}
+          totalManual={cleanTotalManual} setTotalManual={touch('cleanTotalManual')}
+          actual={actualCount}           setActual={touch('actualCount')}
           onBlurField={saveAll}
           isMobile={isMobile}
         />
@@ -298,9 +302,9 @@ const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, 
             title="🤍 Маленькие полотенца"
             prevCarry={prevCarrySmall}
             canEdit={canEdit}
-            received={smallReceived}       setReceived={setSmallReceived}
-            totalManual={smallTotalManual} setTotalManual={setSmallTotalManual}
-            actual={smallActual}           setActual={setSmallActual}
+            received={smallReceived}       setReceived={touch('smallReceived')}
+            totalManual={smallTotalManual} setTotalManual={touch('smallTotalManual')}
+            actual={smallActual}           setActual={touch('smallActual')}
             onBlurField={saveAll}
             isMobile={isMobile}
           />
@@ -315,7 +319,7 @@ const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, 
           </span>
           {canEdit ? (
             <input type="number" min="0" step="0.1" value={laundryKg}
-              onChange={e => setLaundryKg(e.target.value)}
+              onChange={e => touch('laundryKg')(e.target.value)}
               onBlur={saveAll}
               style={{ ...inputSt(false, isMobile), border: '1px solid rgba(192,143,79,0.5)', width: 90 }} />
           ) : (
@@ -337,7 +341,7 @@ const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, 
             <span style={{ fontSize: 9, fontWeight: 700, color: '#5F9C81', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Поставка</span>
             {canEdit ? (
               <input type="number" min="0" value={newDelivered}
-                onChange={e => setNewDelivered(e.target.value)}
+                onChange={e => touch('newDelivered')(e.target.value)}
                 onBlur={saveAll}
                 style={{ ...inputSt(false, isMobile), border: '1px solid rgba(95,156,129,0.5)' }} />
             ) : <StatCell label="" value={num(newDelivered)} color="#5F9C81" />}
@@ -347,7 +351,7 @@ const DayCard = ({ date, club, record, prevCarry, prevCarrySmall, prevShortage, 
             <span style={{ fontSize: 9, fontWeight: 700, color: '#C08F4F', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Взято в оборот</span>
             {canEdit ? (
               <input type="number" min="0" value={newTaken}
-                onChange={e => setNewTaken(e.target.value)}
+                onChange={e => touch('newTaken')(e.target.value)}
                 onBlur={saveAll}
                 style={{ ...inputSt(false, isMobile), border: '1px solid rgba(192,143,79,0.5)' }} />
             ) : <StatCell label="" value={num(newTaken)} color="#C08F4F" />}
@@ -574,8 +578,16 @@ const TowelsPage = () => {
     Object.keys(records).reduce((sum, d) => sum + (records[d].newDelivered || 0) - (records[d].newTaken || 0), 0),
   [records]);
 
-  const handleSave = useCallback(async (date, fields) => {
-    if (!club) return;
+  const handleSave = useCallback(async (date, touched) => {
+    if (!club) return false;
+    const docId = `${date}_${club.replace(/\s+/g, '_')}`;
+    const ref = doc(db, 'towel_records', docId);
+
+    // Берём СВЕЖУЮ запись из базы (а не снимок из памяти вкладки) и накладываем
+    // только тронутые поля — чужие утренние цифры не затираются.
+    let latest = {};
+    try { latest = (await getDoc(ref)).data() || {}; } catch { latest = records[date] || {}; }
+    const fields = { ...latest, ...touched };
 
     // Recompute cleanTotal and remainder
     const prevCarry = getPrevCarry(date);
@@ -601,22 +613,12 @@ const TowelsPage = () => {
       : (prevCarrySmall !== null && sr !== null) ? prevCarrySmall + sr : sr;
     const smallDirty = (smallTotal !== null && sac !== null) ? smallTotal - sac : null;
 
-    const docId = `${date}_${club.replace(/\s+/g, '_')}`;
     try {
-      await setDoc(doc(db, 'towel_records', docId), {
+      await setDoc(ref, {
         date, club,
-        cleanReceived:    cr,
-        cleanTotalManual: ctm,
-        actualCount:      ac,
-        dirtyTotal,
-        remainder: ac,
-        smallReceived:    sr,
-        smallTotalManual: stm,
-        smallActual:      sac,
-        smallDirty,
-        laundryKg:        fields.laundryKg ?? null,
-        newDelivered:     fields.newDelivered ?? null,
-        newTaken:         fields.newTaken ?? null,
+        ...touched,                 // только то, что ввели на этом устройстве
+        dirtyTotal, remainder: ac, smallDirty, // производные — от свежей базы + правок
+        updatedBy: user?.email || null, updatedAtISO: new Date().toISOString(),
       }, { merge: true });
       // Notify when the actual count is filled in — the day is done.
       // Same tag → repeated edits replace the notification instead of spamming.
@@ -632,11 +634,13 @@ const TowelsPage = () => {
           tag: `towels-${date}-${club}`,
         });
       }
+      return true;
     } catch (e) {
       console.error('[towel_records]', e);
       toast.error('Не удалось сохранить');
+      return false;
     }
-  }, [club, getPrevCarry, getPrevCarrySmall, user]);
+  }, [club, getPrevCarry, getPrevCarrySmall, user, records]);
 
   // Summary strip for today
   const todayRec    = records[today];
