@@ -90,6 +90,17 @@
   #hint{position:fixed; bottom:12px; right:12px; z-index:15; font-size:11px; color:var(--mut);
     background:rgba(11,15,23,.6); padding:6px 10px; border-radius:8px;}
 
+  /* ---------- управление дальностью ---------- */
+  #zoomctl{position:fixed; right:12px; bottom:44px; z-index:20; display:flex; align-items:center; gap:8px;
+    background:rgba(17,24,39,.9); border:1px solid var(--line); border-radius:12px; padding:8px 12px;}
+  #zoomctl button{width:30px; height:30px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--txt); font-size:17px; font-weight:700; cursor:pointer; line-height:1;}
+  #zoomctl button:active{border-color:var(--acc); color:var(--acc);}
+  #zoomctl input[type=range]{width:150px; accent-color:var(--acc); cursor:pointer;}
+  #zoomctl .zlabel{font-size:10.5px; color:var(--mut); min-width:40px; text-align:right;}
+  @media (max-width:760px){ #zoomctl{bottom:auto; top:64px; right:12px; padding:6px 10px;}
+    #zoomctl input[type=range]{width:90px;} }
+
   @media (max-width:760px){
     #listwrap{display:none;}
     #scen{top:auto; bottom:12px; left:12px; right:12px; flex-direction:row; flex-wrap:wrap;}
@@ -134,7 +145,13 @@
 </div>
 
 <div id="tip"></div>
-<div id="hint">ЛКМ — вращать · колесо — зум (к курсору) · ПКМ — сдвиг · клик по маркеру или трубе — инструкция</div>
+<div id="zoomctl">
+  <button id="zout" title="Отдалить">−</button>
+  <input id="zslider" type="range" min="0" max="1000" value="500" />
+  <button id="zin" title="Приблизить">+</button>
+  <span class="zlabel" id="zval"></span>
+</div>
+<div id="hint">ЛКМ — вращать · колесо/ползунок — дальность · ПКМ — сдвиг · клик по маркеру или трубе — инструкция</div>
 
 <script type="importmap">
 { "imports": {
@@ -527,10 +544,22 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(L/2, 0, W/2);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI/2 - 0.04;
-/* свободный зум: вплотную к крану и до общего вида, колесо тянет к курсору */
 controls.minDistance = 0.8; controls.maxDistance = 220;
-controls.zoomSpeed = 1.4;
 controls.zoomToCursor = true;
+
+/* ---- плавный зум ----
+   На компьютере колесо обрабатываем сами: оно задаёт ЦЕЛЬ дистанции, а камера
+   каждую секунду мягко доезжает до неё (экспоненциальное сглаживание) — вместо
+   ступенек OrbitControls. На тач-экранах остаётся штатный pinch. */
+const finePointer = matchMedia('(pointer: fine)').matches;
+if (finePointer) controls.enableZoom = false;
+let zoomGoal = null;                 // желаемая дистанция до цели, м
+const camDist = () => camera.position.distanceTo(controls.target);
+const setZoomGoal = (r) => { zoomGoal = THREE.MathUtils.clamp(r, controls.minDistance, controls.maxDistance); };
+if (finePointer) renderer.domElement.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  setZoomGoal((zoomGoal ?? camDist()) * Math.pow(1.0012, e.deltaY));
+}, { passive: false });
 
 scene.add(new THREE.HemisphereLight(0x8899bb, 0x223344, 1.1));
 const sun = new THREE.DirectionalLight(0xffeedd, 1.6);
@@ -835,7 +864,28 @@ function flyTo(it){
   const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
   const camTo = p.clone().add(dir.multiplyScalar(14)).add(new THREE.Vector3(0,7,0));
   flight = { t:0, c0:camera.position.clone(), c1:camTo, g0:controls.target.clone(), g1:p };
+  zoomGoal = null; // перелёт сам задаёт дистанцию
 }
+
+/* ---- ползунок дальности и кнопки ± ----
+   шкала логарифмическая: слева вплотную (0.8 м), справа общий вид (220 м) */
+const zslider = $('#zslider'), zval = $('#zval');
+const logMin = Math.log(controls.minDistance), logMax = Math.log(controls.maxDistance);
+const distToSlider = (d) => Math.round((Math.log(d) - logMin) / (logMax - logMin) * 1000);
+const sliderToDist = (v) => Math.exp(logMin + (v / 1000) * (logMax - logMin));
+let sliderBusy = false;
+zslider.addEventListener('input', () => { sliderBusy = true; setZoomGoal(sliderToDist(+zslider.value)); });
+zslider.addEventListener('change', () => { sliderBusy = false; });
+const holdZoom = (btn, factor) => {
+  let timer = null;
+  const step = () => setZoomGoal((zoomGoal ?? camDist()) * factor);
+  const start = (e) => { e.preventDefault(); step(); timer = setInterval(step, 60); };
+  const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+  btn.addEventListener('pointerdown', start);
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, stop);
+};
+holdZoom($('#zin'), 0.93);
+holdZoom($('#zout'), 1 / 0.93);
 
 /* ================= взаимодействие ================= */
 const ray = new THREE.Raycaster();
@@ -907,6 +957,18 @@ function loop(){
     controls.target.lerpVectors(flight.g0, flight.g1, e);
     if (flight.t>=1) flight=null;
   }
+  /* плавный доезд до желаемой дистанции */
+  if (zoomGoal !== null && !flight){
+    const d = camDist();
+    const nd = THREE.MathUtils.lerp(d, zoomGoal, 0.14);
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+    camera.position.copy(controls.target).add(dir.multiplyScalar(nd));
+    if (Math.abs(nd - zoomGoal) < 0.005) zoomGoal = null;
+  }
+  /* индикация дальности */
+  const dNow = camDist();
+  if (!sliderBusy) zslider.value = distToSlider(dNow);
+  zval.textContent = dNow < 10 ? dNow.toFixed(1) + ' м' : Math.round(dNow) + ' м';
   controls.update();
   renderer.render(scene, camera);
 }
