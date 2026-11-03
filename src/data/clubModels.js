@@ -4,7 +4,7 @@
 // + ready: true здесь; доступ к вкладке считается по этому же списку (navAccess.js).
 export const CLUB_MODELS = [
   { club: 'COLIBRI',     slug: 'colibri',    ready: true,  title: '«Инвиктус», Валиханова 170', url: '/models/colibri/index.html' },
-  { club: '4YOU',        slug: '4you',       ready: false },
+  { club: '4YOU',        slug: '4you',       ready: true,  title: 'ЖК «4you», 3 уровня',        url: '/models/4you/index.html' },
   { club: 'VILLA',       slug: 'villa',      ready: false },
   { club: 'NURLY ORDA',  slug: 'nurly-orda', ready: false },
   { club: 'PROMENADE',   slug: 'promenade',  ready: false },

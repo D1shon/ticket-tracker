@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>HJ 4YOU — 3D схема инженерки</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#111827; --panel2:#1f2937; --line:#374151;
+    --txt:#e5e7eb; --mut:#9ca3af; --acc:#f97316;
+    --water:#38bdf8; --heat:#f87171; --cold:#60a5fa; --vent:#4ade80; --elec:#facc15;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; overflow:hidden; background:var(--bg); color:var(--txt);
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;}
+  #c3d{position:fixed; inset:0; display:block;}
+
+  /* ---------- top bar ---------- */
+  #topbar{position:fixed; top:0; left:0; right:0; z-index:20; display:flex; gap:8px; align-items:center;
+    padding:10px 12px; background:linear-gradient(180deg,rgba(11,15,23,.92),rgba(11,15,23,.55) 75%,transparent);
+    pointer-events:none;}
+  #topbar>*{pointer-events:auto;}
+  #title{font-weight:700; font-size:15px; white-space:nowrap;}
+  #title small{display:block; font-weight:400; font-size:11px; color:var(--mut);}
+  #chips{display:flex; gap:6px; flex-wrap:wrap; margin-left:auto;}
+  .chip{border:1px solid var(--line); background:rgba(17,24,39,.85); color:var(--txt);
+    border-radius:999px; padding:5px 11px; font-size:12px; cursor:pointer; user-select:none;}
+  .chip .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px;}
+  .chip.off{opacity:.35;}
+
+  /* ---------- scenarios ---------- */
+  #scen{position:fixed; left:12px; top:64px; z-index:20; display:flex; flex-direction:column; gap:6px;}
+  .scbtn{border:1px solid var(--line); background:rgba(17,24,39,.9); color:var(--txt); text-align:left;
+    border-radius:10px; padding:8px 12px; font-size:13px; cursor:pointer;}
+  .scbtn:hover{border-color:var(--acc);}
+  .scbtn.active{border-color:var(--acc); background:rgba(249,115,22,.15);}
+
+  /* ---------- object list ---------- */
+  #listwrap{position:fixed; left:12px; bottom:12px; z-index:20; width:252px; max-height:44vh;
+    display:flex; flex-direction:column; background:rgba(17,24,39,.92); border:1px solid var(--line);
+    border-radius:12px; overflow:hidden;}
+  #listhead{padding:8px 12px; font-size:12px; color:var(--mut); border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;}
+  #list{overflow-y:auto; padding:4px 0;}
+  .li{display:flex; align-items:center; gap:8px; padding:6px 12px; font-size:12.5px; cursor:pointer;}
+  .li:hover{background:rgba(249,115,22,.12);}
+  .li .dot{width:9px; height:9px; border-radius:50%; flex:none;}
+  .li.sel{background:rgba(249,115,22,.22);}
+
+  /* ---------- info card ---------- */
+  #card{position:fixed; right:12px; top:64px; bottom:12px; z-index:25; width:min(380px,92vw);
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow-y:auto;
+    padding:16px; display:none; box-shadow:0 10px 40px rgba(0,0,0,.6);}
+  #card.open{display:block;}
+  #card h2{font-size:17px; line-height:1.25; padding-right:30px;}
+  #card .sys{display:inline-block; margin:8px 0 2px; font-size:11px; border-radius:999px; padding:3px 10px;
+    font-weight:600; color:#0b0f17;}
+  #card .loc{font-size:12px; color:var(--mut); margin:8px 0 10px;}
+  #card .sect{margin-top:12px;}
+  #card .sect h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin-bottom:6px;}
+  #card .sect p{font-size:13.5px; line-height:1.5;}
+  #card ol{padding-left:20px; display:flex; flex-direction:column; gap:6px;}
+  #card ol li{font-size:13.5px; line-height:1.45;}
+  #card .warn{margin-top:14px; border:1px solid rgba(248,113,113,.5); background:rgba(248,113,113,.1);
+    border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.45;}
+  #card .warn b{color:#fca5a5;}
+  #xcard{position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:15px; cursor:pointer;}
+  #flybtn{margin-top:14px; width:100%; padding:9px; border-radius:10px; border:1px solid var(--acc);
+    background:rgba(249,115,22,.15); color:var(--acc); font-weight:600; font-size:13px; cursor:pointer;}
+
+  /* ---------- scenario panel ---------- */
+  #scenpanel{position:fixed; right:12px; top:64px; z-index:24; width:min(380px,92vw); max-height:70vh; overflow-y:auto;
+    background:var(--panel); border:1px solid var(--acc); border-radius:14px; padding:16px; display:none;}
+  #scenpanel.open{display:block;}
+  #scenpanel h2{font-size:16px; padding-right:28px;}
+  #scenpanel .step{display:flex; gap:10px; margin-top:12px; cursor:pointer; align-items:flex-start;}
+  #scenpanel .step .n{flex:none; width:24px; height:24px; border-radius:50%; background:var(--acc); color:#0b0f17;
+    font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;}
+  #scenpanel .step p{font-size:13.5px; line-height:1.45;}
+  #scenpanel .step p b{color:var(--acc);}
+  #xscen{position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:15px; cursor:pointer;}
+
+  /* ---------- hover tooltip ---------- */
+  #tip{position:fixed; z-index:30; pointer-events:none; background:rgba(17,24,39,.95); border:1px solid var(--line);
+    border-radius:8px; padding:5px 10px; font-size:12.5px; display:none; white-space:nowrap;}
+
+  #hint{position:fixed; bottom:12px; right:12px; z-index:15; font-size:11px; color:var(--mut);
+    background:rgba(11,15,23,.6); padding:6px 10px; border-radius:8px;}
+
+  /* ---------- управление дальностью ---------- */
+  #zoomctl{position:fixed; right:12px; bottom:44px; z-index:20; display:flex; align-items:center; gap:8px;
+    background:rgba(17,24,39,.9); border:1px solid var(--line); border-radius:12px; padding:8px 12px;}
+  #zoomctl button{width:30px; height:30px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--txt); font-size:17px; font-weight:700; cursor:pointer; line-height:1;}
+  #zoomctl button:active{border-color:var(--acc); color:var(--acc);}
+  #zoomctl input[type=range]{width:150px; accent-color:var(--acc); cursor:pointer;}
+  #zoomctl .zlabel{font-size:10.5px; color:var(--mut); min-width:40px; text-align:right;}
+  @media (max-width:760px){ #zoomctl{bottom:auto; top:64px; right:12px; padding:6px 10px;}
+    #zoomctl input[type=range]{width:90px;} }
+
+  /* кнопка-шторка сценариев (только мобила) */
+  #scentoggle{display:none; position:fixed; left:12px; bottom:12px; z-index:21; width:46px; height:46px;
+    border-radius:50%; border:1px solid var(--line); background:rgba(17,24,39,.92); font-size:20px; cursor:pointer;}
+
+  @media (max-width:760px){
+    #listwrap{display:none;}
+    #chips{flex-wrap:nowrap; overflow-x:auto; max-width:62vw; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+    #chips::-webkit-scrollbar{display:none;}
+    #scentoggle{display:block;}
+    #scen{display:none; top:auto; bottom:68px; left:12px; right:12px; flex-direction:row; flex-wrap:wrap;}
+    #scen.show{display:flex;}
+    .scbtn{font-size:11.5px; padding:7px 9px;}
+    #card,#scenpanel{top:auto; bottom:64px; max-height:55vh;}
+    #hint{display:none;}
+    #title small{display:none;}
+    #zoomctl{opacity:.92;}
+    #zoomctl .zlabel{display:none;}
+  }
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<div id="topbar">
+  <div id="title">HJ 4YOU · ЖК «4you»<small>3D-схема инженерных систем: −2, 1, 2 этажи и кровля — нажми на агрегат, трубу или воздуховод · <span style="color:#4ade80">■</span> приток · <span style="color:#22d3ee">■</span> вытяжка · <span style="color:#60a5fa">■</span> блоки VRF · <span style="color:#f87171">■</span> отопление</small></div>
+  <div id="chips"></div>
+</div>
+
+<div id="scen"></div>
+<button id="scentoggle" title="Аварийные сценарии">🚨</button>
+
+<div id="listwrap">
+  <div id="listhead"><span>Оборудование</span><span id="listarrow">▾</span></div>
+  <div id="list"></div>
+</div>
+
+<div id="card">
+  <button id="xcard">✕</button>
+  <h2 id="cName"></h2>
+  <span class="sys" id="cSys"></span>
+  <div class="loc" id="cLoc"></div>
+  <div class="sect"><h3>Что это</h3><p id="cDesc"></p></div>
+  <div class="sect"><h3>Если перекрыть / нажать</h3><p id="cOff"></p></div>
+  <div class="sect"><h3>Инструкция</h3><ol id="cSteps"></ol></div>
+  <div class="warn" id="cWarn"></div>
+  <button id="flybtn">📍 Подлететь к объекту</button>
+</div>
+
+<div id="scenpanel">
+  <button id="xscen">✕</button>
+  <h2 id="spTitle"></h2>
+  <div id="spSteps"></div>
+</div>
+
+<div id="tip"></div>
+<div id="zoomctl">
+  <button id="zout" title="Отдалить">−</button>
+  <input id="zslider" type="range" min="0" max="1000" value="500" />
+  <button id="zin" title="Приблизить">+</button>
+  <span class="zlabel" id="zval"></span>
+</div>
+<div id="hint">ЛКМ — вращать · колесо/ползунок — дальность · ПКМ — сдвиг · клик по маркеру или трубе — инструкция</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ================= данные систем ================= */
+const SYS = {
+  heat: { label:'Тепло',       color:0xf87171, css:'#f87171' },
+  cold: { label:'Холод (VRF)', color:0x60a5fa, css:'#60a5fa' },
+  vent: { label:'Вентиляция',  color:0x4ade80, css:'#4ade80' },
+};
+
+/* Координаты — по осям проекта 896-24-ОВ: X вдоль осей 1→6 (ось 1 = 0, ось 6 = 40.9), Z от оси Д (0) к оси А (23.6), Y вверх.
+   Уровни: −2 этаж (зал 40.9×23.6) y = 0…3.95; 1-й этаж (оси 1–3, 16.8×23.6) y = 7.56; 2-й этаж y = 12.06; кровля двухэтажного блока y = 16.91.
+   Между −2 и 1-м — чужой уровень −1 (паркинг ЖК), в модели показан пустым. */
+const LV = { m2:{y0:0, h:3.95}, f1:{y0:7.56, h:4.2}, f2:{y0:12.06, h:4.6}, roof:{y0:16.91, h:0} };
+const ROOF_Y = 16.91;
+
+/* ================= оборудование ================= */
+const ITEMS = [
+/* ---------- КРОВЛЯ: вентустановки и наружные блоки (место на кровле — ориентировочно: по проекту «на перекрытии +9.350», точная привязка не показана) ---------- */
+{ id:'pv1', sys:'vent', type:'unit', pos:[3.6, ROOF_Y+0.8, 20.4], shape:{box:[3.2,1.5,1.4]}, lv:'roof',
+  name:'Приточно-вытяжная установка ПВ1 GreenSTR-15 (16 100 м³/ч)',
+  loc:'Кровля двухэтажного блока (отм. +9.350), над юго-западным углом; обслуживает −2 и 1 этажи',
+  desc:'Главные «лёгкие» клуба: подаёт свежий воздух во все залы −2 этажа и на 1-й этаж, забирает отработанный. Вентилятор 18.5 кВт, водяной нагреватель 240 кВт (теплоноситель от узла смешения ПВ1), секция охлаждения 162 кВт от двух ККБ Aerostar рядом, фильтры F7.',
+  off:'Остановка = через час в залах −2 душно (подземный этаж без окон!), зеркала потеют, жалобы «нечем дышать».',
+  steps:['Душно в залах: посмотри на щит автоматики ПВ1 — горит ли «работа», нет ли аварии.',
+    'Авария «фильтры» — фильтры забиты, заявка на замену.', 'Зимой авария «угроза замораживания» — сначала проверь узел смешения ПВ1 и тепло от ЖК.',
+    'Сброс аварии — один раз; повторилась — заявка «срочно».'],
+  warn:'На кровле — только с инженером и не в гололёд. Внутри установки вращающийся вентилятор.' },
+{ id:'kkb', sys:'cold', type:'unit', pos:[8.3, ROOF_Y+0.7, 20.4], shape:{box:[2.4,1.3,1.2]}, lv:'roof',
+  name:'ККБ Aerostar AV-Pro-OU850/3 ×2 (67 кВт каждый) — холод для ПВ1',
+  loc:'Кровля, рядом с ПВ1',
+  desc:'Два компрессорно-конденсаторных блока: летом охлаждают приточный воздух в секции охлаждения ПВ1 (фреон R410A). Без них приточка летом дует тёплым уличным воздухом.',
+  off:'Выключены — в залах летом жарко даже при работающей ПВ1; фанкойлы VRF (отдельная система) при этом работают.',
+  steps:['Летом дует тёплым из решёток — проверь, что ККБ работают (вентиляторы крутятся), нет ли ошибки на контроллере.',
+    'Фото кода ошибки — в заявку «вентиляция, холод».'],
+  warn:'Фреон под давлением, 380 В. Кожух не открывать, ничем не заставлять.' },
+{ id:'p2', sys:'vent', type:'unit', pos:[3.6, ROOF_Y+0.6, 16.2], shape:{box:[2.0,1.1,1.0]}, lv:'roof',
+  name:'Приточная установка П2 GreenSTR-3 (2 050 м³/ч) — 2 этаж',
+  loc:'Кровля, рядом с ПВ1; обслуживает раздевалки и душевые 2 этажа',
+  desc:'Подаёт свежий подогретый воздух в раздевалки, душевые и с/у 2 этажа (вентилятор 0.8 кВт, нагреватель 29 кВт от узла смешения П2).',
+  off:'Стоит — в раздевалках сыро, запотевают зеркала, запах из душевых.',
+  steps:['Сырость в раздевалках — щит П2: «работа»/авария; вместе с ней проверь вытяжку В2.'],
+  warn:'Кровля — только с инженером.' },
+{ id:'v2', sys:'vent', type:'unit', pos:[6.8, ROOF_Y+0.6, 16.2], shape:{box:[1.6,1.0,1.0]}, lv:'roof',
+  name:'Вытяжной вентилятор В2 Aerostar 60-30 (2 050 м³/ч) — 2 этаж',
+  loc:'Кровля, рядом с П2',
+  desc:'Пара к П2: вытягивает влажный воздух из душевых и раздевалок 2 этажа через решётки РВР.',
+  off:'Стоит — влага не удаляется: плесень в душевых, запах, капли на потолке.',
+  steps:['Запах/сырость на 2 этаже — проверь В2 (гул, вибрация), автомат в щите вентиляции.'],
+  warn:'Вращающийся вентилятор; не класть ничего на кожух.' },
+{ id:'v3', sys:'vent', type:'damper', pos:[9.5, ROOF_Y+0.4, 9.0], scale:.8, lv:'roof',
+  name:'Вытяжка санузлов В3 (150 м³/ч) — стояк Ø160 с −2 на кровлю',
+  loc:'Выход на кровле (клапан КОп 200×200 с сеткой), стояк проходит через все этажи у лифтового холла',
+  desc:'Маленький вытяжной вентилятор 0.75 кВт тянет воздух из санузлов −2 и 1 этажей по стояку Ø100–160 на кровлю.',
+  off:'Стоит — запах из туалетов расходится по холлу.',
+  steps:['Запах в с/у −2/1 этажа — проверь В3 и автомат; диффузоры Ø100 в туалетах не должны быть закрыты.'],
+  warn:'Сетку на кровле не снимать — залетают птицы.' },
+{ id:'uzel-pv1', sys:'heat', type:'valve', pos:[6.0, ROOF_Y+0.5, 18.6], scale:.8, lv:'roof',
+  name:'Узел смешения ПВ1 (TA-Slider 500, насос GHN basic II 40-70F, Ду65)',
+  loc:'Кровля, у ПВ1; теплоноситель от стояка Ст.3 Ø76 из теплового узла ЖК',
+  desc:'Готовит воду нужной температуры для нагревателя ПВ1: регулирующий клапан с приводом TA-Slider, сетчатый фильтр, циркуляционный насос, обратный клапан. Зимой именно он защищает калорифер от замораживания.',
+  off:'Закрыть краны К.Ш. Ду65 зимой = калорифер ПВ1 замёрзнет и лопнет. Трогать только инженеру.',
+  steps:['Зимой ПВ1 встала по «замораживанию» — проверь: насос узла гудит? краны открыты? есть ли тепло от ЖК (стояк Ст.3 горячий)?',
+    'Заявка «вентиляция, тепло» с фото узла.'],
+  warn:'До 95°C. Краны не крутить.' },
+{ id:'uzel-p2', sys:'heat', type:'valve', pos:[6.0, ROOF_Y+0.5, 14.8], scale:.7, lv:'roof',
+  name:'Узел смешения П2 (TA-Slider 160, насос GHN 25/60-180, Ду25)',
+  loc:'Кровля, у П2',
+  desc:'То же для нагревателя П2 (2 этаж): клапан, фильтр, насос, обратный клапан.',
+  off:'Закрытые краны зимой = замерзание калорифера П2.',
+  steps:['П2 не греет — насос узла, краны, тепло от ЖК; заявка.'], warn:'Горячая вода под давлением.' },
+{ id:'vrf-m2', sys:'cold', type:'unit', pos:[12.5, ROOF_Y+0.9, 4.0], shape:{box:[1.4,1.7,0.8]}, lv:'roof',
+  name:'Наружный блок VRF Gree GMV-615WM/B-X (61.5 кВт) — −2 этаж',
+  loc:'Кровля двухэтажного блока (место ориентировочно); 22 внутренних блока в залах −2 этажа',
+  desc:'Компрессорный блок системы кондиционирования залов −2 этажа: 22 канальных внутренних блока (ND18/ND28/ND36/ND71) охлаждают или греют по зонам. Фреон R410A по медным трубкам Ø9.52–28.6 через стояк вниз.',
+  off:'Остановка = все залы −2 без охлаждения/обогрева от VRF; приточка ПВ1 продолжает работать.',
+  steps:['Жарко во всех залах −2 при работающей ПВ1 — проверь наружный блок: вентиляторы крутятся? код ошибки на плате?',
+    'Жарко в одной зоне — её внутренний блок (пульт, фильтр, ошибка).', 'Заявка с кодом ошибки и зоной.'],
+  warn:'380 В, фреон под давлением. Не закрывать обдув блока.' },
+{ id:'vrf-f1', sys:'cold', type:'unit', pos:[12.5, ROOF_Y+0.8, 7.5], shape:{box:[1.0,1.5,0.7]}, lv:'roof',
+  name:'Наружный блок VRF Gree GMV-280WM/B-X (28 кВт) — 1 этаж',
+  loc:'Кровля (ориентировочно); 7 внутренних блоков: кафе, бар, переговорная, холл',
+  desc:'Второй контур VRF для 1 этажа: 5 блоков ND45T (кафе, холл) и 2 блока ND28T (переговорная, коридор).',
+  off:'Остановка = кафе и холл без кондиционирования; −2 этаж не затронут.',
+  steps:['Жарко в кафе/холле — наружный блок и пульты внутренних; заявка с кодом ошибки.'], warn:'380 В, фреон.' },
+
+/* ---------- −2 ЭТАЖ ---------- */
+{ id:'heat-in', sys:'heat', type:'valve', pos:[27.0, 3.3, -1.3], scale:.9, lv:'m2',
+  name:'Ввод тепла: распределительная гребёнка ЖК (Т1/Т2, Ø76)',
+  loc:'Подземная галерея ЖК за северной стеной зала −2, между осями 4/1 и 5 (на плане обведено «предполагаемое место распределительной теплоснабжения»)',
+  desc:'У клуба нет своего теплового пункта: тепло (вода 95/70°C) приходит от теплового узла жилого комплекса через гребёнку в галерее. Отсюда три стояка: Ст.3 Ø76 — вентиляция (240+29 кВт), Ст.1 Ø20 и Ст.2 Ø32 — отопление и тёплые полы.',
+  off:'Закрытие кранов на гребёнке = весь клуб без тепла и без подогрева приточки. Краны принадлежат ЖК — закрывает только служба ЖК/инженер.',
+  steps:['Холодно везде и приточка дует холодным — сначала звонок в УК ЖК: не отключили ли тепло на стояк клуба.',
+    'Течь на трубах в галерее — краны здесь, вызов инженера, заявка «срочно».'],
+  warn:'Галерея — зона ЖК, до 95°C под давлением.' },
+{ id:'st13', sys:'heat', type:'pipe', pos:[7.9, 8.5, 5.0], r:0.09, color:0xf87171, lv:'all',
+  paths:[[[27.0,3.3,-1.3],[27.0,3.3,0.4],[7.9,3.3,0.4],[7.9,3.3,5.0],[7.9,0.5,5.0],[7.9,ROOF_Y,5.0],[7.9,ROOF_Y+0.3,5.0],[6.0,ROOF_Y+0.3,18.6]],
+         [[8.15,3.1,0.4],[8.15,3.1,5.0],[8.15,0.5,5.0],[8.15,ROOF_Y,5.0]]],
+  name:'Стояки Ст.3 Ø76 (тепло на вентиляцию) и Ст.1 Ø20 (отопление) — ось 2/Г',
+  loc:'От гребёнки ЖК по потолку −2 этажа вдоль северной стены к оси 2, дальше вертикально через все этажи до кровли (у колонны ось 2/Г)',
+  desc:'Ст.3 Ø76×3.5 сталь — питает узлы смешения ПВ1 и П2 на кровле (самая горячая труба клуба). Ст.1 Ø20×2 — отопление радиаторов 1–2 этажей через «Узел 1» на +4.5.',
+  off:'Перекрываются на гребёнке ЖК и на «Узле 1» (2 этаж). Закрыть Ст.3 зимой при работающей ПВ1 — калорифер замёрзнет.',
+  steps:['Мокро у колонны 2/Г на любом этаже — это стояк: заявка «срочно», инженер перекроет на гребёнке.'],
+  warn:'95°C. Не крепить ничего к стояку.' },
+{ id:'st2', sys:'heat', type:'pipe', pos:[0.4, 6.0, 12.8], r:0.06, color:0xf87171, lv:'all',
+  paths:[[[7.9,3.1,5.0],[7.9,3.1,12.8],[0.4,3.1,12.8],[0.4,0.5,12.8],[0.4,ROOF_Y-2.0,12.8]]],
+  name:'Стояк Ст.2 Ø32 (отопление 1–2 этажей, тёплые полы)',
+  loc:'От стояков у оси 2 по потолку −2 к западной стене (ось 1/В), затем вверх до 2 этажа',
+  desc:'Сталь Ø32×3.2: второй стояк отопления — радиаторы KBK24 вдоль западной стены 1–2 этажей и узел смешения тёплого пола.',
+  off:'Перекрывается на гребёнке ЖК. Закрытие = холодно в кафе (1 эт.) и раздевалках (2 эт.), тёплые полы остывают.',
+  steps:['Холодные радиаторы у окон на 1–2 этажах — заявка; инженер проверит стояк Ст.2 и балансировку STAD.'],
+  warn:'Горячая вода под давлением.' },
+{ id:'shaft', sys:'vent', type:'unit', pos:[-3.1, 2.0, 11.8], shape:{box:[2.0,3.9,22.0]}, lv:'m2',
+  name:'Воздухозаборная шахта (вдоль западной стены −2 этажа)',
+  loc:'За западной стеной зала −2, вдоль всей оси 1 (на плане заштрихована)',
+  desc:'Шахта, по которой приточный и вытяжной воздуховоды ПВ1 связывают подземный зал с установками на кровле: трунки заходят в зал в северо-западном и юго-западном углах.',
+  off:'Не перекрывается. Загромождать входы в шахту нельзя — это и путь обслуживания воздуховодов.',
+  steps:['Шум/гул из шахты сильнее обычного — заявка «вентиляция».'], warn:'Внутри шахты — только обслуживающая организация.' },
+{ id:'drain-fc', sys:'cold', type:'valve', pos:[14.7, 3.4, 10.5], scale:.6, lv:'m2',
+  name:'Дренаж внутренних блоков VRF (конденсат → канализация)',
+  loc:'Над подвесным потолком −2 этажа у каждого блока; общие дренажные трубы к стоякам канализации у Hall/лестницы',
+  desc:'Летом каждый внутренний блок даёт до нескольких литров конденсата в час; вода уходит самотёком по дренажным трубкам. Засор дренажа — главная причина «капает с потолка».',
+  off:'—',
+  steps:['Капает с потолка под блоком летом — подставь ёмкость, выключи блок с пульта, заявка «кондиционирование, дренаж, зона …».'],
+  warn:'Не прокалывать потолок, не открывать лючки без инженера.' },
+
+/* ---------- 1 ЭТАЖ ---------- */
+{ id:'rad-f1', sys:'heat', type:'unit', pos:[0.5, LV.f1.y0+0.4, 7.0], shape:{box:[0.15,0.6,2.3]}, lv:'f1',
+  name:'Радиаторы KBK24-24.08 (1 этаж: кафе, холл, переговорная — 11 шт)',
+  loc:'Под окнами вдоль западной стены (ось 1) и у фасадов по осям Д и А, 1.9–2.7 м каждый',
+  desc:'Стальные панельные радиаторы с терморегуляторами; подключение dn16–26 от стояков Ст.1/Ст.2. Выходы на 1 этаже помечены на плане ОВ лист 4.',
+  off:'Каждый радиатор закрывается своими кранами на подводке: остывает только он.',
+  steps:['Холодный радиатор при горячих соседях — терморегулятор на максимум, завоздушен → заявка «стравить воздух».',
+    'Течь на подводке — закрой оба крана радиатора, подставь ёмкость, заявка.'],
+  warn:'До 70°C. Не сушить вещи на радиаторах кафе.' },
+{ id:'fc-pult-f1', sys:'cold', type:'panel', pos:[8.0, LV.f1.y0+1.4, 19.2], scale:.6, lv:'f1',
+  name:'Пульты внутренних блоков VRF 1 этажа',
+  loc:'На стенах кафе и холла рядом с ресепшн (проводные пульты Gree)',
+  desc:'Каждый внутренний блок управляется своим пультом: режим, температура, скорость вентилятора. Код ошибки блока тоже показывается на пульте.',
+  off:'Выключение с пульта останавливает только этот блок.',
+  steps:['Гостям жарко/холодно — сначала пульт: включён ли блок, режим (cool/heat), заданная температура.', 'Ошибка на пульте — фото кода в заявку.'],
+  warn:'Не выставлять ниже 20°C летом — блок обмерзает и капает.' },
+
+/* ---------- 2 ЭТАЖ ---------- */
+{ id:'uzel1', sys:'heat', type:'valve', pos:[8.6, LV.f2.y0+1.2, 5.3], scale:.7, lv:'f2',
+  name:'Узел 1: балансировка стояка Ст.1 (STAD/STAP Ø20, +4.500)',
+  loc:'2 этаж, у колонны ось 2/Г (стояки Ст.1/Ст.3), над подвесным потолком',
+  desc:'Пара клапанов STAD (ручной балансировочный) и STAP (регулятор перепада): держат расход и перепад давления в ветке отопления 1–2 этажей, чтобы радиаторы грели ровно.',
+  off:'Закрытие STAD = отопление 1–2 этажей стоит. Настройку по шкале не сбивать.',
+  steps:['Радиаторы 1–2 этажей все холодные при горячем стояке — заявка «ТП: балансировка», наладчик проверит STAD/STAP.'],
+  warn:'Не крутить. Ниппели под прибор — горячая вода.' },
+{ id:'uzel-tp', sys:'heat', type:'pump', pos:[2.6, LV.f2.y0+0.6, 2.4], scale:.7, lv:'f2',
+  name:'Узел смешения тёплого пола (насос GHN 25/60-130, STAD/STAP Ø15)',
+  loc:'2 этаж, в нише у душевых (ось 1/Д), шкаф тёплого пола',
+  desc:'Модуль смешения: готовит воду 45/35°C для греющих труб PEX в полу душевых и предбанников, насос гоняет её по коллекторам (3 шкафа dn20 на этаже).',
+  off:'Выключен насос — полы в душевых холодные; радиаторы при этом работают.',
+  steps:['Холодный пол в душевых — проверь, гудит ли насос узла и открыты ли краны коллекторов (рукоятки вдоль труб).',
+    'Течь из шкафа коллектора — закрой краны подачи/обратки шкафа, заявка «срочно».'],
+  warn:'Не менять настройку термосмесителя — перегрев портит плитку и трубы PEX.' },
+{ id:'rad-f2', sys:'heat', type:'unit', pos:[0.5, LV.f2.y0+0.4, 9.0], shape:{box:[0.15,0.6,2.3]}, lv:'f2',
+  name:'Радиаторы KBK24 (2 этаж: раздевалки — 7 шт) + тёплые полы душевых',
+  loc:'Под окнами западной стены (ось 1) и по оси Д; в душевых и предбанниках — греющие трубы в полу',
+  desc:'Радиаторы вдоль фасада + система «Тёплые полы» 45/35°C в мокрых зонах 2 этажа (лист 5 ОВ: змеевики по всем душевым и с/у).',
+  off:'Радиатор — своими кранами; тёплый пол — кранами на коллекторе (шкаф dn20).',
+  steps:['Холодно в раздевалке — радиаторы (терморегулятор, воздух) и П2 (приточка греет воздух).'],
+  warn:'На тёплом полу ничего не сверлить и не долбить — трубы в стяжке.' },
+];
+
+/* ================= зоны (подписи на полу) ================= */
+const ZONES = [
+  {lv:'m2', n:'Pilates',       x:6.3,  z:3.0,  w:12.4, d:5.8, c:0x2d3b31},
+  {lv:'m2', n:'Fitness test',  x:14.7, z:3.0,  w:4.0,  d:5.8, c:0x3b332d},
+  {lv:'m2', n:'Bootcamp',      x:28.8, z:3.0,  w:23.8, d:5.8, c:0x3b2d33},
+  {lv:'m2', n:'Hall',          x:14.7, z:9.3,  w:4.0,  d:6.4, c:0x313b3b},
+  {lv:'m2', n:'Metcon',        x:21.0, z:12.3, w:8.2,  d:12.4,c:0x2d333b},
+  {lv:'m2', n:'Upper',         x:33.0, z:12.3, w:15.6, d:12.4,c:0x3b2d3b},
+  {lv:'m2', n:'Leg zone',      x:6.3,  z:14.8, w:12.4, d:17.4,c:0x403a2d},
+  {lv:'m2', n:'лестница · лифт', x:14.7, z:18.0, w:4.0, d:10.8, c:0x2c3845},
+  {lv:'m2', n:'тех. помещения', x:33.0, z:21.0, w:15.6, d:4.8, c:0x45402c},
+  {lv:'f1', n:'кафе',          x:4.2,  z:6.3,  w:8.2,  d:12.4,c:0x3b332d},
+  {lv:'f1', n:'бар · staff',   x:12.6, z:6.3,  w:8.2,  d:12.4,c:0x403a2d},
+  {lv:'f1', n:'переговорная · коридор', x:4.2, z:15.6, w:8.2, d:5.8, c:0x2d333b},
+  {lv:'f1', n:'лифтовой холл · лестница', x:12.6, z:15.6, w:8.2, d:5.8, c:0x2c3845},
+  {lv:'f1', n:'холл · ресепшн · вход', x:8.4, z:21.1, w:16.6, d:4.8, c:0x313b3b},
+  {lv:'f2', n:'душевые · с/у (муж.)',  x:4.2, z:3.0, w:8.2, d:5.8, c:0x2d3b3b},
+  {lv:'f2', n:'мужская раздевалка', x:12.6, z:3.0, w:8.2, d:5.8, c:0x2d333b},
+  {lv:'f2', n:'душевые · с/у (жен.)', x:4.2, z:9.3, w:8.2, d:6.4, c:0x3b2d3b},
+  {lv:'f2', n:'комната тренеров · холл', x:12.6, z:9.3, w:8.2, d:6.4, c:0x3b332d},
+  {lv:'f2', n:'женская раздевалка', x:6.0, z:18.0, w:11.8, d:10.8, c:0x403a2d},
+  {lv:'f2', n:'лифт · лестница', x:14.0, z:15.6, w:5.4, d:5.8, c:0x2c3845},
+  {lv:'roof', n:'кровля: ПВ1 · П2 · В2 · ККБ · наружные блоки VRF', x:8.4, z:12.0, w:16.6, d:23.4, c:0x1c2531},
+];
+
+/* ================= сценарии ================= */
+const SCENARIOS = [
+{ id:'hot', btn:'🥵 Жарко в залах', title:'Жарко в залах (лето)',
+  steps:[
+    {ref:'vrf-m2', text:'Проверь <b>наружный блок VRF −2 этажа</b> на кровле: вентиляторы крутятся, ошибки нет?'},
+    {ref:'drain-fc', text:'Жарко в одной зоне — её <b>внутренний блок</b>: пульт, режим cool, фильтр, код ошибки.'},
+    {ref:'kkb', text:'Приточка дует тёплым — <b>ККБ Aerostar</b> у ПВ1 работают?'},
+    {ref:'pv1', text:'<b>ПВ1</b> работает? Без притока в подземном зале душно даже при холоде от VRF.'},
+    {text:'Всё работает, но жарко — заявка с зоной и температурой.'}]},
+{ id:'stuffy', btn:'😮‍💨 Душно / нечем дышать', title:'Душно в подземных залах',
+  steps:[
+    {ref:'pv1', text:'<b>ПВ1</b> на кровле: щит автоматики — «работа» или авария?'},
+    {ref:'shaft', text:'Входы в <b>воздухозаборную шахту</b> и решётки на улице не загорожены?'},
+    {ref:'v3', text:'Запах из туалетов — <b>В3</b>.'},
+    {text:'Сфотографируй щит ПВ1, создай заявку «вентиляция, срочно».'}]},
+{ id:'cold', btn:'🥶 Холодно в клубе', title:'Холодно в клубе (зима)',
+  steps:[
+    {ref:'heat-in', text:'Позвони в УК ЖК: не перекрыли ли <b>тепло на гребёнке</b> в галерее.'},
+    {ref:'st13', text:'<b>Стояки у колонны 2/Г</b> горячие? Если холодные — проблема у ЖК.'},
+    {ref:'uzel-pv1', text:'Приточка дует холодом — <b>узел смешения ПВ1</b>: насос, краны, авария «замораживание».'},
+    {ref:'uzel1', text:'Радиаторы холодные при горячем стояке — <b>Узел 1</b> (STAD/STAP).'},
+    {text:'Фото стояков и узлов — заявка «срочно».'}]},
+{ id:'leak', btn:'💧 Капает с потолка', title:'Капает с потолка',
+  steps:[
+    {ref:'drain-fc', text:'Летом под внутренним блоком — засор <b>дренажа VRF</b>: ёмкость, выключи блок с пульта.'},
+    {ref:'st13', text:'У колонны 2/Г на любом этаже — <b>стояки отопления</b>: заявка «срочно».'},
+    {ref:'uzel-tp', text:'На 1 этаже под душевыми — <b>тёплый пол / коллекторы</b> 2 этажа.'},
+    {text:'Огороди место, фото, заявка в HJ Track с указанием этажа и зоны.'}]},
+];
+
+/* ================= three.js сцена ================= */
+const canvas = document.getElementById('c3d');
+const isMobileView = matchMedia('(max-width:760px)').matches;
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, isMobileView ? 1.3 : 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f17);
+scene.fog = new THREE.Fog(0x0b0f17, 110, 260);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
+camera.position.set(-30, 42, 58);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(18, 6, 12);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI/2 - 0.04;
+controls.minDistance = 0.8; controls.maxDistance = 220;
+controls.zoomToCursor = true;
+window.__dbg = {camera, controls, THREE};
+
+const finePointer = matchMedia('(pointer: fine)').matches;
+if (finePointer) controls.enableZoom = false;
+let zoomGoal = null;
+const camDist = () => camera.position.distanceTo(controls.target);
+const setZoomGoal = (r) => { zoomGoal = THREE.MathUtils.clamp(r, controls.minDistance, controls.maxDistance); };
+if (finePointer) renderer.domElement.addEventListener('wheel', (e) => {
+  e.preventDefault(); setZoomGoal((zoomGoal ?? camDist()) * Math.pow(1.0012, e.deltaY));
+}, { passive: false });
+
+scene.add(new THREE.HemisphereLight(0x8899bb, 0x223344, 1.1));
+const sun = new THREE.DirectionalLight(0xffeedd, 1.6); sun.position.set(-30, 60, 40); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(160, 48), new THREE.MeshStandardMaterial({color:0x101722, roughness:1}));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.02; scene.add(ground);
+const grid = new THREE.GridHelper(160, 64, 0x1f2937, 0x16202e); scene.add(grid);
+
+/* ----- геометрия уровней из CAD (tools/plan/build_geom_4you.py) ----- */
+const GEOM = await (await fetch('club-geom.json')).json();
+window.__dbg.GEOM = GEOM;
+const pickables = [];
+const levelGroups = {};          // id уровня -> Group (стены, пол, воздуховоды, трубы, блоки)
+const markers = {};
+const toShape = (poly) => {
+  const sh = new THREE.Shape(poly.outer.map(p => new THREE.Vector2(p[0], -p[1])));
+  for (const h of poly.holes) sh.holes.push(new THREE.Path(h.map(p => new THREE.Vector2(p[0], -p[1]))));
+  return sh;
+};
+const wallMat = new THREE.MeshStandardMaterial({color:0x7f93ad, transparent:true, opacity:.42, roughness:.6, depthWrite:false});
+const wallEdgeMat = new THREE.LineBasicMaterial({color:0x9fb3cc, transparent:true, opacity:.55});
+const ductMat = (c) => new THREE.MeshStandardMaterial({color:c, transparent:true, opacity:.6, roughness:.6, emissive:c, emissiveIntensity:.15});
+const ductMats = { supply: ductMat(0x4ade80), exhaust: ductMat(0x22d3ee) };
+const fcMat = new THREE.MeshStandardMaterial({color:0x60a5fa, emissive:0x60a5fa, emissiveIntensity:.3, roughness:.5});
+const sysLayers = { heat:[], cold:[], vent:[] };   // объекты слоёв систем по уровням (для чипов)
+
+function buildLevel(L){
+  const g = new THREE.Group(); scene.add(g); levelGroups[L.id] = g;
+  const [x0, z0, x1, z1] = L.bbox; const y0 = L.y0, h = L.h;
+  /* пол = план ОВ этого этажа */
+  const tex = new THREE.TextureLoader().load('plan-' + L.id + '.jpg'); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(x1-x0, z1-z0), new THREE.MeshStandardMaterial({map:tex, roughness:.95}));
+  floor.rotation.x = -Math.PI/2; floor.position.set((x0+x1)/2, y0+0.012, (z0+z1)/2); g.add(floor);
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(x1-x0, .25, z1-z0), new THREE.MeshStandardMaterial({color:0x2a3443, roughness:.9}));
+  slab.position.set((x0+x1)/2, y0-.125, (z0+z1)/2); g.add(slab);
+  /* стены */
+  for (const poly of L.walls){
+    const m = new THREE.Mesh(new THREE.ExtrudeGeometry(toShape(poly), {depth:h, bevelEnabled:false}), wallMat);
+    m.rotation.x = -Math.PI/2; m.position.y = y0; g.add(m);
+    for (const r of [poly.outer, ...poly.holes]){
+      const pts = r.map(p => new THREE.Vector3(p[0], y0+h, p[1])); pts.push(pts[0].clone());
+      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wallEdgeMat));
+    }
+  }
+  /* воздуховоды под потолком */
+  const vg = new THREE.Group(); g.add(vg); sysLayers.vent.push(vg);
+  for (const d of L.ducts){
+    const depth = .35, yd = y0 + h - .55;
+    const m = new THREE.Mesh(new THREE.ExtrudeGeometry(toShape(d), {depth, bevelEnabled:false}), ductMats[d.kind]);
+    m.rotation.x = -Math.PI/2; m.position.y = yd; vg.add(m);
+    const cx = d.outer.reduce((a,p)=>a+p[0],0)/d.outer.length, cz = d.outer.reduce((a,p)=>a+p[1],0)/d.outer.length;
+    m.userData.item = {id:'duct-'+pickables.length, sys:'vent', type:'duct', pos:[cx, yd+depth/2, cz], ...d.info};
+    pickables.push(m);
+  }
+  /* трубы отопления и фреонопроводы — линии под потолком */
+  const lines = (polys, y, color, sys, nameFn) => {
+    const grp = new THREE.Group(); g.add(grp); sysLayers[sys].push(grp);
+    const mat = new THREE.LineBasicMaterial({color, transparent:true, opacity:.8});
+    polys.forEach((pl, i) => {
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pl.map(([x,z]) => new THREE.Vector3(x, y, z))), mat);
+      const mid = pl[Math.floor(pl.length/2)];
+      l.userData.item = {id:sys+'-'+L.id+'-'+i, sys, type:'pipe', pos:[mid[0], y, mid[1]], ...nameFn(pl)};
+      pickables.push(l); grp.add(l);
+    });
+  };
+  lines(L.heat, y0 + h - .3, 0xf87171, 'heat', (pl) => ({
+    name: 'Трубы отопления Т1/Т2 (' + L.name + ')',
+    loc: L.name + ', под потолком / вдоль стен; лист ' + ({m2:3,f1:4,f2:5})[L.id] + ' проекта ОВ',
+    desc: 'Подача (Т1) и обратка (Т2) отопления: сталь Ø32–76 на −2 этаже, металлопластик dn16–32 к радиаторам на 1–2 этажах. Изоляция K-flex.',
+    off: 'Перекрывается на гребёнке ЖК или кранами радиаторов.',
+    steps: ['Течь — заявка «срочно», до прихода инженера подставить ёмкость.'], warn: 'До 95°C на −2 этаже.' }));
+  lines(L.cold, y0 + h - .2, 0x34d399, 'cold', (pl) => ({
+    name: 'Фреонопровод VRF (' + L.name + ')',
+    loc: L.name + ', над потолком; медные трубки Ø6.35–28.6 в изоляции от наружного блока к внутренним (лист ' + ({m2:9,f1:10})[L.id] + ')',
+    desc: 'Жидкостная и газовая линии системы Gree GMV к внутренним блокам этой зоны. Разветвители (рефнеты) над потолком.',
+    off: 'Перекрывается только на наружном блоке сервисом.',
+    steps: ['Иней/масляные пятна на трубке — утечка фреона: заявка «кондиционирование, срочно».'], warn: 'Фреон под давлением; не гнуть, не вешать ничего.' }));
+  /* внутренние блоки VRF */
+  const cg = new THREE.Group(); g.add(cg); sysLayers.cold.push(cg);
+  L.fancoils.forEach((f, i) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1.0, .3, .7), fcMat);
+    m.position.set(f.x, f.y, f.z);
+    m.userData.item = {id:'fc-'+L.id+'-'+i, sys:'cold', type:'fancoil', pos:[f.x, f.y, f.z], ...f.info};
+    pickables.push(m); cg.add(m);
+  });
+  /* подписи помещений */
+  for (const z of ZONES.filter(z => z.lv === L.id)){
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(z.w, z.d), new THREE.MeshBasicMaterial({color:z.c, transparent:true, opacity:.35, depthWrite:false}));
+    m.rotation.x = -Math.PI/2; m.position.set(z.x, y0+.03, z.z); g.add(m);
+    const lb = makeLabel(z.n, 1.05, '#8b98ab'); lb.position.set(z.x, y0+.9, z.z); g.add(lb); roomLabels.push(lb);
+  }
+  /* перекрытие сверху (полупрозрачное) */
+  const top = new THREE.Mesh(new THREE.BoxGeometry(x1-x0, .2, z1-z0), new THREE.MeshStandardMaterial({color:0x33404f, transparent:true, opacity:.25, roughness:.9, depthWrite:false}));
+  top.position.set((x0+x1)/2, y0+h+.1, (z0+z1)/2); g.add(top);
+}
+function makeLabel(text, scale=1, color='#cbd5e1'){
+  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+  const fs = 44; ctx.font = `600 ${fs}px system-ui`;
+  c.width = Math.ceil(ctx.measureText(text).width)+28; c.height = fs+22;
+  const ctx2 = c.getContext('2d'); ctx2.font = `600 ${fs}px system-ui`; ctx2.fillStyle = color;
+  ctx2.textBaseline='middle'; ctx2.fillText(text, 14, c.height/2);
+  const tex = new THREE.CanvasTexture(c); tex.anisotropy=4;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthWrite:false}));
+  sp.scale.set(c.width/55*scale, c.height/55*scale, 1);
+  return sp;
+}
+const roomLabels = [];
+for (const L of GEOM.levels) buildLevel(L);
+
+/* кровля двухэтажного блока: плита + подписи; уровень −1 между −2 и 1-м — чужой (паркинг ЖК), показан пунктирной рамкой */
+{
+  const g = new THREE.Group(); scene.add(g); levelGroups.roof = g;
+  const [x0, z0, x1, z1] = GEOM.levels.find(l => l.id === 'f1').bbox;
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(x1-x0, .3, z1-z0), new THREE.MeshStandardMaterial({color:0x1c2531, roughness:.95}));
+  slab.position.set((x0+x1)/2, ROOF_Y-.15, (z0+z1)/2); g.add(slab);
+  for (const z of ZONES.filter(z => z.lv === 'roof')){
+    const lb = makeLabel(z.n, 1.0, '#8b98ab'); lb.position.set(z.x, ROOF_Y+2.6, z.z); g.add(lb); roomLabels.push(lb);
+  }
+  /* колонны-намёк между −2 и 1 этажом (чужой уровень −1) */
+  const colMat = new THREE.MeshStandardMaterial({color:0x33404f, transparent:true, opacity:.35, roughness:.9});
+  for (const x of [0, 8.4, 16.8]) for (const z of [0, 6, 12.6, 18.6, 23.6]){
+    const c = new THREE.Mesh(new THREE.BoxGeometry(.5, LV.f1.y0 - LV.m2.h - .25, .5), colMat);
+    c.position.set(x, (LV.m2.h + LV.f1.y0) / 2, z); scene.add(c);
+  }
+  const lb = makeLabel('−1 этаж: паркинг ЖК (не клуб)', 0.9, '#64748b'); lb.position.set(8.4, 5.8, 12); scene.add(lb); roomLabels.push(lb);
+  const entr = makeLabel('⬇ Вход (1 этаж, ось А)', 1.2, '#f97316'); entr.position.set(4.5, LV.f1.y0+1.2, 25.6); scene.add(entr);
+}
+
+/* ----- маркеры оборудования ----- */
+const geoByType = {
+  valve: new THREE.SphereGeometry(.42, 20, 16), panel: new THREE.BoxGeometry(.85, 1.1, .3),
+  pump: new THREE.CylinderGeometry(.38, .38, .7, 18), unit: new THREE.BoxGeometry(1.5, 1.1, 1.0), damper: new THREE.CylinderGeometry(.34, .34, .5, 14),
+};
+function buildPipe(it){
+  const col = it.color ?? SYS[it.sys].color;
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:.18, roughness:.5});
+  const meshes = [];
+  for (const path of it.paths) for (let i = 0; i < path.length - 1; i++){
+    const a = new THREE.Vector3(...path[i]), b = new THREE.Vector3(...path[i+1]);
+    const len = a.distanceTo(b); if (len < 0.01) continue;
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(it.r, it.r, len, 10), mat);
+    cyl.position.copy(a).lerp(b, 0.5);
+    cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), b.clone().sub(a).normalize());
+    cyl.userData.item = it; g.add(cyl); pickables.push(cyl); meshes.push(cyl);
+    const joint = new THREE.Mesh(new THREE.SphereGeometry(it.r*1.15, 10, 8), mat);
+    joint.position.copy(i ? a : b); joint.userData.item = it; g.add(joint); pickables.push(joint);
+  }
+  scene.add(g);
+  markers[it.id] = {group:g, mesh:meshes[0], ring:null, mat, item:it, badge:null};
+}
+for (const it of ITEMS){
+  if (it.type === 'pipe') { buildPipe(it); continue; }
+  const col = SYS[it.sys].color;
+  const g = new THREE.Group();
+  const geo = it.shape?.box ? new THREE.BoxGeometry(...it.shape.box) : it.shape?.cyl ? new THREE.CylinderGeometry(it.shape.cyl[0], it.shape.cyl[0], it.shape.cyl[1], 18) : geoByType[it.type];
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity:.35, roughness:.4, transparent: it.id==='shaft', opacity: it.id==='shaft' ? .25 : 1}));
+  if (it.type==='damper') mesh.rotation.z = Math.PI/2;
+  if (it.scale) mesh.scale.setScalar(it.scale);
+  g.add(mesh);
+  const base = (LV[it.lv]?.y0 ?? 0);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.55*(it.scale||1),.75*(it.scale||1),32),
+    new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:.8, side:THREE.DoubleSide, depthWrite:false}));
+  ring.rotation.x = -Math.PI/2; ring.position.y = base - it.pos[1] + .06; g.add(ring);
+  const lineG = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, base - it.pos[1] + .05, 0), new THREE.Vector3(0,0,0)]);
+  g.add(new THREE.Line(lineG, new THREE.LineBasicMaterial({color:col, transparent:true, opacity:.5})));
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(1.0, 8, 8), new THREE.MeshBasicMaterial({visible:false}));
+  hit.userData.item = it; g.add(hit); pickables.push(hit);
+  g.position.set(...it.pos); scene.add(g);
+  markers[it.id] = {group:g, mesh, ring, item:it, badge:null};
+}
+
+/* ================= UI ================= */
+const $ = s => document.querySelector(s);
+const sysFilter = Object.fromEntries(Object.keys(SYS).map(k=>[k,true]));
+const lvFilter = { m2:true, f1:true, f2:true, roof:true };
+for (const [k,s] of Object.entries(SYS)){
+  const b = document.createElement('button'); b.className = 'chip';
+  b.innerHTML = `<span class="dot" style="background:${s.css}"></span>${s.label}`;
+  b.onclick = () => { sysFilter[k]=!sysFilter[k]; b.classList.toggle('off',!sysFilter[k]); applyFilter(); };
+  $('#chips').appendChild(b);
+}
+/* чипы уровней */
+for (const [k, label] of [['m2','−2 этаж'],['f1','1 этаж'],['f2','2 этаж'],['roof','кровля']]){
+  const b = document.createElement('button'); b.className = 'chip'; b.textContent = '🏢 ' + label;
+  b.onclick = () => { lvFilter[k] = !lvFilter[k]; b.classList.toggle('off', !lvFilter[k]); applyFilter(); };
+  $('#chips').appendChild(b);
+}
+let labelsOn = !isMobileView;
+const lblBtn = document.createElement('button');
+lblBtn.className = 'chip' + (labelsOn ? '' : ' off'); lblBtn.textContent = '🏷 Подписи';
+const applyLabels = () => { for (const l of roomLabels) l.visible = labelsOn; };
+lblBtn.onclick = () => { labelsOn = !labelsOn; lblBtn.classList.toggle('off', !labelsOn); applyLabels(); };
+$('#chips').appendChild(lblBtn); applyLabels();
+$('#scentoggle').onclick = () => $('#scen').classList.toggle('show');
+function applyFilter(){
+  for (const [k, g] of Object.entries(levelGroups)) g.visible = lvFilter[k];
+  for (const [sys, arr] of Object.entries(sysLayers)) for (const o of arr) o.visible = sysFilter[sys];
+  for (const m of Object.values(markers)) m.group.visible = sysFilter[m.item.sys] && (m.item.lv === 'all' || lvFilter[m.item.lv] !== false);
+  renderList();
+}
+function renderList(){
+  const el = $('#list'); el.innerHTML='';
+  for (const it of ITEMS){
+    if (!sysFilter[it.sys] || (it.lv !== 'all' && lvFilter[it.lv] === false)) continue;
+    const d = document.createElement('div'); d.className = 'li'; d.dataset.id = it.id;
+    d.innerHTML = `<span class="dot" style="background:${SYS[it.sys].css}"></span><span>${it.name}</span>`;
+    d.onclick = () => { openCard(it); flyTo(it); };
+    el.appendChild(d);
+  }
+}
+renderList();
+let listOpen = true;
+$('#listhead').onclick = () => { listOpen = !listOpen; $('#list').style.display = listOpen?'block':'none'; $('#listarrow').textContent = listOpen?'▾':'▸'; };
+
+let selected = null;
+function openCard(it){
+  closeScenario(); selected = it;
+  $('#cName').textContent = it.name;
+  const s = SYS[it.sys];
+  $('#cSys').textContent = s.label + ' · ' + ({valve:'кран/узел',panel:'пульт/щит',pump:'насос',unit:'агрегат',damper:'клапан',pipe:'магистраль',duct:'воздуховод',fancoil:'блок VRF'})[it.type];
+  $('#cSys').style.background = s.css;
+  $('#cLoc').textContent = '📍 ' + it.loc; $('#cDesc').textContent = it.desc; $('#cOff').textContent = it.off;
+  $('#cSteps').innerHTML = it.steps.map(x=>`<li>${x}</li>`).join('');
+  $('#cWarn').innerHTML = '⚠️ ' + it.warn;
+  $('#card').classList.add('open');
+  document.querySelectorAll('.li').forEach(e=>e.classList.toggle('sel', e.dataset.id===it.id));
+}
+$('#xcard').onclick = () => { $('#card').classList.remove('open'); selected=null; document.querySelectorAll('.li').forEach(e=>e.classList.remove('sel')); };
+$('#flybtn').onclick = () => selected && flyTo(selected);
+
+let activeScen = null; const badges = [];
+for (const sc of SCENARIOS){
+  const b = document.createElement('button'); b.className='scbtn'; b.textContent = sc.btn; b.dataset.id = sc.id;
+  b.onclick = () => activeScen===sc.id ? closeScenario() : openScenario(sc);
+  $('#scen').appendChild(b);
+}
+function openScenario(sc){
+  closeScenario(); $('#card').classList.remove('open');
+  if (isMobileView) $('#scen').classList.remove('show');
+  activeScen = sc.id;
+  document.querySelectorAll('.scbtn').forEach(e=>e.classList.toggle('active', e.dataset.id===sc.id));
+  $('#spTitle').textContent = sc.title;
+  const wrap = $('#spSteps'); wrap.innerHTML=''; let n = 0;
+  for (const st of sc.steps){
+    n++; const d = document.createElement('div'); d.className='step';
+    d.innerHTML = `<div class="n">${n}</div><p>${st.text}</p>`;
+    if (st.ref){
+      const it = ITEMS.find(i=>i.id===st.ref); d.onclick = () => { flyTo(it); };
+      const bg = makeBadge(n, SYS[it.sys].css); bg.position.set(it.pos[0], it.pos[1]+1.5, it.pos[2]); scene.add(bg); badges.push(bg);
+    }
+    wrap.appendChild(d);
+  }
+  $('#scenpanel').classList.add('open');
+}
+function closeScenario(){
+  activeScen = null; $('#scenpanel').classList.remove('open');
+  document.querySelectorAll('.scbtn').forEach(e=>e.classList.remove('active'));
+  for (const b of badges) scene.remove(b); badges.length = 0;
+}
+$('#xscen').onclick = closeScenario;
+function makeBadge(n, css){
+  const c = document.createElement('canvas'); c.width=c.height=96; const ctx = c.getContext('2d');
+  ctx.fillStyle = css; ctx.beginPath(); ctx.arc(48,48,44,0,7); ctx.fill();
+  ctx.fillStyle = '#0b0f17'; ctx.font='700 52px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(n, 48, 52);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c), depthTest:false, transparent:true}));
+  sp.scale.set(1.6,1.6,1); sp.renderOrder = 99; return sp;
+}
+let flight = null;
+function flyTo(it){
+  const p = new THREE.Vector3(...it.pos);
+  const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  const camTo = p.clone().add(dir.multiplyScalar(14)).add(new THREE.Vector3(0,7,0));
+  flight = { t:0, c0:camera.position.clone(), c1:camTo, g0:controls.target.clone(), g1:p }; zoomGoal = null;
+}
+
+/* ---- ползунок дальности ---- */
+const zslider = $('#zslider'), zval = $('#zval');
+const logMin = Math.log(controls.minDistance), logMax = Math.log(controls.maxDistance);
+const distToSlider = (d) => Math.round((Math.log(d) - logMin) / (logMax - logMin) * 1000);
+const sliderToDist = (v) => Math.exp(logMin + (v / 1000) * (logMax - logMin));
+let sliderBusy = false;
+zslider.addEventListener('input', () => { sliderBusy = true; setZoomGoal(sliderToDist(+zslider.value)); });
+zslider.addEventListener('change', () => { sliderBusy = false; });
+const holdZoom = (btn, factor) => {
+  let timer = null; const step = () => setZoomGoal((zoomGoal ?? camDist()) * factor);
+  const start = (e) => { e.preventDefault(); step(); timer = setInterval(step, 60); };
+  const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+  btn.addEventListener('pointerdown', start); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, stop);
+};
+holdZoom($('#zin'), 0.93); holdZoom($('#zout'), 1 / 0.93);
+
+/* ================= взаимодействие ================= */
+const ray = new THREE.Raycaster(); ray.params.Line.threshold = 0.22;
+const ptr = new THREE.Vector2(); const tip = $('#tip'); let downAt = null;
+function setPtr(e){
+  const x = e.touches ? e.touches[0].clientX : e.clientX, y = e.touches ? e.touches[0].clientY : e.clientY;
+  ptr.x = (x/innerWidth)*2-1; ptr.y = -(y/innerHeight)*2+1; return {x,y};
+}
+function visibleUp(o){ while (o){ if (o.visible === false) return false; o = o.parent; } return true; }
+function pick(){
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(pickables, false).filter(h => visibleUp(h.object));
+  return hits[0]?.object.userData.item || null;
+}
+canvas.addEventListener('pointermove', e=>{
+  const {x,y} = setPtr(e); const it = pick(); canvas.style.cursor = it ? 'pointer' : 'grab';
+  if (it){ tip.textContent = it.name; tip.style.display='block'; tip.style.left = Math.min(x+14, innerWidth-tip.offsetWidth-8)+'px'; tip.style.top = (y+14)+'px'; }
+  else tip.style.display='none';
+});
+canvas.addEventListener('pointerdown', e=>{ downAt=[e.clientX,e.clientY]; });
+canvas.addEventListener('pointerup', e=>{
+  if (!downAt) return; const moved = Math.hypot(e.clientX-downAt[0], e.clientY-downAt[1]); downAt=null;
+  if (moved>6) return; setPtr(e); const it = pick(); if (it) openCard(it);
+});
+
+/* ================= цикл ================= */
+function resize(){ renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const clock = new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  const t = clock.getElapsedTime();
+  for (const m of Object.values(markers)){
+    const isSel = selected && selected.id === m.item.id;
+    if (m.ring){
+      m.ring.scale.setScalar(1 + Math.sin(t*3 + m.group.position.x)*0.12);
+      m.mesh.material.emissiveIntensity = isSel ? .9+.4*Math.sin(t*6) : .35;
+      if (isSel) m.mesh.rotation.y = t*1.5;
+    } else if (m.mat){ m.mat.emissiveIntensity = isSel ? .6+.3*Math.sin(t*6) : .18; }
+  }
+  for (const b of badges) b.position.y += Math.sin(t*2.5)*0.002;
+  if (flight){
+    flight.t = Math.min(1, flight.t + 0.025);
+    const e = flight.t<.5 ? 2*flight.t*flight.t : 1-Math.pow(-2*flight.t+2,2)/2;
+    camera.position.lerpVectors(flight.c0, flight.c1, e); controls.target.lerpVectors(flight.g0, flight.g1, e);
+    if (flight.t>=1) flight=null;
+  }
+  if (zoomGoal !== null && !flight){
+    const d = camDist(); const nd = THREE.MathUtils.lerp(d, zoomGoal, 0.14);
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+    camera.position.copy(controls.target).add(dir.multiplyScalar(nd));
+    if (Math.abs(nd - zoomGoal) < 0.005) zoomGoal = null;
+  }
+  const dNow = camDist();
+  if (!sliderBusy) zslider.value = distToSlider(dNow);
+  zval.textContent = dNow < 10 ? dNow.toFixed(1) + ' м' : Math.round(dNow) + ' м';
+  controls.update(); renderer.render(scene, camera);
+}
+loop();
+</script>
+</body>
+</html>
