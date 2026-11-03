@@ -1,16 +1,26 @@
 <!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HJ · превью LiDAR-скана</title>
+<title>HJ · LiDAR-скан: сшивка и поверхность</title>
 <style>
   body{margin:0;background:#0b0f17;color:#e5e7eb;font-family:system-ui,sans-serif;overflow:hidden}
-  #info{position:fixed;top:10px;left:12px;font-size:13px;z-index:5;background:rgba(17,24,39,.8);
-    padding:8px 12px;border-radius:10px;border:1px solid #374151;line-height:1.5}
+  #info{position:fixed;top:10px;left:12px;font-size:13px;z-index:5;background:rgba(17,24,39,.85);
+    padding:8px 12px;border-radius:10px;border:1px solid #374151;line-height:1.5;max-width:min(92vw,420px)}
   #info b{color:#f97316}
+  #bar{position:fixed;bottom:12px;left:12px;right:12px;display:flex;gap:8px;flex-wrap:wrap;z-index:5}
+  #bar button{background:#1f2937;color:#e5e7eb;border:1px solid #4b5563;border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer}
+  #bar button.on{background:#f97316;border-color:#f97316;color:#111}
+  #load{position:fixed;inset:0;display:grid;place-items:center;font-size:15px;color:#9ca3af;z-index:4}
 </style></head>
 <body>
-<div id="info"><b>Тестовый LiDAR-скан</b> · 2.2 сек · 60 кадров · <span id="n"></span> точек<br>
-крути пальцем / колесом — это сырое облако без сшивки по позициям</div>
+<div id="info"><b>Тестовый LiDAR-скан</b> · 60 кадров сшиты по IMU + ICP<br><span id="stats">загрузка…</span></div>
+<div id="load">Загрузка модели…</div>
+<div id="bar">
+  <button id="bMesh" class="on">Поверхность</button>
+  <button id="bPts">Точки</button>
+  <button id="bPath">Путь камеры</button>
+  <button id="bGrid" class="on">Сетка 10 см</button>
+</div>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -20,38 +30,75 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const [posBuf, colBuf, meta] = await Promise.all([
+const [posBuf, colBuf, meta, gltf] = await Promise.all([
   fetch('pos.f32').then(r => r.arrayBuffer()),
   fetch('col.u8').then(r => r.arrayBuffer()),
   fetch('meta.json').then(r => r.json()),
+  new GLTFLoader().loadAsync('mesh.glb'),
 ]);
-document.getElementById('n').textContent = meta.count.toLocaleString('ru');
+document.getElementById('stats').innerHTML =
+  `${meta.count.toLocaleString('ru')} точек · ${meta.tris.toLocaleString('ru')} треугольников · воксель ${meta.voxel_mm} мм<br>` +
+  `точность сшивки ${meta.icp_rmse_mm} мм · габариты ${meta.extent_m.map(v => (v*100).toFixed(0)).join('×')} см · телефон прошёл ${meta.path_cm} см`;
+document.getElementById('load').remove();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0f17);
-const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 100);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(1, 2, 1.5); scene.add(sun);
+const sun2 = new THREE.DirectionalLight(0xffe4c4, 0.5); sun2.position.set(-1.5, 1, -1); scene.add(sun2);
 
+/* поверхность */
+const mesh = gltf.scene;
+mesh.traverse(o => { if (o.isMesh) { o.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, side: THREE.DoubleSide }); } });
+scene.add(mesh);
+
+/* точки */
 const g = new THREE.BufferGeometry();
 g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(posBuf), 3));
 g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(colBuf), 3, true));
-const pts = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.004, vertexColors: true }));
-pts.rotation.z = Math.PI; // буфер снят в портретной ориентации
-scene.add(pts);
+const pts = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.0035, vertexColors: true }));
+pts.visible = false; scene.add(pts);
 
+/* путь камеры */
+const path = new THREE.Line(new THREE.BufferGeometry().setFromPoints(meta.cam.map(p => new THREE.Vector3(...p))),
+  new THREE.LineBasicMaterial({ color: 0xf97316 }));
+const camDots = new THREE.Points(new THREE.BufferGeometry().setFromPoints(meta.cam.map(p => new THREE.Vector3(...p))),
+  new THREE.PointsMaterial({ color: 0xf97316, size: 0.01 }));
+path.visible = camDots.visible = false; scene.add(path, camDots);
+
+/* сетка */
 g.computeBoundingBox();
-const center = g.boundingBox.getCenter(new THREE.Vector3()).applyAxisAngle(new THREE.Vector3(0,0,1), Math.PI);
-const size = g.boundingBox.getSize(new THREE.Vector3()).length();
-camera.position.set(center.x, center.y, center.z - size * 0.9);
+const bb = g.boundingBox, center = bb.getCenter(new THREE.Vector3()), size = bb.getSize(new THREE.Vector3()).length();
+const grid = new THREE.GridHelper(Math.ceil(size * 2 / 0.1) * 0.1, Math.ceil(size * 2 / 0.1), 0x4b5563, 0x1f2937);
+grid.position.set(center.x, bb.min.y - 0.002, center.z); scene.add(grid);
+
+camera.position.set(center.x + size * 0.55, center.y + size * 0.5, center.z + size * 0.75);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.copy(center);
-controls.enableDamping = true;
+controls.target.copy(center); controls.enableDamping = true;
+
+const tog = (id, objs) => { const b = document.getElementById(id); b.onclick = () => { b.classList.toggle('on'); const on = b.classList.contains('on'); objs.forEach(o => o.visible = on); }; };
+tog('bMesh', [mesh]); tog('bPts', [pts]); tog('bPath', [path, camDots]); tog('bGrid', [grid]);
 
 const resize = () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); };
 addEventListener('resize', resize); resize();
 (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+
+/* для автоскриншотов */
+window.shoot = (a) => {
+  const d = size;
+  if (a === 'front') camera.position.set(center.x, center.y + d * 0.35, center.z + d * 0.9);
+  if (a === 'iso') camera.position.set(center.x + d * 0.6, center.y + d * 0.55, center.z + d * 0.7);
+  if (a === 'top') camera.position.set(center.x + 0.001, center.y + d * 1.1, center.z);
+  if (a === 'pts') { mesh.visible = false; pts.visible = true; }
+  if (a === 'mesh') { mesh.visible = true; pts.visible = false; }
+  camera.lookAt(center); controls.update();
+};
+window.ready = true;
 </script>
 </body></html>
