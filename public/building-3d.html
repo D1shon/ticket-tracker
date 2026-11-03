@@ -673,7 +673,7 @@ controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI/2 - 0.04;
 controls.minDistance = 0.8; controls.maxDistance = 220;
 controls.zoomToCursor = true;
-window.__dbg = {camera, controls}; /* для скриншот-скриптов */
+window.__dbg = {camera, controls, THREE}; /* для скриншот-скриптов */
 
 /* ---- плавный зум ----
    На компьютере колесо обрабатываем сами: оно задаёт ЦЕЛЬ дистанции, а камера
@@ -707,6 +707,7 @@ scene.add(grid);
 /* ----- корпус здания: геометрия из CAD-чертежей проекта (tools/plan/build_geom.py) ----- */
 const GEOM = await (await fetch('club-geom.json')).json();
 const pickables = [];   // всё, на что можно навести и кликнуть (маркеры, трубы, воздуховоды)
+window.__dbg.GEOM = GEOM;
 const [GX0, GZ0, GX1, GZ1] = GEOM.bbox;
 const bld = new THREE.Group(); scene.add(bld);
 
@@ -798,7 +799,30 @@ const linesFrom = (polys, y, color, opacity) => {
     new THREE.LineBasicMaterial({color, transparent:true, opacity}));
   bld.add(l); return l;
 };
-detail.heat = linesFrom(GEOM.heat, 4.35, 0xf87171, .75);
+/* ветки к фанкойлам (лист 5): каждая полилиния — отдельная линия с подписью, кликабельная (порог луча для линий ниже) */
+detail.heat = new THREE.Group(); bld.add(detail.heat);
+{
+  const mat = new THREE.LineBasicMaterial({color:0xf87171, transparent:true, opacity:.75});
+  const fcs = GEOM.fancoils.map((f, i) => ({x:f.x, z:f.z, n:i+1, room:f.room, model:f.model}));
+  GEOM.heat.forEach((pl, i) => {
+    const pts = pl.map(([x, z]) => new THREE.Vector3(x, 4.35, z));
+    const L = pl.slice(1).reduce((a, [x, z], k) => a + Math.hypot(x - pl[k][0], z - pl[k][1]), 0);
+    let best = null, bd = 1e9;
+    for (const f of fcs) for (const [x, z] of pl){ const d = Math.hypot(x - f.x, z - f.z); if (d < bd){ bd = d; best = f; } }
+    const mid = pl[Math.floor(pl.length / 2)];
+    const near = best && bd < 3.5;
+    const name = near ? `Ветка к фанкойлу №${best.n} (${best.room})` : 'Трубы сети фанкойлов (лист 5 ОВ)';
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+    l.userData.item = {id:'hp-'+i, sys:'heat', type:'pipe', pos:[mid[0], 4.35, mid[1]], name,
+      loc:`под потолком на 4,35 м, длина ${L.toFixed(1)} м` + (near ? `; ближайший блок — ${best.model} в ${bd.toFixed(1)} м` : ''),
+      desc:'Ответвление четырёхтрубной сети фанкойлов с листа 5 проекта ОВ: подача и обратка к внутреннему блоку (металлопластик Ø20–32, изоляция K-flex). На листе линии отопления Т11/Т21 и холода Т91/Т92 нарисованы одинаково, поэтому ветка показана одним цветом — по ней к блоку идёт и тепло зимой, и холод летом.',
+      off:'Перекрывается только кранами у самого фанкойла (над подвесным потолком). Закрытие затрагивает один блок: его зона станет теплее или холоднее, остальные работают.',
+      steps:['Капает с потолка под этой веткой — чаще всего конденсат с повреждённой изоляции летом: подставь ёмкость, заявка «изоляция трубы, зал …».',
+        'Тёплое пятно/вздутие потолка зимой — возможна течь стыка: заявка «срочно», краны этого блока закрыть инженеру.'],
+      warn:'Трубы над потолком под давлением до 70°C; доступ только через лючки, не вскрывать плитки потолка без инженера.'};
+    pickables.push(l); detail.heat.add(l);
+  });
+}
 detail.water = linesFrom(GEOM.t3, 4.15, 0xfb923c, .9);
 
 /* зоны-подписи: имена по экспликации, положение по плану */
@@ -1112,6 +1136,7 @@ holdZoom($('#zout'), 1 / 0.93);
 
 /* ================= взаимодействие ================= */
 const ray = new THREE.Raycaster();
+ray.params.Line.threshold = 0.22;   // чтобы тонкие ветки к фанкойлам ловились курсором
 const ptr = new THREE.Vector2();
 const tip = $('#tip');
 let downAt = null;
