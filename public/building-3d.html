@@ -598,6 +598,7 @@ scene.add(grid);
 
 /* ----- корпус здания: геометрия из CAD-чертежей проекта (tools/plan/build_geom.py) ----- */
 const GEOM = await (await fetch('club-geom.json')).json();
+const pickables = [];   // всё, на что можно навести и кликнуть (маркеры, трубы, воздуховоды)
 const [GX0, GZ0, GX1, GZ1] = GEOM.bbox;
 const bld = new THREE.Group(); scene.add(bld);
 
@@ -620,11 +621,16 @@ const toShape = (poly) => {
   for (const h of poly.holes) sh.holes.push(new THREE.Path(h.map(p => new THREE.Vector2(p[0], -p[1]))));
   return sh;
 };
-const extrudeAll = (polys, depth, y0, mat) => {
+const extrudeAll = (polys, depth, y0, mat, pick) => {
   const g = new THREE.Group();
   for (const poly of polys){
     const m = new THREE.Mesh(new THREE.ExtrudeGeometry(toShape(poly), {depth, bevelEnabled:false}), mat);
     m.rotation.x = -Math.PI/2; m.position.y = y0; g.add(m);
+    if (pick && poly.info){               // кликабельный элемент с карточкой (воздуховоды)
+      const cx = poly.outer.reduce((a,p)=>a+p[0],0)/poly.outer.length, cz = poly.outer.reduce((a,p)=>a+p[1],0)/poly.outer.length;
+      m.userData.item = {id:'duct-'+pickables.length, sys:'vent', type:'duct', pos:[cx, y0+depth/2, cz], ...poly.info};
+      pickables.push(m);
+    }
   }
   bld.add(g); return g;
 };
@@ -653,7 +659,7 @@ for (let i = 0; i < 10; i++) box(1.1, 0.1, 0.34, -1.2, 0.24 + i * 0.45, 22.6 - i
 /* детализация инженерки по листам ОВ: воздуховоды (лист 7) и трубы отопления (лист 5) */
 const detail = {};
 detail.vent = extrudeAll(GEOM.ducts, .45, 3.95,
-  new THREE.MeshStandardMaterial({color:0x4ade80, transparent:true, opacity:.5, roughness:.6, emissive:0x4ade80, emissiveIntensity:.15}));
+  new THREE.MeshStandardMaterial({color:0x4ade80, transparent:true, opacity:.5, roughness:.6, emissive:0x4ade80, emissiveIntensity:.15}), true);
 const linesFrom = (polys, y, color, opacity) => {
   const pts = [];
   for (const pl of polys) for (let i = 0; i < pl.length - 1; i++)
@@ -721,7 +727,6 @@ entr2.position.set(63.5, 1.2, 14.5); bld.add(entr2);
 box(5, .15, 3.4, 56.5, .08, 2.4, 0x1c2531);
 
 /* ----- маркеры оборудования ----- */
-const pickables = [];
 const markers = {};
 const geoByType = {
   valve: new THREE.SphereGeometry(.42, 20, 16),
@@ -840,7 +845,7 @@ function openCard(it){
   selected = it;
   $('#cName').textContent = it.name;
   const s = SYS[it.sys];
-  $('#cSys').textContent = s.label + ' · ' + ({valve:'кран',panel:'пульт/щит',pump:'насос',unit:'агрегат',damper:'клапан',pipe:'магистраль'})[it.type];
+  $('#cSys').textContent = s.label + ' · ' + ({valve:'кран',panel:'пульт/щит',pump:'насос',unit:'агрегат',damper:'клапан',pipe:'магистраль',duct:'воздуховод'})[it.type];
   $('#cSys').style.background = s.css;
   $('#cLoc').textContent = '📍 ' + it.loc;
   $('#cDesc').textContent = it.desc;
