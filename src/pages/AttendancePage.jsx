@@ -785,7 +785,8 @@ const AttendancePage = () => {
             position: 'fixed', inset: 0, zIndex: 1000,
             background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
+            padding: 'max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))',
+            overflowY: 'auto',
           }}
         >
           <div
@@ -795,12 +796,16 @@ const AttendancePage = () => {
               borderRadius: 24, width: '100%', maxWidth: 420,
               boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
               overflow: 'hidden',
+              /* на телефоне вечерний список (8 пунктов + фото + кнопка) выше экрана:
+                 карточка ограничена высотой окна, прокручивается только список пунктов,
+                 шапка и кнопка подтверждения всегда на виду */
+              maxHeight: 'calc(100dvh - 24px)', display: 'flex', flexDirection: 'column',
             }}
           >
             {/* Шапка */}
             <div style={{
-              padding: '18px 20px', borderBottom: '1px solid var(--border)',
-              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '14px 18px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
             }}>
               <div style={{
                 width: 36, height: 36, borderRadius: 12, flexShrink: 0,
@@ -824,8 +829,8 @@ const AttendancePage = () => {
               </button>
             </div>
 
-            {/* Пункты чеклиста */}
-            <div style={{ padding: '10px 0' }}>
+            {/* Пункты чеклиста — прокручиваемая часть */}
+            <div style={{ padding: '6px 0', overflowY: 'auto', flex: '1 1 auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
               {checklist.map((item, idx) => {
                 const checked = checkedItems.includes(idx);
                 return (
@@ -836,7 +841,7 @@ const AttendancePage = () => {
                     )}
                     style={{
                       display: 'flex', alignItems: 'flex-start', gap: 12,
-                      padding: '11px 20px', cursor: 'pointer',
+                      padding: '9px 18px', cursor: 'pointer',
                       transition: 'background 0.15s',
                       background: checked ? 'rgba(95,156,129,0.06)' : 'transparent',
                     }}
@@ -869,7 +874,7 @@ const AttendancePage = () => {
 
             {/* Фото кассы — обязательно (только на закрытии смены) */}
             {closingShift && (
-            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
+            <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: '#C08F4F', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
                 Фото кассы — обязательно
               </div>
@@ -899,8 +904,8 @@ const AttendancePage = () => {
             </div>
             )}
 
-            {/* Прогресс + кнопка подтверждения */}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
+            {/* Прогресс + кнопка подтверждения — всегда видны */}
+            <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <div style={{ flex: 1, height: 4, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
                   <div style={{
