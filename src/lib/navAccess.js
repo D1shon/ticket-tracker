@@ -1,4 +1,5 @@
 import { showStaffNav } from './access';
+import { hasModelAccess } from '../data/clubModels';
 
 // ЕДИНЫЙ источник правды о доступе к вкладкам.
 // baseNavAllowed — базовые правила по роли (раньше дублировались в двух местах Sidebar).
@@ -61,14 +62,9 @@ export function baseNavAllowed(user, path) {
   if (path === '/invoices') return user?.role === 'manager' || user?.role === 'chef';
   // Адаптация стажёров — менеджерский состав
   if (path === '/onboarding') return user?.role === 'manager' || user?.role === 'chef';
-  // Модель клуба — 3D-схема инженерки, пока есть только у Colibri:
-  // видна шефу и всем, у кого среди клубов есть COLIBRI (включая мультиклубных)
-  if (path === '/club-model') {
-    if (user?.role === 'chef') return true;
-    if (user?.role === 'guest' || user?.role === 'lostviewer' || user?.role === 'marketing') return false;
-    const clubs = [user?.club, ...(Array.isArray(user?.clubs) ? user.clubs : [])];
-    return clubs.some(c => (c || '').toUpperCase() === 'COLIBRI');
-  }
+  // Модель клуба — 3D-схемы инженерки по клубам (реестр src/data/clubModels.js):
+  // шеф видит все, сотрудник — если у его клуба (включая мультиклубных) есть готовая модель
+  if (path === '/club-model') return hasModelAccess(user);
   if (user?.role === 'admin') {
     // Чек-листы — только админам Europe City
     if (path === '/checklists') return (user.club || '').toUpperCase() === 'EUROPE CITY';

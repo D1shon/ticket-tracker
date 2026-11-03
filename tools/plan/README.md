@@ -1,6 +1,6 @@
 # Модель клуба из CAD-чертежей (Python)
 
-`public/building-3d.html` берёт геометрию из `public/club-geom.json` и подложку `public/club-plan.jpg`.
+Модель Colibri живёт в `public/models/colibri/` (index.html + club-geom.json + club-plan.jpg); другие клубы — свои папки в `public/models/` и запись в `src/data/clubModels.js`.
 Оба файла генерируются из векторных PDF проекта (план ВК «HJ …-Model.pdf» и рабочий проект ОВ, листы 5 и 7).
 
 ```
@@ -8,7 +8,7 @@ cd tools/plan
 python dump.py "<план ВК.pdf>" 1 vk.json            # линии/заливки/тексты страницы -> json
 python dump.py "<проект ОВ.pdf>" 5 ov5.json         # отопление
 python dump.py "<проект ОВ.pdf>" 7 ov7.json         # вентиляция
-python build_geom.py ../../public                   # -> club-geom.json + club-plan.jpg
+python build_geom.py ../../public/models/colibri    # -> club-geom.json + club-plan.jpg
 ```
 
 `patch_html.py` — одноразовый патч (03.11.2026), которым building-3d.html переведён на эту геометрию;

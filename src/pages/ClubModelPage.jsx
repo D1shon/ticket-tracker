@@ -1,27 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, ExternalLink, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Building2, ExternalLink, RotateCcw, Hammer } from 'lucide-react';
 import { useTickets } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
+import { CLUB_MODELS, hasModelAccess, modelsFor, userClubs } from '../data/clubModels';
 
-// 3D-модель клуба Colibri («Инвиктус», Валиханова 170): статичная страница
-// public/building-3d.html (Three.js). Краны, щиты и пульты кликабельны —
-// у каждого карточка «что это / что будет, если перекрыть / инструкция»
-// плюс аварийные сценарии (потоп, пожар, нет ГВС и т.д.).
-// Пока модель есть только у Colibri — вкладка закрыта для других клубов
-// (правило в navAccess.js + проверка клуба здесь на случай прямой ссылки).
-const MODEL_URL = '/building-3d.html';
-const MODEL_CLUB = 'COLIBRI';
-
-const hasModelAccess = (user) => {
-  if (user?.role === 'chef') return true;
-  const clubs = [user?.club, ...(Array.isArray(user?.clubs) ? user.clubs : [])];
-  return clubs.some(c => (c || '').toUpperCase() === MODEL_CLUB);
-};
+// Вкладка «Модель клуба»: сверху чипы-вкладки по клубам (список и готовность — src/data/clubModels.js),
+// ниже iframe с моделью выбранного клуба (public/models/<slug>/index.html, Three.js). Краны, щиты и
+// пульты в модели кликабельны — у каждого карточка «что это / что будет, если перекрыть / инструкция»
+// плюс аварийные сценарии. У клубов без модели — заглушка «в работе».
+// Шеф видит вкладки всех клубов, сотрудник — только своих (правило доступа в navAccess.js).
 
 const ClubModelPage = () => {
   const { user } = useTickets();
+  const tabs = useMemo(() => modelsFor(user), [user]);
+
+  // по умолчанию — клуб пользователя с готовой моделью, иначе первая готовая, иначе первая вкладка
+  const [club, setClub] = useState(() => {
+    const mine = userClubs(user);
+    const own = tabs.find(m => m.ready && mine.includes(m.club));
+    return (own || tabs.find(m => m.ready) || tabs[0] || CLUB_MODELS[0]).club;
+  });
+  const active = tabs.find(m => m.club === club) || tabs[0];
+
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [iframeKey, setIframeKey] = useState(0); // смена key = перезагрузка iframe
+  useEffect(() => { setIframeLoaded(false); }, [club]);
 
   const [isMobile, setIsMobile] = useState(() => isMobileDevice());
   useEffect(() => {
@@ -30,17 +33,23 @@ const ClubModelPage = () => {
     return () => window.removeEventListener('resize', h);
   }, []);
 
-  if (!hasModelAccess(user)) {
+  if (!hasModelAccess(user) || !active) {
     return (
       <div className="animate-fade" style={{ minHeight: '50vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, textAlign: 'center', padding: 24 }}>
         <Building2 size={36} style={{ color: 'var(--text-muted)', opacity: 0.6 }} />
         <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>Модель клуба</div>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', maxWidth: 320, lineHeight: 1.6 }}>
-          3D-модель пока есть только у клуба COLIBRI. Для вашего клуба появится позже.
+          3D-модели вашего клуба пока нет. Она появится, как только будут загружены чертежи.
         </div>
       </div>
     );
   }
+
+  const btnStyle = {
+    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10,
+    border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)',
+    fontSize: 12, fontWeight: 700, cursor: 'pointer',
+  };
 
   return (
     <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: 10, height: isMobile ? 'calc(100dvh - 130px)' : 'calc(100vh - 60px)' }}>
@@ -50,39 +59,74 @@ const ClubModelPage = () => {
             <Building2 size={16} style={{ color: '#9b5de5' }} />
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Модель клуба · COLIBRI</div>
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)' }}>Нажмите на кран или пульт — появится инструкция</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              Модель клуба · {active.club}{active.title ? ` · ${active.title}` : ''}
+            </div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)' }}>
+              {active.ready ? 'Нажмите на кран или пульт — появится инструкция' : 'Модель этого клуба ещё не загружена'}
+            </div>
           </div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button onClick={() => { setIframeLoaded(false); setIframeKey(k => k + 1); }} title="Перезагрузить" style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10,
-            border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)',
-            fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          }}><RotateCcw size={13} />{!isMobile && 'Обновить'}</button>
-          <button onClick={() => window.open(MODEL_URL, '_blank', 'noopener')} title="Открыть в новом окне" style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10,
-            border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)',
-            fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          }}><ExternalLink size={13} />{!isMobile && 'В новом окне'}</button>
-        </div>
-      </div>
-
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border)', background: '#0b0f17' }}>
-        {!iframeLoaded && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'var(--bg-card)', zIndex: 1 }}>
-            <Building2 size={32} style={{ color: '#9b5de5', opacity: 0.6 }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>Загружаем модель…</span>
+        {active.ready && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <button onClick={() => { setIframeLoaded(false); setIframeKey(k => k + 1); }} title="Перезагрузить" style={btnStyle}>
+              <RotateCcw size={13} />{!isMobile && 'Обновить'}
+            </button>
+            <button onClick={() => window.open(active.url, '_blank', 'noopener')} title="Открыть в новом окне" style={btnStyle}>
+              <ExternalLink size={13} />{!isMobile && 'В новом окне'}
+            </button>
           </div>
         )}
-        <iframe
-          key={iframeKey}
-          src={MODEL_URL}
-          title="3D-модель клуба COLIBRI"
-          onLoad={() => setIframeLoaded(true)}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-          allow="fullscreen"
-        />
+      </div>
+
+      {/* вкладки по клубам */}
+      {tabs.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {tabs.map(m => {
+            const on = m.club === active.club;
+            return (
+              <button key={m.club} onClick={() => setClub(m.club)} title={m.ready ? 'Модель готова' : 'Модель в работе'} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 999,
+                border: `1px solid ${on ? '#9b5de5' : 'var(--border)'}`,
+                background: on ? 'rgba(155,93,229,0.14)' : 'var(--bg-card)',
+                color: on ? 'var(--text-primary)' : (m.ready ? 'var(--text-secondary)' : 'var(--text-muted)'),
+                fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: m.ready ? 1 : 0.75,
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: 999, background: m.ready ? '#22c55e' : '#64748b', flexShrink: 0 }} />
+                {m.club}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ position: 'relative', flex: 1, minHeight: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border)', background: '#0b0f17' }}>
+        {active.ready ? (
+          <>
+            {!iframeLoaded && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'var(--bg-card)', zIndex: 1 }}>
+                <Building2 size={32} style={{ color: '#9b5de5', opacity: 0.6 }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>Загружаем модель…</span>
+              </div>
+            )}
+            <iframe
+              key={`${active.club}-${iframeKey}`}
+              src={active.url}
+              title={`3D-модель клуба ${active.club}`}
+              onLoad={() => setIframeLoaded(true)}
+              style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+              allow="fullscreen"
+            />
+          </>
+        ) : (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'var(--bg-card)', textAlign: 'center', padding: 24 }}>
+            <Hammer size={34} style={{ color: 'var(--text-muted)', opacity: 0.6 }} />
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>{active.club}: модель в работе</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', maxWidth: 380, lineHeight: 1.6 }}>
+              Пришлите чертежи (планы ОВ и ВК) и фото инженерных помещений — соберём модель, как у COLIBRI.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

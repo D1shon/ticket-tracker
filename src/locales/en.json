@@ -4375,5 +4375,11 @@
   "3D-схема инженерки": "3D utilities map",
   "Нажмите на кран или пульт — появится инструкция": "Tap a valve or control panel to see its instructions",
   "Загружаем модель…": "Loading the model…",
-  "3D-модель пока есть только у клуба COLIBRI. Для вашего клуба появится позже.": "The 3D model is only available for COLIBRI for now. It will arrive for your club later."
+  "3D-модель пока есть только у клуба COLIBRI. Для вашего клуба появится позже.": "The 3D model is only available for COLIBRI for now. It will arrive for your club later.",
+  "3D-модели вашего клуба пока нет. Она появится, как только будут загружены чертежи.": "There is no 3D model of your club yet. It will appear once the drawings are uploaded.",
+  "Модель этого клуба ещё не загружена": "This club's model is not loaded yet",
+  "Модель готова": "Model ready",
+  "Модель в работе": "Model in progress",
+  ": модель в работе": ": model in progress",
+  "Пришлите чертежи (планы ОВ и ВК) и фото инженерных помещений — соберём модель, как у COLIBRI.": "Send the drawings (HVAC and plumbing plans) and photos of the plant rooms — we will build a model like COLIBRI's."
 }
