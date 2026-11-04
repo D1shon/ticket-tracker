@@ -37,6 +37,18 @@ const combine = (a, b) => {
 };
 const pretty = (s) => (s || '').replace('-', '–');
 
+// Смены клуба — для дня, когда выходной у обоих: коллега (или я) просто
+// выходит дополнительно (решение шефа 04.11.2026). Списки повторяют варианты
+// ячейки графика в SchedulePage.jsx, первая смена — предлагается по умолчанию.
+const CLUB_SHIFTS = {
+  'NURLY ORDA':  ['6:30-22:00', '13:30-23:00', '9:00-19:00', '11:00-20:00'],
+  'EUROPE CITY': ['6:20-23:00', '8:30-21:00'],
+  'PROMENADE':   ['6:30-15:00', '15:00-22:30', '18:00-21:00', '6:30-14:00', '17:00-00:00', '8:30-14:30', '14:30-20:30'],
+  'COLIBRI':     ['8:30-20:30', '6:30-22:30', '6:30-14:30', '14:30-22:30', '8:30-14:30', '14:30-20:30'],
+};
+const DEFAULT_SHIFTS = ['8:30-21:30', '6:30-22:30', '6:30-14:30', '14:30-22:30', '8:30-14:30', '14:30-21:30'];
+const clubShifts = (club) => CLUB_SHIFTS[(club || '').toUpperCase()] || DEFAULT_SHIFTS;
+
 export const dateLabel = (monthKey, day) => {
   try { return format(new Date(`${monthKey}-${String(day).padStart(2, '0')}`), 'd MMMM', { locale: ru }); } catch { return `${day}.${monthKey.slice(5)}`; }
 };
@@ -80,6 +92,9 @@ function SwapForm({ club, monthKey, employees, scheduleData, user, myEmp, onClos
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [pickMe, setPickMe] = useState('');
+  // Смена для «просто выйти», когда в этот день выходной у обоих
+  const shiftsList = clubShifts(club);
+  const [extraShift, setExtraShift] = useState(shiftsList[0]);
 
   const daysInMonth = useMemo(() => { const [y, m] = monthKey.split('-').map(Number); return new Date(y, m, 0).getDate(); }, [monthKey]);
   const shiftOf = (emp, d) => ((scheduleData[emp?.id]?.days?.[String(d)] || '') + '').trim();
@@ -120,10 +135,15 @@ function SwapForm({ club, monthKey, employees, scheduleData, user, myEmp, onClos
         out.push({ id: 'give_evening', title: `${them} берёт вечер ${pretty(h[1])}, у меня остаётся утро ${pretty(h[0])}`, changes: [{ empId: myEmp.id, empName: me, day, from: mine, to: h[0] }, { empId: partner.id, empName: them, day, from: theirs, to: h[1] }] });
       }
     }
+    if (!theirs && !mine) {
+      // Выходной у обоих — кто-то из нас выходит дополнительно
+      out.push({ id: 'extra_them', title: `${them} выходит дополнительно на ${pretty(extraShift)} (у обоих выходной)`, changes: [{ empId: partner.id, empName: them, day, from: theirs, to: extraShift }] });
+      out.push({ id: 'extra_me', title: `Выхожу я дополнительно на ${pretty(extraShift)} (у обоих выходной)`, changes: [{ empId: myEmp.id, empName: me, day, from: mine, to: extraShift }] });
+    }
     return out;
-  }, [myEmp, partner, day, mine, theirs]);
+  }, [myEmp, partner, day, mine, theirs, extraShift]);
 
-  useEffect(() => { setVariant(variants[0]?.id || ''); }, [variants]);
+  useEffect(() => { setVariant(v => variants.some(x => x.id === v) ? v : (variants[0]?.id || '')); }, [variants]);
 
   const chosen = variants.find(v => v.id === variant) || null;
   // Обмен днями: взамен коллега берёт мою смену в другой день
@@ -197,7 +217,6 @@ function SwapForm({ club, monthKey, employees, scheduleData, user, myEmp, onClos
                 <div style={{ background: 'var(--bg-hover)', borderRadius: 10, padding: '8px 10px' }}><div style={label}>{partner.name}</div><div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{theirs ? pretty(theirs) : 'выходной'}</div></div>
               </div>
             )}
-            {partner && variants.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>В этот день ни у кого из вас нет смены — меняться нечем.</p>}
             {variants.length > 0 && (
               <div style={{ marginBottom: 12 }}>
                 <label style={label}>Как меняемся</label>
@@ -209,6 +228,14 @@ function SwapForm({ club, monthKey, employees, scheduleData, user, myEmp, onClos
                     </label>
                   ))}
                 </div>
+                {chosen?.id?.startsWith('extra_') && (
+                  <div style={{ marginTop: 8 }}>
+                    <label style={label}>На какую смену</label>
+                    <select style={field} value={extraShift} onChange={e => setExtraShift(e.target.value)}>
+                      {shiftsList.map(s => <option key={s} value={s}>{pretty(s)}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
             {chosen && (
