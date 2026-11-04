@@ -138,6 +138,27 @@ tools/                     Python-инструменты (раздел 9)
 
 Полная таблица с вызывающими сторонами и переменными окружения в `docs/MIGRATION.md`, раздел 3.
 
+### 4.1. Vertex AI Gemini по сервисному аккаунту
+
+Все «умные» функции платформы (помощник по гайдбуку, разбор заявки, классификация лидов из WhatsApp, перевод новостей, «Сделать понятно» для релизов) ходят в Gemini не через публичный ключ Google AI Studio, а через Vertex AI в проекте Google Cloud `hjtrack-928f5`. Клиент — `src/lib/vertex.js` (копия логики в `src/lib/newsRewrite.js`), без SDK, чистый `fetch`.
+
+Как работает запрос:
+1. `vertexToken()` собирает JWT: заголовок `RS256`, тело `{iss: FIREBASE_CLIENT_EMAIL, scope: cloud-platform, aud: oauth2.googleapis.com/token, iat, exp: +1 ч}` и подписывает его приватным ключом из `FIREBASE_PRIVATE_KEY` (стандартный `crypto.createSign('RSA-SHA256')`).
+2. JWT обменивается на access token в `https://oauth2.googleapis.com/token` (grant `jwt-bearer`). Токен кешируется в памяти функции до истечения минус минута; на Vercel это значит «на время жизни тёплого инстанса».
+3. `vertexGenerate()` вызывает REST `POST https://aiplatform.googleapis.com/v1/projects/hjtrack-928f5/locations/global/publishers/google/models/<model>:generateContent` с заголовком `Authorization: Bearer <token>`. Тело: `systemInstruction`, `contents` (история диалога в ролях user/model), `generationConfig` (temperature, maxOutputTokens, `responseMimeType: application/json` для структурированных ответов, `thinkingConfig.thinkingBudget` для «размышлений» модели).
+4. Один повтор при 429/503 с паузой 1.2 с. При `json: true` ответ парсится, при обрезанном JSON вырезается первая пара `{…}`.
+
+Модель по умолчанию `gemini-2.5-flash`, регион `global`. Переопределение для лидов — `GEMINI_LEAD_MODEL`.
+
+Что это даёт и чего требует:
+- Биллинг идёт на проект `hjtrack-928f5` (тот же, что Firestore), отдельный ключ Gemini не нужен, ключ не попадает в бандл и не светится в URL.
+- Сервисному аккаунту нужна роль `Vertex AI User` (`roles/aiplatform.user`) и включённый API `aiplatform.googleapis.com` в проекте. Тот же ключ используется firebase-admin для Firestore и FCM, поэтому у него роли Editor-уровня; при переезде лучше завести отдельный аккаунт с узкими ролями (см. `docs/MIGRATION.md`, раздел 13).
+- Лимиты: квоты Vertex по проекту (запросов в минуту на модель), при превышении 429 и один повтор. Стоимость по прайсу Vertex за токены ввода и вывода; «размышления» (`thinkingBudget`) тоже тарифицируются как вывод.
+- Где Vertex НЕ используется: свободный ИИ-чат (`freeChat` в `api/assistant.js`) и `api/release-note.js` работают по ключам `GEMINI_API_KEY` (Google AI Studio, эндпоинт `generativelanguage.googleapis.com`), `ANTHROPIC_API_KEY` и запасной цепочке OpenRouter/Groq/Mistral/DeepSeek. Это сознательно: чату нужны веб-поиск и другие модели. Без этих ключей чат отвечает заглушкой, остальные ИИ-функции работают.
+- Чтобы перейти на другой проект Google Cloud: сменить три переменные `FIREBASE_*` (или вынести Vertex на отдельные `VERTEX_*` в `vertex.js`), выдать роль, включить API. Чтобы уйти с Vertex на AI Studio: заменить URL и авторизацию в `vertexGenerate()` на `?key=`; формат тела `generateContent` у обоих API одинаковый.
+
+Проверка работоспособности: открыть `/assistant`, задать вопрос по гайдбуку; в логах функции Vercel ошибка вида `vertex 403` означает отсутствие роли или выключенный API, `vertex token:` — сломанный приватный ключ (чаще всего потерянные `\n`).
+
 ---
 
 ## 5. Фоновые процессы вне Vercel
