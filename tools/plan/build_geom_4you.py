@@ -163,14 +163,35 @@ for lv in LEVELS:
     L['ducts'] = []
     for kind, test in (('supply', lambda c: c and c[0] >= 0.9 and c[1] <= 0.3 and c[2] <= 0.1),
                        ('exhaust', lambda c: c and c[0] <= 0.1 and c[1] <= 0.3 and c[2] >= 0.9)):
+        # Воздуховоды на листах нарисованы контуром (толстые линии 0.84/1.08 pt — стенки короба,
+        # тонкие 0.24 — пунктир внутри, выноски, рамки подписей). Берём только толстые линии,
+        # замыкаем мелкие разрывы и заливаем всё, что не достижимо снаружи, — получаем сплошные
+        # короба как в чертеже (04.11.2026, «проплешины» прежнего способа ушли). Замкнутые петли
+        # магистралей вокруг помещений заливать нельзя — выбрасываем залитые области шире 0.9 м.
         Rd = Raster(box)
         for s in vent['segs']:
             c = col(s)
-            if s['f'] or not test(c): continue
+            if s['f'] or not test(c) or s['w'] < 0.8: continue
             pts = [T(x, y) for x, y in s['pts']]
             if not inside(pts): continue
             Rd.line(pts, 2)
-        shp, _ = mask_to_shapes(Rd.mask(), min_area=0.05, close=6, open_=1, simplify_m=0.05, x0=box[0], z0=box[1])
+        m = (Rd.mask()).astype(np.uint8) * 255
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=2)
+        ff = m.copy(); cv2.floodFill(ff, np.zeros((m.shape[0] + 2, m.shape[1] + 2), np.uint8), (0, 0), 128)
+        inner = (ff == 0).astype(np.uint8)                        # внутренности контуров (стенки — барьеры)
+        n, lab, _, _ = cv2.connectedComponentsWithStats(inner, 8)
+        dist = cv2.distanceTransform(inner, cv2.DIST_L2, 5) * PX
+        keep = np.zeros_like(inner); room = np.zeros_like(inner)
+        for i in range(1, n):
+            comp = lab == i
+            if dist[comp].max() <= 0.45: keep[comp] = 1         # короб: полуширина ≤ 0.45 м
+            else: room[comp] = 1                                 # шире — помещение внутри петли магистралей
+        # стенки, обращённые в помещение, не нужны; остальные толстые линии — это узкие ответвления
+        # (250×150, 300×200), нарисованные двумя линиями без замыкания торцов: смыкаем их в полосу
+        lines = ((m > 0) & (cv2.dilate(room, np.ones((5, 5), np.uint8)) == 0)).astype(np.uint8)
+        narrow = cv2.morphologyEx(lines, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=6)
+        filled = ((keep > 0) | (narrow > 0)).astype(np.uint8)
+        shp, _ = mask_to_shapes(filled, min_area=0.05, close=1, open_=0, simplify_m=0.05, x0=box[0], z0=box[1])
         for sh in shp:
             P = np.array(sh['outer']); ext = np.ptp(P, axis=0); Ls = ext.max(); wid = min(ext.min(), 0.8)
             cx, cz = P.mean(0)
