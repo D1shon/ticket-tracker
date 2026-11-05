@@ -71,7 +71,6 @@ const IMPORTERS = {
   LeadsPage:       () => import('./pages/LeadsPage'),
   FeedbackPage:    () => import('./pages/FeedbackPage'),
   AssistantPage:   () => import('./pages/AssistantPage'),
-  AiChatPage:      () => import('./pages/AiChatPage'),
   StaffCreatePage: () => import('./pages/StaffCreatePage'),
   FirstAidPage:    () => import('./pages/FirstAidPage'),
   InvoicesPage:    () => import('./pages/InvoicesPage'),
@@ -111,7 +110,6 @@ const WaDemoPage      = lazyPage(IMPORTERS.WaDemoPage);
 const LeadsPage       = lazyPage(IMPORTERS.LeadsPage);
 const FeedbackPage    = lazyPage(IMPORTERS.FeedbackPage);
 const AssistantPage   = lazyPage(IMPORTERS.AssistantPage);
-const AiChatPage      = lazyPage(IMPORTERS.AiChatPage);
 const StaffCreatePage = lazyPage(IMPORTERS.StaffCreatePage);
 const FirstAidPage    = lazyPage(IMPORTERS.FirstAidPage);
 const InvoicesPage    = lazyPage(IMPORTERS.InvoicesPage);
@@ -527,11 +525,6 @@ const AppContent = () => {
         <Route path="/assistant" element={
           <ProtectedLayout allowedRoles={['chef', 'manager', 'admin', 'komdir', 'rop']}>
             <AssistantPage />
-          </ProtectedLayout>
-        } />
-        <Route path="/ai-chat" element={
-          <ProtectedLayout allowedRoles={['chef', 'manager']}>
-            <AiChatPage />
           </ProtectedLayout>
         } />
         <Route path="/invoices" element={

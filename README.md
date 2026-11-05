@@ -43,7 +43,7 @@ npm run lint
 | ИИ | Vertex AI Gemini по сервисному аккаунту | `src/lib/vertex.js`, `api/assistant.js` |
 | Видеозвонки | Agora RTC | `src/store/CallContext.jsx` |
 | 3D | Three.js со CDN, статичные страницы | `public/models/<club>/` |
-| Фоновые процессы | Node-скрипты на отдельной машине | `wa-bridge/`, `2gis-bridge/`, `dwh-sync/`, `claude-bridge/`, `mcp-hjtrack/` |
+| Фоновые процессы | Node-скрипты на отдельной машине | `wa-bridge/`, `2gis-bridge/`, `dwh-sync/`, `mcp-hjtrack/` |
 | Генерация геометрии | Python 3.12 | `tools/plan/`, `tools/lidar/` |
 
 ---
@@ -154,7 +154,7 @@ tools/                     Python-инструменты (раздел 9)
 - Биллинг идёт на проект `hjtrack-928f5` (тот же, что Firestore), отдельный ключ Gemini не нужен, ключ не попадает в бандл и не светится в URL.
 - Сервисному аккаунту нужна роль `Vertex AI User` (`roles/aiplatform.user`) и включённый API `aiplatform.googleapis.com` в проекте. Тот же ключ используется firebase-admin для Firestore и FCM, поэтому у него роли Editor-уровня; при переезде лучше завести отдельный аккаунт с узкими ролями (см. `docs/MIGRATION.md`, раздел 13).
 - Лимиты: квоты Vertex по проекту (запросов в минуту на модель), при превышении 429 и один повтор. Стоимость по прайсу Vertex за токены ввода и вывода; «размышления» (`thinkingBudget`) тоже тарифицируются как вывод.
-- Где Vertex НЕ используется: свободный ИИ-чат (`freeChat` в `api/assistant.js`) и `api/release-note.js` работают по ключам `GEMINI_API_KEY` (Google AI Studio, эндпоинт `generativelanguage.googleapis.com`), `ANTHROPIC_API_KEY` и запасной цепочке OpenRouter/Groq/Mistral/DeepSeek. Это сознательно: чату нужны веб-поиск и другие модели. Без этих ключей чат отвечает заглушкой, остальные ИИ-функции работают.
+- Где Vertex НЕ используется: `api/release-note.js` работает по ключу `GEMINI_API_KEY` (Google AI Studio, эндпоинт `generativelanguage.googleapis.com`).
 - Чтобы перейти на другой проект Google Cloud: сменить три переменные `FIREBASE_*` (или вынести Vertex на отдельные `VERTEX_*` в `vertex.js`), выдать роль, включить API. Чтобы уйти с Vertex на AI Studio: заменить URL и авторизацию в `vertexGenerate()` на `?key=`; формат тела `generateContent` у обоих API одинаковый.
 
 Проверка работоспособности: открыть `/assistant`, задать вопрос по гайдбуку; в логах функции Vercel ошибка вида `vertex 403` означает отсутствие роли или выключенный API, `vertex token:` — сломанный приватный ключ (чаще всего потерянные `\n`).
@@ -170,7 +170,6 @@ tools/                     Python-инструменты (раздел 9)
 | `wa-bridge/` | WhatsApp клубов через Baileys: лента `wa_messages`, лиды через `/api/assistant` | `wa-bridge/auth/` (сессии) |
 | `2gis-bridge/` | ответы на отзывы 2ГИС из очереди `review_replies` через кабинет (Playwright, только видимое окно), проверка новых отзывов каждые 3 ч | `2gis-bridge/profile/` |
 | `dwh-sync/` | посещения атлетов каждые 5 мин и покрытие пульсометрами раз в 6 ч из Postgres DWH через VPN | `dwh-sync/config.json` |
-| `claude-bridge/` | Клод в ИИ-чате платформы по грантам шефа, читает базу через `mcp-hjtrack/` | `mcp-config.json` |
 
 ---
 

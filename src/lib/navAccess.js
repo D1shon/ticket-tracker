@@ -25,7 +25,6 @@ export const NAV_ITEMS = [
   { path: '/qr-reviews',      label: 'QR-отзывы' },
   { path: '/leads',           label: 'Лиды' },
   { path: '/assistant',       label: 'Помощник' },
-  { path: '/ai-chat',         label: 'ИИ-чат' },
   { path: '/staff',           label: 'Сотрудники (МОП)' },
   { path: '/onboarding',      label: 'Адаптация' },
   { path: '/calendar',        label: 'Календарь' },
@@ -45,7 +44,7 @@ export const NAV_ITEMS = [
 const ADMIN_TABS = ['/shift-board', '/calendar', '/instudio', '/schedule', '/sales', '/settings', '/guidebook', '/injury-protocol', '/policy', '/hr-monitors', '/first-aid', '/towels', '/attendance', '/club-visits', '/lost-items', '/news', '/leads', '/assistant', '/academy'];
 const MARKETING_TABS = ['/merch', '/policy', '/shift-board', '/calendar', '/instudio', '/settings', '/academy'];
 const SALES_TABS = ['/news', '/merch', '/policy', '/settings', '/reviews', '/qr-reviews', '/leads', '/lost-items', '/assistant', '/attendance', '/club-visits', '/calendar', '/instudio', '/academy'];
-const VIEWER_HIDDEN_TABS = ['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads', '/ai-chat'];
+const VIEWER_HIDDEN_TABS = ['/tickets', '/schedule', '/calls', '/dashboard', '/archive', '/lost-items', '/reviews', '/leads'];
 
 // Гость (стажёр): строго только эти вкладки, ничего сверх
 const GUEST_TABS = ['/academy', '/guidebook', '/injury-protocol', '/attendance'];
@@ -79,8 +78,6 @@ export function baseNavAllowed(user, path) {
   if (user?.role === 'viewer') return !VIEWER_HIDDEN_TABS.includes(path);
   // У менеджеров «Соглашение» и «QR-отзывы» живут в Настройках
   if (user?.role === 'manager' && (path === '/policy' || path === '/qr-reviews')) return false;
-  // ИИ-чат — только менеджеры и шеф
-  if (path === '/ai-chat') return user?.role === 'manager' || user?.role === 'chef';
   return true;
 }
 

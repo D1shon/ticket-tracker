@@ -11,7 +11,7 @@ import {
   MoreHorizontal, X, ChevronRight, Package, TrendingUp, BookOpen, FileText, Heart, Shirt, BarChart2,
   RefreshCw, ShoppingBag, ClipboardList, Star, Newspaper, MessageCircle,
   ChevronDown as ChevronDownIcon, Briefcase, Users as UsersIcon, Target, ClipboardCheck, Lock, Sparkles, UserPlus, QrCode,
-  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search, Bot, Dumbbell, GraduationCap, Building2
+  MonitorSmartphone, Home, Plus, Folder, RotateCcw, ShieldAlert, Cross, Search, Dumbbell, GraduationCap, Building2
 } from 'lucide-react';
 import DailyReport from './DailyReport';
 import { useNotifications } from '../../store/NotificationContext';
@@ -122,7 +122,6 @@ const ALL_NAV = [
   { icon: QrCode,          label: 'QR-отзывы',    path: '/qr-reviews',  primary: false },
   { icon: Target,          label: 'Лиды',         path: '/leads',       primary: false },
   { icon: Sparkles,        label: 'Помощник',     path: '/assistant',   primary: false },
-  { icon: Bot,             label: 'ИИ-чат',       path: '/ai-chat',     primary: false },
   { icon: UserPlus,        label: 'Сотрудники',   path: '/staff',       primary: false },
   { icon: ClipboardCheck,  label: 'Адаптация',    path: '/onboarding',  primary: false },
   { icon: CalendarDays,    label: 'Календарь',   path: '/calendar',    primary: false },
@@ -159,7 +158,7 @@ const LangSwitch = ({ style }) => {
 /* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
 const NAV_GROUPS = [
   { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/onboarding', '/archive', '/merch'] },
-  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/academy', '/leads', '/assistant', '/ai-chat'] },
+  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/academy', '/leads', '/assistant'] },
 ];
 
 /* ─── Мобильная шторка «Ещё»: подписи плиток и секции по умолчанию ─── */
@@ -193,7 +192,6 @@ const MOBILE_META = {
   '/injury-protocol': { sub: 'действия при травмах', sect: 3 },
   '/policy':      { sub: 'правила платформы', sect: 3 },
   '/assistant':   { sub: 'ИИ по гайдбуку', sect: 3 },
-  '/ai-chat':     { sub: 'ИИ-чат без ограничений', sect: 3 },
   '/staff':       { sub: 'аккаунты МОП', sect: 3 },
   '/settings':    { sub: 'профиль и push', sect: 3 },
 };
