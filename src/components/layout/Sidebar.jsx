@@ -158,8 +158,14 @@ const LangSwitch = ({ style }) => {
 /* ─── Группы навигации (для шефов и менеджеров) ───────────────── */
 const NAV_GROUPS = [
   { id: 'manager', label: 'Для менеджера', icon: Briefcase, paths: ['/tickets', '/schedule', '/checklists', '/onboarding', '/archive', '/merch'] },
-  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/guidebook', '/academy', '/leads', '/assistant'] },
+  { id: 'admins',  label: 'Админы',        icon: UsersIcon, paths: ['/sales', '/hr-monitors', '/first-aid', '/towels', '/lost-items', '/club-visits', '/attendance', '/leads', '/assistant'] },
+  { id: 'club',    label: 'Клуб и справочники', icon: BookOpen, paths: ['/guidebook', '/academy', '/injury-protocol', '/club-model', '/policy'] },
 ];
+// Хвост меню на ПК: пункты верхнего уровня после последней группы сворачиваются
+// в виртуальный раздел «Прочее» (только отрисовка — раскладка rows не меняется,
+// перетаскивание работает как раньше). «Настройки» всегда остаются видимыми внизу.
+const TAIL_ID = '__tail';
+const TAIL_LABEL = 'Прочее';
 
 /* ─── Мобильная шторка «Ещё»: подписи плиток и секции по умолчанию ─── */
 const MOBILE_META = {
@@ -203,8 +209,11 @@ const useNavGroups = () => {
   });
   // Явно задаём состояние группы (открыть/закрыть). Выбор пользователя сохраняется
   // и уважается даже когда открыта страница внутри группы — тогда её можно свернуть.
+  // Аккордеон: раскрытие одной группы сворачивает остальные — на экране всегда
+  // не больше одного раскрытого списка.
   const setGroupOpen = (id, val) => setOpenGroups(prev => {
-    const next = { ...prev, [id]: val };
+    const next = val ? Object.fromEntries(Object.keys(prev).map(k => [k, false])) : { ...prev };
+    next[id] = val;
     try { localStorage.setItem('hj_nav_groups', JSON.stringify(next)); } catch {}
     return next;
   });
@@ -269,6 +278,20 @@ const DesktopSidebar = () => {
     return rows; // остальные пункты допишет normalize внутри useNavLayout
   })();
   const { rows, save, reset, isCustom } = useNavLayout(user, allowedPaths, defaultRows);
+
+  // Хвост «Прочее»: всё верхнего уровня после последней группы, кроме «Настроек»
+  const lastGroupIdx = rows.reduce((acc, r, i) => (r.type === 'group' ? i : acc), -1);
+  const tailPaths = (useGrouping && lastGroupIdx >= 0)
+    ? rows.slice(lastGroupIdx + 1).filter(r => r.type === 'item' && r.path !== '/settings').map(r => r.path)
+    : [];
+  // При переходе на страницу раскрываем её группу (остальные сворачиваются);
+  // если пользователь затем свернул её руками — уважаем до следующего перехода.
+  const activeGroupId = rows.find(r => r.type === 'group' && r.items.includes(location.pathname))?.id
+    || (tailPaths.includes(location.pathname) ? TAIL_ID : null);
+  useEffect(() => {
+    if (activeGroupId && !openGroups[activeGroupId]) setGroupOpen(activeGroupId, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupId]);
 
   // Поиск по пунктам меню: при вводе показываем плоский список совпадений
   // (без групп и перетаскивания), клик очищает поиск
@@ -406,12 +429,12 @@ const DesktopSidebar = () => {
     );
   };
 
-  const renderItemRow = (item, indent = false) => {
+  const renderItemRow = (item, indent = false, mergeable = !indent) => {
     const target = { kind: 'item', path: item.path };
     return (
       <div
         key={item.path}
-        ref={registerRow(keyOf(target), target, !indent)}
+        ref={registerRow(keyOf(target), target, mergeable)}
         onMouseDown={(e) => beginPress(e, target, item.label)}
         onClickCapture={guardClick}
         style={{ opacity: dragKey && keyOf(dragKey) === keyOf(target) ? 0.4 : 1, ...hintStyle(target) }}
@@ -430,7 +453,7 @@ const DesktopSidebar = () => {
     const groupAlert = (row.items.includes('/towels') && towelAlert) || (row.items.includes('/hr-monitors') && monitorAlert);
     const GIcon = NAV_GROUPS.find(g => g.id === row.id)?.icon || Folder;
     return (
-      <div key={row.id}>
+      <div key={row.id} className="nav-section">
         <div
           ref={registerRow(keyOf(target), target, true)}
           onMouseDown={(e) => beginPress(e, target, row.label)}
@@ -442,21 +465,59 @@ const DesktopSidebar = () => {
               const v = window.prompt('Название группы:', row.label);
               if (v && v.trim()) save(rows.map(r => r.type === 'group' && r.id === row.id ? { ...r, label: v.trim() } : r));
             }}
-            className="nav-item"
+            className={`nav-section-head ${open ? 'open' : ''} ${active ? 'has-active' : ''}`}
             title="Двойной клик — переименовать группу"
-            style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
           >
-            <GIcon size={17} strokeWidth={1.8} />
-            <span style={{ fontWeight: 700 }}>{row.label}</span>
+            <GIcon size={14} strokeWidth={2} />
+            <span>{row.label}</span>
+            {!open && <span className="nav-section-count">{items.length}</span>}
             {groupAlert && !open && (
-              <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#B06A6A', flexShrink: 0, boxShadow: '0 0 6px #B06A6A' }} />
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#B06A6A', flexShrink: 0, boxShadow: '0 0 6px #B06A6A' }} />
             )}
-            <ChevronDownIcon size={14} style={{ marginLeft: groupAlert && !open ? 6 : 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0, opacity: 0.6 }} />
+            <ChevronDownIcon size={14} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0, opacity: 0.6 }} />
           </button>
         </div>
-        {open && items.map(item => renderItemRow(item, true))}
+        {open && <div className="nav-section-body">{items.map(item => renderItemRow(item, true))}</div>}
       </div>
     );
+  };
+
+  // Виртуальный раздел «Прочее» для хвоста меню (не перетаскивается сам, пункты внутри — да)
+  const renderTailRows = (items) => {
+    const active = tailPaths.includes(location.pathname);
+    const open = (TAIL_ID in openGroups) ? !!openGroups[TAIL_ID] : active;
+    return (
+      <div key={TAIL_ID} className="nav-section">
+        <button
+          onClick={() => setGroupOpen(TAIL_ID, !open)}
+          className={`nav-section-head ${open ? 'open' : ''} ${active ? 'has-active' : ''}`}
+        >
+          <MoreHorizontal size={14} strokeWidth={2} />
+          <span>{TAIL_LABEL}</span>
+          {!open && <span className="nav-section-count">{items.length}</span>}
+          <ChevronDownIcon size={14} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0, opacity: 0.6 }} />
+        </button>
+        {open && <div className="nav-section-body">{items.map(item => renderItemRow(item, true, true))}</div>}
+      </div>
+    );
+  };
+
+  // Порядок на ПК: закреплённые пункты → группы (аккордеон) → «Прочее» → Настройки
+  const renderRows = () => {
+    const out = [];
+    const tailItems = [];
+    let settingsItem = null;
+    rows.forEach(row => {
+      if (row.type === 'group') { out.push(renderGroupRow(row)); return; }
+      const item = byPath[row.path];
+      if (!item) return;
+      if (tailPaths.includes(row.path)) { tailItems.push(item); return; }
+      if (useGrouping && lastGroupIdx >= 0 && row.path === '/settings') { settingsItem = item; return; }
+      out.push(renderItemRow(item));
+    });
+    if (tailItems.length) out.push(renderTailRows(tailItems));
+    if (settingsItem) out.push(<div key="__settings" className="nav-section">{renderItemRow(settingsItem)}</div>);
+    return out;
   };
 
   return (
@@ -510,9 +571,7 @@ const DesktopSidebar = () => {
                 </div>
               ))
             : <div style={{ padding: '14px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Ничего не найдено</div>
-        ) : rows.map(row => row.type === 'group'
-          ? renderGroupRow(row)
-          : (byPath[row.path] ? renderItemRow(byPath[row.path]) : null))}
+        ) : renderRows()}
       </nav>
 
       {/* «Призрак» перетаскиваемого пункта у курсора */}

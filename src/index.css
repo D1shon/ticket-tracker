@@ -117,6 +117,9 @@ img { -webkit-user-drag: none; }
 .sidebar {
   width: 220px;
   min-height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   box-shadow: var(--shadow-sidebar);
@@ -145,15 +148,53 @@ img { -webkit-user-drag: none; }
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
+  gap: 11px;
+  padding: 9px 18px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   text-decoration: none;
 }
+
+/* Разделы меню на ПК: заголовок-капитель с разделителем, аккордеон */
+.nav-section {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--sidebar-border);
+}
+.nav-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 18px 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+.nav-section-head > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-section-head:hover, .nav-section-head.open, .nav-section-head.has-active { color: var(--text-primary); }
+.nav-section-head.has-active:not(.open) { color: var(--accent-purple); }
+.nav-section-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border-radius: 999px;
+  padding: 1px 6px;
+  letter-spacing: 0;
+}
+.nav-section-body { padding-bottom: 2px; }
+.nav-section-body .nav-item { padding-top: 7px; padding-bottom: 7px; }
 
 .nav-item:hover {
   background-color: var(--bg-hover);
