@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>HJ VILLA — 3D схема клуба</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#111827; --panel2:#1f2937; --line:#374151;
+    --txt:#e5e7eb; --mut:#9ca3af; --acc:#f97316;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; overflow:hidden; background:var(--bg); color:var(--txt);
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;}
+  #c3d{position:fixed; inset:0; display:block;}
+  #topbar{position:fixed; top:0; left:0; right:0; z-index:20; display:flex; gap:8px; align-items:center;
+    padding:10px 12px; background:linear-gradient(180deg,rgba(11,15,23,.92),rgba(11,15,23,.55) 75%,transparent);
+    pointer-events:none;}
+  #topbar>*{pointer-events:auto;}
+  #title{font-weight:700; font-size:15px; white-space:nowrap;}
+  #title small{display:block; font-weight:400; font-size:11px; color:var(--mut); white-space:normal; max-width:620px;}
+  #chips{display:flex; gap:6px; flex-wrap:wrap; margin-left:auto;}
+  .chip{border:1px solid var(--line); background:rgba(17,24,39,.85); color:var(--txt);
+    border-radius:999px; padding:5px 11px; font-size:12px; cursor:pointer; user-select:none;}
+  .chip .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px;}
+  .chip.off{opacity:.35;}
+  #scen{position:fixed; left:12px; top:96px; z-index:20; display:flex; flex-direction:column; gap:6px;}
+  .scbtn{border:1px solid var(--line); background:rgba(17,24,39,.9); color:var(--txt); text-align:left;
+    border-radius:10px; padding:8px 12px; font-size:13px; cursor:pointer;}
+  .scbtn:hover{border-color:var(--acc);}
+  .scbtn.active{border-color:var(--acc); background:rgba(249,115,22,.15);}
+  #listwrap{position:fixed; left:12px; bottom:12px; z-index:20; width:262px; max-height:44vh;
+    display:flex; flex-direction:column; background:rgba(17,24,39,.92); border:1px solid var(--line);
+    border-radius:12px; overflow:hidden;}
+  #listhead{padding:8px 12px; font-size:12px; color:var(--mut); border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;}
+  #list{overflow-y:auto; padding:4px 0;}
+  .li{display:flex; align-items:center; gap:8px; padding:6px 12px; font-size:12.5px; cursor:pointer;}
+  .li:hover{background:rgba(249,115,22,.12);}
+  .li .dot{width:9px; height:9px; border-radius:50%; flex:none;}
+  .li.sel{background:rgba(249,115,22,.22);}
+  #card{position:fixed; right:12px; top:64px; bottom:12px; z-index:25; width:min(380px,92vw);
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow-y:auto;
+    padding:16px; display:none; box-shadow:0 10px 40px rgba(0,0,0,.6);}
+  #card.open{display:block;}
+  #card h2{font-size:17px; line-height:1.25; padding-right:30px;}
+  #card .sys{display:inline-block; margin:8px 0 2px; font-size:11px; border-radius:999px; padding:3px 10px;
+    font-weight:600; color:#0b0f17;}
+  #card .loc{font-size:12px; color:var(--mut); margin:8px 0 10px;}
+  #card .sect{margin-top:12px;}
+  #card .sect h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin-bottom:6px;}
+  #card .sect p{font-size:13.5px; line-height:1.5;}
+  #card ol{padding-left:20px; display:flex; flex-direction:column; gap:6px;}
+  #card ol li{font-size:13.5px; line-height:1.45;}
+  #card .warn{margin-top:14px; border:1px solid rgba(248,113,113,.5); background:rgba(248,113,113,.1);
+    border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.45;}
+  #xcard{position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:15px; cursor:pointer;}
+  #flybtn{margin-top:14px; width:100%; padding:9px; border-radius:10px; border:1px solid var(--acc);
+    background:rgba(249,115,22,.15); color:var(--acc); font-weight:600; font-size:13px; cursor:pointer;}
+  #scenpanel{position:fixed; right:12px; top:64px; z-index:24; width:min(380px,92vw); max-height:70vh; overflow-y:auto;
+    background:var(--panel); border:1px solid var(--acc); border-radius:14px; padding:16px; display:none;}
+  #scenpanel.open{display:block;}
+  #scenpanel h2{font-size:16px; padding-right:28px;}
+  #scenpanel .step{display:flex; gap:10px; margin-top:12px; cursor:pointer; align-items:flex-start;}
+  #scenpanel .step .n{flex:none; width:24px; height:24px; border-radius:50%; background:var(--acc); color:#0b0f17;
+    font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;}
+  #scenpanel .step p{font-size:13.5px; line-height:1.45;}
+  #scenpanel .step p b{color:var(--acc);}
+  #xscen{position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:15px; cursor:pointer;}
+  #tip{position:fixed; z-index:30; pointer-events:none; background:rgba(17,24,39,.95); border:1px solid var(--line);
+    border-radius:8px; padding:5px 10px; font-size:12.5px; display:none; white-space:nowrap;}
+  #hint{position:fixed; bottom:12px; right:12px; z-index:15; font-size:11px; color:var(--mut);
+    background:rgba(11,15,23,.6); padding:6px 10px; border-radius:8px;}
+  #zoomctl{position:fixed; right:12px; bottom:44px; z-index:20; display:flex; align-items:center; gap:8px;
+    background:rgba(17,24,39,.9); border:1px solid var(--line); border-radius:12px; padding:8px 12px;}
+  #zoomctl button{width:30px; height:30px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--txt); font-size:17px; font-weight:700; cursor:pointer; line-height:1;}
+  #zoomctl button:active{border-color:var(--acc); color:var(--acc);}
+  #zoomctl input[type=range]{width:150px; accent-color:var(--acc); cursor:pointer;}
+  #zoomctl .zlabel{font-size:10.5px; color:var(--mut); min-width:40px; text-align:right;}
+  @media (max-width:760px){ #zoomctl{bottom:auto; top:64px; right:12px; padding:6px 10px;}
+    #zoomctl input[type=range]{width:90px;} }
+  #scentoggle{display:none; position:fixed; left:12px; bottom:12px; z-index:21; width:46px; height:46px;
+    border-radius:50%; border:1px solid var(--line); background:rgba(17,24,39,.92); font-size:20px; cursor:pointer;}
+  @media (max-width:760px){
+    #listwrap{display:none;}
+    #chips{flex-wrap:nowrap; overflow-x:auto; max-width:62vw; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+    #chips::-webkit-scrollbar{display:none;}
+    #scentoggle{display:block;}
+    #scen{display:none; top:auto; bottom:68px; left:12px; right:12px; flex-direction:row; flex-wrap:wrap;}
+    #scen.show{display:flex;}
+    .scbtn{font-size:11.5px; padding:7px 9px;}
+    #card,#scenpanel{top:auto; bottom:64px; max-height:55vh;}
+    #hint{display:none;}
+    #title small{display:none;}
+    #zoomctl{opacity:.92;}
+    #zoomctl .zlabel{display:none;}
+  }
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<div id="topbar">
+  <div id="title">HJ VILLA · цокольный этаж<small>3D-схема по альбому дизайн-проекта (10.12.2024): помещения, сантехника, пожарные краны, тренажёры, мебель — нажми на пол помещения или маркер. Инженерных проектов (ОВ/ВК/ЭОМ) по Вилле нет: вентиляция, вода и электрика показаны тем, что есть в альбоме.</small></div>
+  <div id="chips"></div>
+</div>
+
+<div id="scen"></div>
+<button id="scentoggle" title="Сценарии">🚨</button>
+
+<div id="listwrap">
+  <div id="listhead"><span>Объекты</span><span id="listarrow">▾</span></div>
+  <div id="list"></div>
+</div>
+
+<div id="card">
+  <button id="xcard">✕</button>
+  <h2 id="cName"></h2>
+  <span class="sys" id="cSys"></span>
+  <div class="loc" id="cLoc"></div>
+  <div class="sect"><h3>Что это</h3><p id="cDesc"></p></div>
+  <div class="sect"><h3>Что внутри / на что влияет</h3><p id="cOff"></p></div>
+  <div class="sect"><h3>Что делать</h3><ol id="cSteps"></ol></div>
+  <div class="warn" id="cWarn"></div>
+  <button id="flybtn">📍 Подлететь к объекту</button>
+</div>
+
+<div id="scenpanel">
+  <button id="xscen">✕</button>
+  <h2 id="spTitle"></h2>
+  <div id="spSteps"></div>
+</div>
+
+<div id="tip"></div>
+<div id="zoomctl">
+  <button id="zout" title="Отдалить">−</button>
+  <input id="zslider" type="range" min="0" max="1000" value="500" />
+  <button id="zin" title="Приблизить">+</button>
+  <span class="zlabel" id="zval"></span>
+</div>
+<div id="hint">ЛКМ — вращать · колесо/ползунок — дальность · ПКМ — сдвиг · клик по помещению или маркеру — карточка</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ================= слои ================= */
+const SYS = {
+  room:  { label:'Помещения',            color:0xf97316, css:'#f97316' },
+  water: { label:'Вода и сантехника',    color:0x38bdf8, css:'#38bdf8' },
+  vent:  { label:'Вентиляция',           color:0x4ade80, css:'#4ade80' },
+  elec:  { label:'Электрика',            color:0xfacc15, css:'#facc15' },
+  fire:  { label:'Пожарная безопасность',color:0xf87171, css:'#f87171' },
+  gym:   { label:'Тренажёры',            color:0xc084fc, css:'#c084fc' },
+  furn:  { label:'Мебель и зоны',        color:0x94a3b8, css:'#94a3b8' },
+};
+const TYPES = { room:'помещение', unit:'оборудование', group:'группа', panel:'щит/шкаф', valve:'кран', door:'дверь/проём', zone:'зона' };
+
+/* Координаты модели (tools/plan/build_geom_villa.py): X вправо по плану (запад→восток), Z вниз по плану (север→юг), Y вверх;
+   0/0 — северо-западный наружный угол здания (у эвакуационной лестницы). Клуб — цокольный этаж, отм. 0.000;
+   вход с 1 этажа (вестибюль с лифтом и лестницей 16 ступеней) показан условно на отметке ENTRY_Y. */
+const WALL_H = 3.0;
+const ENTRY_Y = 3.6;
+
+const GEOM = await (await fetch('club-geom.json')).json();
+const L = GEOM.levels[0];
+const [bx0, bz0, bx1, bz1] = L.bbox;
+const roomByNo = Object.fromEntries(L.rooms.map(r => [r.no, r]));
+const fixturesIn = (t, no) => L.fixtures.filter(f => f.t === t && (no === undefined || f.room === no));
+
+/* ================= тексты помещений (по экспликации листа 4 и ведомости отделки; высоты потолков — лист 10) ================= */
+const ROOM_INFO = {
+  1: { desc:'Стойка ресепшн у входа в коридор №1: встреча гостей, выдача ключей от шкафчиков, продажа. Стойка — индивидуальное изготовление (лист 61 №1), рядом стенд для зарядки телефонов.',
+       off:'Единственная точка контроля входа: турникетов по альбому нет, вход — через дверь из вестибюля лестницы.',
+       steps:['Клиент не нашёл шкафчик/душ — объясни по схеме: женская раздевалка прямо по коридору №1 направо, мужская — через коридор налево у лестницы.'] },
+  2: { desc:'Кабинет отдела продаж за матовым витражом ВВ-1 (алюминиевый профиль, хром): два рабочих стола, стулья для гостей, полки и тумба (№2).',
+       off:'Рядом — электрощитовая (пом. 5): доступ к щиту через этот кабинет/коридор.', steps:['Шумно или жарко в кабинете — потолок здесь +3.000 (ГКЛ), отдельного кондиционера в альбоме нет: заявка «микроклимат».'] },
+  3: { desc:'Зона хранения чистых полотенец — стеллаж между отделом продаж и ресепшн (лист 61 №14/15 — стол и гардеробный шкаф персонала стоят в соседней комнате персонала).',
+       off:'Отсюда полотенца выдаются на ресепшн; грязные собираются в корзины (№4) в раздевалках.', steps:['Закончились чистые полотенца — проверь стеллаж здесь и корзины в обеих раздевалках; заявка на прачечную.'] },
+  4: { desc:'Комната персонала: обеденный/рабочий стол (№14) и гардеробный шкаф (№15). Потолок +3.050.', off:'Место отдыха и переодевания сотрудников.', steps:['Личные вещи сотрудников — только здесь, не на ресепшн.'] },
+  5: { desc:'Электрощитовая 2.4 м² — отдельная комната у отдела продаж. Здесь вводно-распределительный щит клуба (по планировке; схему щита в альбоме нет).',
+       off:'Все автоматы клуба: свет, розетки, тренажёры, вентиляция. Доступ — только ответственный за электрохозяйство.',
+       steps:['Погас свет в одном зале — сначала посмотри, не сработал ли автомат на группу этого зала.', 'Пахнет горелым, искрит — не открывать, обесточить вводным автоматом, заявка «срочно».'],
+       warn:'380 В. Дверь держать закрытой, ничего не складировать внутри.' },
+  6: { desc:'ПУИ — помещение уборочного инвентаря 4.4 м² рядом с женской раздевалкой: вёдра, швабры, химия, поддон с ручным душем (лист 8, прим. 4).',
+       off:'Единственный «мокрый» хозяйственный угол: слив и вода для уборки.', steps:['Химию — на верхние полки, двери закрыты. Вода не уходит из поддона — засор трапа, заявка.'] },
+  7: { desc:'Женская раздевалка 113.8 м² (L-образная): 59 шкафчиков по 2 секции (№1/2…117/118), скамьи тип 1, зона сушки (№7) и beauty zona (№9) со столешницей, 2 туалетные кабины, 2 раковины и 10 душевых кабин (в двух рядах: 4 + 6). Потолок +3.000 (ГКЛ), над душевыми +2.600.',
+       off:'Самая «мокрая» зона клуба: 10 душевых + 2 с/у — главный источник заявок по воде.', steps:['Течёт/не греет душ — номер кабины считай от входа: левый ряд 4 кабины, правый — 6.', 'Запах — проверь трапы (линейные щелевые) и вытяжные решётки.', 'Сломан замок шкафчика — номер секции на дверце, заявка «локеры».'] },
+  8: { desc:'Коридор №1 33.2 м²: от входных дверей (вестибюль с лестницей и лифтом) вдоль ресепшн к женской раздевалке и коридору №2. Потолок +3.500, лайтбокс +3.100.',
+       off:'Главный путь гостей; здесь же пожарный кран у входа и доступ к ПУИ.', steps:['Коридор держать свободным — это путь эвакуации к лестнице.'] },
+  9: { desc:'Коридор №2 36.3 м² между залом Fullbody и Pilates: стойка тренера/администратора (№13), скамьи со спинкой тип 2 и 3 (№5/5.1), стенд зарядки. Потолок +3.500, лайтбокс +3.100.',
+       off:'Связывает все три зала; через него — к Bootcamp и Pilates.', steps:['Зона парикмахера (по плану мебели) — у стены зала Fullbody в начале коридора.'] },
+  10: { desc:'Мужская раздевалка 74.5 м²: 39 шкафчиков по 2 секции (№1/2…77/78), скамьи тип 1, две зоны сушки (№10, №11), 2 туалетные кабины, 2 раковины, 6 душевых кабин (два ряда по 3). Потолок +3.000, над душевыми +2.600.',
+        off:'Вторая «мокрая» зона; душевые — у южной стены, с/у — в углу у вентиляционной.', steps:['Фен не работает — розетки зоны сушки на одной группе: сначала автомат в электрощитовой.', 'Течёт душ — ряд у стены (3) или внутренний (3), заявка с номером.'] },
+  11: { desc:'Зал Fullbody 235.5 м² — главный тренажёрный зал (L-образный, обходит Bootcamp). Существующий потолок +4.500 покрашен, инженерные коммуникации открыты. 21 позиция силовых тренажёров (Ultra/PURE/DAP), 2 half-rack, зона boxes & dumbbells, 3 телевизора 75" на стене (лист 58).',
+        off:'Самая большая нагрузка на вентиляцию и свет; колонны в зале — 7 шт. (красные на плане).', steps:['Жарко/душно — заявка «вентиляция» с указанием «зал Fullbody»; своего кондиционера по альбому нет.', 'Сломан тренажёр — номер по плану (#1…#21) в заявке «тренажёры».'] },
+  12: { desc:'Зал Pilates 84.2 м²: реформеры (12 по плану), стенд зарядки и стойка тренера у входа. Потолок — реечный подвесной +3.600.',
+        off:'Отдельный зал с дверью из коридора №2; окон нет (цоколь).', steps:['Душно на занятии — приточка общая на клуб, заявка «вентиляция, Pilates».'] },
+  13: { desc:'Зал Bootcamp 105.3 м² (по плану; в экспликации опечатка 235.5): 7 беговых дорожек RUN 10 вдоль стены и 7 станций напротив, стойка тренера. Потолок +3.400 (ГКЛ).',
+        off:'Самое энергоёмкое помещение — дорожки на отдельных линиях.', steps:['Дорожка встала — автомат её группы в электрощитовой; заявка «тренажёры, Bootcamp, дорожка №…».'] },
+  14: { desc:'Вентиляционная клуба 15.3 м² — техпомещение в юго-восточном углу между мужской раздевалкой и Pilates. По альбому — только помещение; какое оборудование стоит (приточная установка, вытяжные вентиляторы) — уточнить у инженера и дописать здесь.',
+        off:'Отсюда вентиляция залов и раздевалок; доступ — только инженер.', steps:['Душно/нет притока — щит автоматики вентиляции здесь; сфотографировать индикацию, заявка «вентиляция».'], warn:'Вращающееся оборудование, 380 В.' },
+  15: { desc:'Подсобное помещение 5.2 м² у эвакуационного выхода (EXIT) рядом с женской раздевалкой.', off:'Хозяйственный склад; не загромождать путь к EXIT.', steps:['Проход к двери EXIT должен оставаться свободным.'] },
+  16: { desc:'Тех. помещение — по обмерному плану «вентиляционная №2 (рестораны + Herous Journey)»: общая вентиляционная здания, обслуживает и рестораны ЖК.', off:'Чужое/общее оборудование: отключения согласовывать с УК здания.', steps:['Шум или вибрация из-за стены — сообщить УК; самим не входить.'] },
+  17: { desc:'Вестибюль с лифтом и лестницей: сюда спускаются гости с 1 этажа (16 ступеней: 1 → площадка → 10 → площадка → 16) или на лифте; дальше — входные двери в коридор №1.', off:'Единственный вход для гостей и путь эвакуации №1.', steps:['Лифт при пожаре не использовать; эвакуация — по лестнице вверх.', 'Лифт встал — кнопка диспетчера в кабине, звонок в лифтовую службу ЖК.'] },
+  18: { desc:'Эвакуационная лестница (EXIT) в северо-западном углу: отдельный выход из клуба мимо подсобки и женской раздевалки.', off:'Путь эвакуации №2.', steps:['Дверь EXIT не запирать на ключ в рабочее время, проход не загромождать.'] },
+};
+
+/* ================= легенды тренажёров и мебели (лист 61 — план мебели и оборудования) ================= */
+const GYM_NAMES = {
+  1:'Ultra Conv Chest Press (G7-S13)', 2:'Тренажёр #2 — без подписи на чертеже', 3:'Incline Chest Press PURE', 4:'Ultra Shoulder Press (G7-S23)',
+  5:'DAP Black', 6:'Ultra Div Latpull (G7-S33)', 7:'Ultra Div Seated Row (G7-S34)', 8:'Ultra Rear Delt / Fly (G7-S22)', 9:'Ultra Triceps Ext (G7-S45)',
+  10:'Тренажёр #10 — без подписи на чертеже', 11:'Ultra Dependent Curl (G7-S41)', 12:'Ultra Leg Ext (G7-S71)', 13:'Ultra Seated Leg Curl (G7-S72)',
+  14:'Dual Add/Abductor Selection 700', 15:'Cable Stations 4 (кроссовер)', 16:'Бокс #16 — зона свободных весов', 17:'Бокс #17 — зона свободных весов',
+  18:'Ultra Glute (G7-S78)', 19:'Бокс #19 — зона свободных весов', 20:'Бокс #20 — зона свободных весов', 21:'Half Rack PURE',
+};
+const FURN_NAMES = {
+  '1':'Стойка ресепшн', '2':'Полки и тумба (отдел продаж)', '3':'Скамья тип 1', '4':'Корзина для полотенец', '5':'Скамья со спинкой тип 2',
+  '5,1':'Скамья со спинкой тип 3', '7':'Зона сушки (женская)', '8':'Шкафчик', '9':'Beauty zona', '10':'Зона сушки муж. тип 1', '11':'Зона сушки муж. тип 2',
+  '12':'Стенд для зарядки телефонов', '13':'Стойка тренера / администратора зала', '14':'Стол обеденный/рабочий (персонал)', '15':'Шкаф гардеробный (персонал)',
+};
+const FURN_POS_FIX = { '14':[5.0, 13.0], '15':[3.0, 12.6] };   // подписи 14/15 на листе вынесены за стену — ставим в комнату персонала
+
+/* ================= объекты ================= */
+const ITEMS = [];
+const centroid = (arr) => [arr.reduce((a, p) => a + p.x, 0) / arr.length, arr.reduce((a, p) => a + p.z, 0) / arr.length];
+const groupItem = (id, sys, arr, y, size, text) => {
+  if (!arr.length) return;
+  const [cx, cz] = centroid(arr);
+  ITEMS.push({ id, sys, type:'group', pos:[cx, y, cz], hidden:true,
+    shape:{ boxes: arr.map(p => [p.x - cx, 0, p.z - cz, ...size]) }, ...text });
+};
+/* --- вода и сантехника (лист 8: выводы под приборы) --- */
+groupItem('sh-w', 'water', fixturesIn(3, 7), 2.1, [0.5, 0.25, 0.5], {
+  name:'Душевые женской раздевалки — 10 кабин', loc:'Женская раздевалка, два ряда: 4 кабины у перегородки с ПУИ и 6 кабин во втором ряду (лист 8, прим. 3)',
+  desc:'Душевая система с верхней лейкой на отм. 2.2 м, выводы горячей/холодной воды на 1.2 м, слив — линейный щелевой трап в каждой кабине. Потолок над душевыми +2.600.',
+  off:'Точка ввода воды в клуб и водонагрев в альбоме не показаны — спросить инженера и дописать сюда.',
+  steps:['Нет горячей воды сразу во всех кабинах — проблема на вводе/нагреве, не в кабине: заявка «вода, срочно».', 'Течёт одна кабина — номер по порядку от входа, заявка «душевые».', 'Вода стоит в поддоне — засор щелевого трапа.'] });
+groupItem('sh-m', 'water', fixturesIn(3, 10), 2.1, [0.5, 0.25, 0.5], {
+  name:'Душевые мужской раздевалки — 6 кабин', loc:'Мужская раздевалка, два ряда по 3 кабины у южной стены (лист 8, прим. 3)',
+  desc:'Такие же душевые системы с лейкой, линейный трап, потолок +2.600.', off:'Общая вода с женскими душевыми.',
+  steps:['Течёт/не греет — ряд (у стены или внутренний) и номер кабины в заявке.'] });
+groupItem('wc-w', 'water', fixturesIn(1, 7), 0.5, [0.4, 0.5, 0.6], {
+  name:'Туалеты женской раздевалки — 2 кабины', loc:'У входа в женскую раздевалку из коридора №1 (лист 8, прим. 1)',
+  desc:'Подвесные унитазы на инсталляции, вывод канализации и холодной воды.', off:'Засор — вода пойдёт по полу раздевалки.',
+  steps:['Не смывает — кнопка инсталляции/клапан; течь — перекрыть кран на подводке за ревизионным люком, заявка.'] });
+groupItem('wc-m', 'water', fixturesIn(1, 10), 0.5, [0.4, 0.5, 0.6], {
+  name:'Туалеты мужской раздевалки — 2 кабины', loc:'Юго-западный угол мужской раздевалки, у лестничного блока (лист 8, прим. 1)',
+  desc:'Подвесные унитазы на инсталляции.', off:'—', steps:['То же, что в женской: кнопка, клапан, кран за люком, заявка.'] });
+groupItem('sink-w', 'water', fixturesIn(2, 7), 0.9, [0.5, 0.15, 0.4], {
+  name:'Раковины женской раздевалки — 2', loc:'Столешница в зоне beauty zona / сушки (лист 8, прим. 2)', desc:'Встроенные раковины, настенные встроенные смесители, слив 0.58 м.',
+  off:'—', steps:['Слабый напор только здесь — аэратор/смеситель; везде — ввод воды.'] });
+groupItem('sink-m', 'water', fixturesIn(2, 10), 0.9, [0.5, 0.15, 0.4], {
+  name:'Раковины мужской раздевалки — 2', loc:'У туалетных кабин мужской раздевалки (лист 8, прим. 2)', desc:'Встроенные раковины с настенными смесителями.', off:'—',
+  steps:['Течь под столешницей — кран на подводке, заявка.'] });
+groupItem('hand', 'water', fixturesIn(4), 1.0, [0.3, 0.3, 0.3], {
+  name:'Ручной душ для поддона (ПУИ)', loc:'Помещение уборочного инвентаря (лист 8, прим. 4)', desc:'Ручной душ над строительным поддоном с квадратным трапом — для набора воды и мытья инвентаря.',
+  off:'—', steps:['Вода не уходит — засор трапа поддона.'] });
+groupItem('pur', 'water', fixturesIn(5), 1.0, [0.4, 0.9, 0.4], {
+  name:'Пурифайеры — 5 точек воды для гостей', loc:'Зал Fullbody (2: у стены женской раздевалки и у подсобки), Pilates, Bootcamp (юго-восточный угол), у мужской раздевалки (лист 8, прим. 5; марку уточнить)',
+  desc:'Выводы холодной воды под пурифайеры (аппараты питьевой воды с фильтрами).', off:'Без воды на вводе гости без питья — жалобы в первый час.',
+  steps:['Не идёт вода — кран на подводке аппарата, затем фильтры (сервис); заявка «пурифайер + зал».'] });
+/* --- вентиляция --- */
+ITEMS.push({ id:'ahu', sys:'vent', type:'unit', pos:[roomByNo[14].x, 1.6, roomByNo[14].z], shape:{box:[4.2, 2.4, 2.0]}, ghost:true,
+  name:'Вентиляционная клуба (пом. 14) — оборудование уточнить', loc:'Юго-восточный угол, между мужской раздевалкой и Pilates; дверь из коридора у Pilates',
+  desc:'В альбоме — только помещение 15.3 м². По заявкам клуба здесь стоит «малая приточная»; модель, производительность и щит — дописать после осмотра с инженером.',
+  off:'Приток/вытяжка залов и раздевалок (цоколь без окон — без вентиляции душно за час).',
+  steps:['Душно — проверь, что установка работает (гул, индикация на щите), фото щита в заявку «вентиляция».', 'Фильтры/обслуживание — по графику сервиса.'], warn:'Только инженер. 380 В.' });
+ITEMS.push({ id:'vent2', sys:'vent', type:'unit', pos:[roomByNo[16].x, 1.6, roomByNo[16].z], shape:{box:[4.0, 2.4, 4.4]}, ghost:true,
+  name:'Вентиляционная №2 здания (рестораны + HJ)', loc:'Северное техпомещение за залом Fullbody (обмерный план, лист 3)',
+  desc:'Общая вентиляционная здания: по обмерному плану обслуживает рестораны и клуб. Чьё оборудование и что именно идёт в клуб — уточнить у УК.',
+  off:'Если отключат «ресторанную» вентиляцию — может пропасть и часть притока клуба.', steps:['Нет притока в Fullbody при работающей своей установке — звонок в УК здания.'], warn:'Помещение УК — не входить без согласования.' });
+/* --- электрика --- */
+ITEMS.push({ id:'switchboard', sys:'elec', type:'panel', pos:[roomByNo[5].x, 1.4, roomByNo[5].z], ghost:false,
+  name:'Электрощитовая (пом. 5) — вводно-распределительный щит', loc:'Комната 2.4 м² за отделом продаж, северо-западная часть клуба',
+  desc:'Щит с автоматами всех групп клуба (схемы в альбоме нет — после осмотра подписать группы на дверце и здесь).',
+  off:'Вводной автомат = весь клуб без света, тренажёров и вентиляции.',
+  steps:['Выбило автомат — включить один раз; повторно выбивает — не включать, заявка «электрика, срочно».', 'Запах горелого — обесточить вводным, вызвать электрика.'], warn:'380 В. Только ответственный за электрохозяйство.' });
+ITEMS.push({ id:'charging', sys:'elec', type:'group', pos:[27.5, 1.1, 18.5], hidden:true,
+  shape:{ boxes: L.furn.filter(f => f.n === '12').map(f => [f.x - 27.5, 0, f.z - 18.5, 0.35, 1.3, 0.35]) },
+  name:'Стенды для зарядки телефонов — 3 (Fullbody, Pilates, Bootcamp)', loc:'У входов в залы (лист 61 №12, лист 72: Wireless / Lightning / Type-C / micro-USB)',
+  desc:'Стойки с беспроводной зарядкой и кабелями, вывод 220 В с потолка/стены (лист 13).', off:'—', steps:['Не заряжает — автомат розеточной группы зала, затем сам стенд.'] });
+/* --- пожарная безопасность --- */
+L.hydrants.forEach((h, i) => ITEMS.push({ id:'pk' + (i + 1), sys:'fire', type:'panel', pos:[h.x, 1.3, h.z], scale:.8,
+  name:'Пожарный кран ПК-' + (i + 1), loc:['У входных дверей, коридор №1', 'У выхода EXIT, подсобка', 'Восточная стена зала Fullbody', 'Мужская раздевалка, у лестничного блока'][i] || 'по плану',
+  desc:'Шкаф пожарного крана с рукавом и стволом (на плане листа 4 отмечен «ПК»). Всего в клубе 4.',
+  off:'Пожарный водопровод здания; за обслуживание отвечает договор на пожарную систему.',
+  steps:['Возгорание — 101/112, эвакуация, рукав разматывать вдвоём, струю — в основание огня.', 'Шкаф заставлен или опломбирован неверно — заявка «пожарная система».'], warn:'Не вскрывать без необходимости: пломба.' }));
+ITEMS.push({ id:'exit', sys:'fire', type:'door', pos:[14.6, 1.1, 9.3], shape:{box:[0.2, 2.1, 1.0]},
+  name:'Эвакуационный выход EXIT', loc:'Дверь из прохода у подсобки на эвакуационную лестницу (северо-западный угол)',
+  desc:'Второй путь эвакуации: дверь → лестница наверх на улицу.', off:'Запертая или заставленная дверь = один выход на весь клуб.',
+  steps:['Каждое открытие смены — проверить, что дверь открывается изнутри без ключа, проход свободен.'] });
+ITEMS.push({ id:'entrance', sys:'fire', type:'door', pos:[4.6, 1.1, 21.1], shape:{box:[1.8, 2.1, 0.2]},
+  name:'Входные двери клуба (из вестибюля лестницы)', loc:'Южная стена коридора №1, напротив ресепшн',
+  desc:'Двустворчатые двери из вестибюля с лифтом и лестницей (16 ступеней на 1 этаж) — основной вход и путь эвакуации №1.',
+  off:'—', steps:['При эвакуации — через эти двери и вверх по лестнице; лифт не использовать.'] });
+/* --- тренажёры (лист 61) --- */
+{
+  const byN = {}; for (const g of L.gym) (byN[g.n] = byN[g.n] || []).push(g);
+  for (const n of Object.keys(byN).map(Number).sort((a, b) => a - b)){
+    const arr = byN[n]; const [cx, cz] = centroid(arr);
+    ITEMS.push({ id:'gym' + n, sys:'gym', type:'group', pos:[cx, 0.5, cz], hidden:true, soft:true,
+      shape:{ boxes: arr.map(p => [p.x - cx, 0, p.z - cz, 0.9, 0.9, 0.9]) },
+      name:'#' + n + ' · ' + GYM_NAMES[n] + (arr.length > 1 ? ' ×' + arr.length : ''),
+      loc:'Зал Fullbody, позиция #' + n + ' по плану мебели и оборудования (лист 61)',
+      desc:GYM_NAMES[n].includes('без подписи') || GYM_NAMES[n].includes('Бокс') ? 'На плане стоит номер, но название тренажёра не подписано (пустой бокс — скорее всего зона свободных весов/скамья). Уточнить по факту и дописать.' : 'Силовой тренажёр по спецификации дизайн-проекта. Номер на схеме = номер на плане расстановки.',
+      off:'—', steps:['Поломка — заявка «тренажёры» с номером #' + n + ' и описанием (трос, сиденье, стек).'] });
+  }
+  ITEMS.push({ id:'reformers', sys:'gym', type:'unit', pos:[roomByNo[12].x, 0.5, roomByNo[12].z], shape:{box:[11.0, 0.6, 5.0]}, ghost:true,
+    name:'Реформеры Pilates — 12 по плану', loc:'Зал Pilates, два ряда', desc:'Реформеры расставлены в два ряда по 6 (лист 4/61). Модель в альбоме не подписана.', off:'—',
+    steps:['Разное натяжение/скрип каретки — заявка «тренажёры, Pilates, реформер №…» (нумерацию завести на месте).'] });
+  ITEMS.push({ id:'treadmills', sys:'gym', type:'unit', pos:[roomByNo[13].x, 0.7, roomByNo[13].z], shape:{box:[5.8, 1.0, 15.0]}, ghost:true,
+    name:'Bootcamp: 7 беговых дорожек RUN 10 + 7 станций', loc:'Зал Bootcamp: дорожки вдоль западной стены, станции — вдоль восточной',
+    desc:'По плану расстановки — 7 дорожек (подпись RUN 10) и 7 станций напротив (тип на плане не подписан).', off:'Дорожки — самая большая электрическая нагрузка клуба.',
+    steps:['Дорожка встала — автомат группы в электрощитовой; заявка «тренажёры, Bootcamp».'] });
+}
+/* --- мебель и зоны (лист 61) --- */
+{
+  const byN = {}; for (const f of L.furn) (byN[f.n] = byN[f.n] || []).push(f);
+  for (const n of Object.keys(byN)){
+    const arr = byN[n].map(f => FURN_POS_FIX[n] ? { ...f, x:FURN_POS_FIX[n][0], z:FURN_POS_FIX[n][1] } : f);
+    const [cx, cz] = centroid(arr);
+    ITEMS.push({ id:'furn' + n.replace(',', '_'), sys:'furn', type:'group', pos:[cx, 0.6, cz], hidden:true,
+      shape:{ boxes: arr.map(p => [p.x - cx, 0, p.z - cz, 0.8, 0.9, 0.8]) },
+      name:'№' + n + ' · ' + (FURN_NAMES[n] || arr[0].name) + (arr.length > 1 ? ' ×' + arr.length : ''),
+      loc:'Лист 61 (план мебели), чертёж изделия — лист ' + ({'1':61,'2':62,'3':63,'4':64,'5':65,'5,1':65,'7':67,'8':68,'9':69,'10':70,'11':71,'12':72,'13':73}[n] || '—'),
+      desc:'Изделие индивидуального изготовления по дизайн-проекту (ЛДСП Egger, нержавейка, акрил — по листу изделия).', off:'—',
+      steps:['Повреждение — заявка «мебель» с номером изделия №' + n + '.'] });
+  }
+  ITEMS.push({ id:'lockers-w', sys:'furn', type:'unit', pos:[8.0, 1.1, 10.9], shape:{box:[11.0, 2.2, 0.5], boxes:[[7.8, 0, 3.9, 0.5, 2.2, 7.0]]}, ghost:true,
+    name:'Шкафчики женской раздевалки — 59 корпусов × 2 секции (№1/2…117/118)', loc:'Вдоль северной стены и восточной стены женской раздевалки',
+    desc:'Шкафчики индивидуального изготовления (лист 68): фасад ЛДСП Egger, номера акрилом, верх зашит полигалем. Каждый корпус — две секции (верхняя/нижняя), нумерация парами.',
+    off:'—', steps:['Не открывается/сломан замок — номер секции с дверцы в заявку «локеры».'] });
+  ITEMS.push({ id:'lockers-m', sys:'furn', type:'unit', pos:[11.6, 1.1, 22.0], shape:{box:[7.0, 2.2, 0.5]}, ghost:true,
+    name:'Шкафчики мужской раздевалки — 39 корпусов × 2 секции (№1/2…77/78)', loc:'Вдоль северной и западной стен мужской раздевалки',
+    desc:'Та же конструкция, что в женской.', off:'—', steps:['Заявка «локеры» с номером секции.'] });
+  ITEMS.push({ id:'barber', sys:'furn', type:'zone', pos:[23.6, 0.6, 15.6], shape:{box:[2.0, 1.0, 2.0]}, ghost:true,
+    name:'Зона парикмахера', loc:'Зал Fullbody, у стены в начале коридора №2 (лист 61: «зона парикмахера см. лист…»)',
+    desc:'Выделенная зона в зале по плану мебели; оборудование — по отдельному листу проекта.', off:'—', steps:['—'] });
+}
+/* --- помещения как объекты (пол кликабелен) --- */
+for (const r of L.rooms){
+  const info = ROOM_INFO[r.no] || {};
+  const fx = L.fixtures.filter(f => f.room === r.no);
+  const cnt = {}; for (const f of fx) cnt[f.t] = (cnt[f.t] || 0) + 1;
+  const fxTxt = Object.entries(cnt).map(([t, n]) => L.fixtureTypes[t].split(' (')[0].toLowerCase() + ' ×' + n).join(', ');
+  ITEMS.push({ id:'room' + r.no, sys:'room', type:'room', pos:[r.x, 0.6, r.z], room:r, hidden:true,
+    name:(r.no <= 15 ? r.no + ' · ' : '') + r.n,
+    loc:'Цокольный этаж' + (r.area ? ' · ' + r.area + ' м² по экспликации' : ' · ~' + r.areaCalc + ' м² по плану') + (r.ceil?.length ? ' · потолок ' + r.ceil.join(' / ') : '') + (fxTxt ? ' · ' + fxTxt : ''),
+    desc:info.desc || 'Помещение по планировке листа 4.', off:info.off || '—', steps:info.steps || [], warn:info.warn });
+}
+
+/* ================= сценарии ================= */
+const SCENARIOS = [
+{ id:'water', btn:'💧 Течёт / нет воды', title:'Вода: душевые, туалеты, пурифайеры',
+  steps:[
+    {ref:'sh-w', text:'<b>Женские душевые</b> (10 кабин) — больше всего точек: нет горячей воды везде = ввод/нагрев, в одной кабине = сама кабина.'},
+    {ref:'sh-m', text:'<b>Мужские душевые</b> (6 кабин) — на той же воде.'},
+    {ref:'wc-w', text:'<b>Туалеты</b> — инсталляции: кнопка, клапан, кран за ревизионным люком.'},
+    {ref:'pur', text:'<b>Пурифайеры</b> (5) — кран подводки, затем фильтры.'},
+    {text:'Где ввод воды и водонагреватели — в альбоме нет: узнать у инженера и дописать в модель. Заявка «вода» с точкой на схеме.'}]},
+{ id:'stuffy', btn:'😮‍💨 Душно / жарко', title:'Душно или жарко в залах (цоколь без окон)',
+  steps:[
+    {ref:'ahu', text:'<b>Вентиляционная клуба</b> (пом. 14): работает ли установка, индикация на щите, фото в заявку.'},
+    {ref:'vent2', text:'<b>Вентиляционная №2 здания</b> — общая с ресторанами: если у них отключили, могла пропасть часть притока. Звонок в УК.'},
+    {ref:'room11', text:'<b>Зал Fullbody</b> (потолок +4.5, 235 м²) — первым жалуется: 21 тренажёр и больше всего людей.'},
+    {text:'Открытая тема по клубу — «приточная система» (мощнее малую приточную): статус в заявках.'}]},
+{ id:'power', btn:'⚡ Нет света / выбило', title:'Электрика: щит, дорожки, фены',
+  steps:[
+    {ref:'switchboard', text:'<b>Электрощитовая</b> за отделом продаж: найти автомат группы (зал / розетки / дорожки / фены), включить один раз.'},
+    {ref:'treadmills', text:'<b>Дорожки Bootcamp</b> — самая тяжёлая группа; повторно выбивает — не включать, заявка «электрика, срочно».'},
+    {ref:'room10', text:'<b>Фены в мужской раздевалке</b> — розетки зон сушки №10/№11.'},
+    {text:'Пахнет горелым — обесточить вводным, вызвать электрика, заявка «срочно».'}]},
+{ id:'fire', btn:'🔥 Пожар / эвакуация', title:'Пожар: краны и пути эвакуации',
+  steps:[
+    {ref:'entrance', text:'<b>Выход №1</b> — входные двери → вестибюль → лестница 16 ступеней вверх. Лифт не использовать.'},
+    {ref:'exit', text:'<b>Выход №2 — EXIT</b> у подсобки за женской раздевалкой → эвакуационная лестница.'},
+    {ref:'pk1', text:'<b>ПК-1</b> у входных дверей; <b>ПК-2</b> у EXIT; <b>ПК-3</b> в зале Fullbody у восточной стены; <b>ПК-4</b> в мужской раздевалке.'},
+    {ref:'room5', text:'Обесточить клуб — <b>электрощитовая</b> (вводной автомат), если это безопасно.'},
+    {text:'101/112, собрать гостей по списку посещений у ресепшн. Договор на обслуживание пожарной системы — открытая заявка клуба.'}]},
+{ id:'towels', btn:'🧺 Полотенца и уборка', title:'Полотенца, корзины, инвентарь',
+  steps:[
+    {ref:'room3', text:'<b>Чистые полотенца</b> — стеллаж в зоне хранения у отдела продаж.'},
+    {ref:'furn4', text:'<b>Корзины для грязных</b> (№4) — по одной в каждой раздевалке.'},
+    {ref:'room6', text:'<b>ПУИ</b> — инвентарь, химия, поддон с ручным душем.'},
+    {ref:'room7', text:'Волосы у фенов вечером — <b>зона сушки</b> женской раздевалки (№7) и мужской (№10/№11): уборка после 18:00.'}]},
+];
+
+/* ================= three.js сцена ================= */
+const canvas = document.getElementById('c3d');
+const isMobileView = matchMedia('(max-width:760px)').matches;
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, isMobileView ? 1.3 : 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f17);
+scene.fog = new THREE.Fog(0x0b0f17, 200, 460);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI/2 - 0.04;
+controls.minDistance = 0.8; controls.maxDistance = 220; controls.zoomToCursor = true;
+window.__dbg = {camera, controls, THREE, GEOM};
+const finePointer = matchMedia('(pointer: fine)').matches;
+if (finePointer) controls.enableZoom = false;
+let zoomGoal = null;
+const camDist = () => camera.position.distanceTo(controls.target);
+const setZoomGoal = (r) => { zoomGoal = THREE.MathUtils.clamp(r, controls.minDistance, controls.maxDistance); };
+if (finePointer) renderer.domElement.addEventListener('wheel', (e) => {
+  e.preventDefault(); setZoomGoal((zoomGoal ?? camDist()) * Math.pow(1.0012, e.deltaY));
+}, { passive: false });
+scene.add(new THREE.HemisphereLight(0x8899bb, 0x223344, 1.1));
+const sun = new THREE.DirectionalLight(0xffeedd, 1.6); sun.position.set(-30, 60, 40); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(160, 48), new THREE.MeshStandardMaterial({color:0x101722, roughness:1}));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.02; scene.add(ground);
+scene.add(new THREE.GridHelper(160, 64, 0x1f2937, 0x16202e));
+function homeView(){ camera.position.set(-8, 30, 50); controls.target.set(19, 1, 15); flight = null; zoomGoal = null; }
+let flight = null;
+
+const pickables = [];
+const markers = {};
+const layers = {};  for (const k of Object.keys(SYS)) layers[k] = [];
+const roomLabels = [];
+const toShape = (poly) => {
+  const sh = new THREE.Shape(poly.outer.map(p => new THREE.Vector2(p[0], -p[1])));
+  for (const h of poly.holes) sh.holes.push(new THREE.Path(h.map(p => new THREE.Vector2(p[0], -p[1]))));
+  return sh;
+};
+function makeLabel(text, scale=1, color='#cbd5e1'){
+  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+  const fs = 44; ctx.font = `600 ${fs}px system-ui`;
+  c.width = Math.ceil(ctx.measureText(text).width)+28; c.height = fs+22;
+  const ctx2 = c.getContext('2d'); ctx2.font = `600 ${fs}px system-ui`; ctx2.fillStyle = color;
+  ctx2.textBaseline='middle'; ctx2.fillText(text, 14, c.height/2);
+  const tex = new THREE.CanvasTexture(c); tex.anisotropy=4;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthWrite:false}));
+  sp.scale.set(c.width/55*scale, c.height/55*scale, 1);
+  return sp;
+}
+
+/* ----- этаж: подложка-план, плита, стены ----- */
+const level = new THREE.Group(); scene.add(level);
+{
+  const tex = new THREE.TextureLoader().load('club-plan.jpg'); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(bx1-bx0, bz1-bz0), new THREE.MeshStandardMaterial({map:tex, roughness:.95}));
+  floor.rotation.x = -Math.PI/2; floor.position.set((bx0+bx1)/2, 0.012, (bz0+bz1)/2); level.add(floor);
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(bx1-bx0, .25, bz1-bz0), new THREE.MeshStandardMaterial({color:0x2a3443, roughness:.9, transparent:true, opacity:.5}));
+  slab.position.set((bx0+bx1)/2, -.125, (bz0+bz1)/2); level.add(slab);
+  const wallMat = new THREE.MeshStandardMaterial({color:0x7f93ad, transparent:true, opacity:.42, roughness:.6, depthWrite:false});
+  const wallEdgeMat = new THREE.LineBasicMaterial({color:0x9fb3cc, transparent:true, opacity:.55});
+  for (const poly of L.walls){
+    const m = new THREE.Mesh(new THREE.ExtrudeGeometry(toShape(poly), {depth:WALL_H, bevelEnabled:false}), wallMat);
+    m.rotation.x = -Math.PI/2; level.add(m);
+    for (const r of [poly.outer, ...poly.holes]){
+      const pts = r.map(p => new THREE.Vector3(p[0], WALL_H, p[1])); pts.push(pts[0].clone());
+      level.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wallEdgeMat));
+    }
+  }
+  const title = makeLabel('VILLA · цокольный этаж · 872.9 м²', 2.0, '#e2e8f0'); title.position.set((bx0+bx1)/2, WALL_H+2.2, bz0-1.0); level.add(title);
+}
+/* ----- помещения: кликабельный пол + подпись ----- */
+const ROOM_COLORS = { 1:0x3b332d, 2:0x3b332d, 3:0x403a2d, 4:0x403a2d, 5:0x45402c, 6:0x313b3b, 7:0x3b2d3b, 8:0x2c3845, 9:0x2c3845, 10:0x2d333b,
+  11:0x2d3b31, 12:0x2d3b3b, 13:0x3b2d33, 14:0x45402c, 15:0x403a2d, 16:0x45402c, 17:0x2c3845, 18:0x2c3845 };
+const roomMeshes = {};
+for (const r of L.rooms){
+  if (!r.poly) continue;
+  const m = new THREE.Mesh(new THREE.ShapeGeometry(toShape(r.poly)), new THREE.MeshBasicMaterial({color:ROOM_COLORS[r.no] || 0x2d333b, transparent:true, opacity:.38, depthWrite:false, side:THREE.DoubleSide}));
+  m.rotation.x = -Math.PI/2; m.position.y = .03; level.add(m); roomMeshes[r.no] = m;
+  const it = ITEMS.find(i => i.id === 'room' + r.no); m.userData.item = it; pickables.push(m); layers.room.push(m);
+  const short = r.no <= 15 ? r.n.replace('Зал ', '').replace(' (уборочный инвентарь)', '').replace('Зона хранения чистых полотенец', 'полотенца').replace('Подсобное помещение', 'подсобка') : r.n.split(' (')[0].replace(' — вентиляционная №2 (общая с ресторанами)', ' · вент. №2').replace('Лифт и лестница на 1 этаж', 'лифт · лестница').replace('Эвакуационная лестница', 'EXIT · лестница');
+  const sc = r.area > 60 ? 1.1 : r.area > 12 ? .85 : .62;
+  const lb = makeLabel(short + (r.area ? ' · ' + r.area + ' м²' : ''), sc, '#aab6c8'); lb.position.set(r.x, .9, r.z); level.add(lb); roomLabels.push(lb);
+}
+/* ----- вход с 1 этажа: вестибюль над лестничным блоком, лестница, лифт ----- */
+const entry = new THREE.Group(); scene.add(entry);
+{
+  const r17 = roomByNo[17]; const [p0, p1] = [[0.8, 21.3], [7.5, 30.3]];
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(p1[0]-p0[0], .2, p1[1]-p0[1]), new THREE.MeshStandardMaterial({color:0x3a4556, roughness:.9, transparent:true, opacity:.45, depthWrite:false}));
+  slab.position.set((p0[0]+p1[0])/2, ENTRY_Y, (p0[1]+p1[1])/2); entry.add(slab);
+  const steel = new THREE.MeshStandardMaterial({color:0x9aa3ad, roughness:.6, metalness:.3, transparent:true, opacity:.7});
+  /* лестница: 16 ступеней из вестибюля вниз в цоколь, вдоль восточной стены блока */
+  const a = new THREE.Vector3(6.5, ENTRY_Y, 21.8), b = new THREE.Vector3(6.5, 0.05, 27.0); const len = a.distanceTo(b);
+  const ramp = new THREE.Mesh(new THREE.BoxGeometry(1.3, .18, len), steel);
+  ramp.position.copy(a).lerp(b, .5); ramp.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), b.clone().sub(a).normalize()); entry.add(ramp);
+  for (let i = 1; i < 16; i++){ const p = a.clone().lerp(b, i/16); const s = new THREE.Mesh(new THREE.BoxGeometry(1.3, .04, .08), new THREE.MeshBasicMaterial({color:0x111827})); s.position.copy(p).add(new THREE.Vector3(0,.1,0)); entry.add(s); }
+  /* шахта лифта */
+  const lift = new THREE.Mesh(new THREE.BoxGeometry(2.4, ENTRY_Y + .4, 2.6), new THREE.MeshStandardMaterial({color:0x6b7684, transparent:true, opacity:.25, roughness:.7, depthWrite:false}));
+  lift.position.set(2.9, (ENTRY_Y + .4)/2, 26.4); entry.add(lift);
+  const l1 = makeLabel('лифт', .7, '#94a3b8'); l1.position.set(2.9, ENTRY_Y + 1.0, 26.4); entry.add(l1); roomLabels.push(l1);
+  const l2 = makeLabel('⬇ лестница 16 ступеней в клуб', .8, '#f97316'); l2.position.set(6.5, ENTRY_Y + 1.1, 24.4); entry.add(l2); roomLabels.push(l2);
+  const l3 = makeLabel('1 этаж · вход с улицы · вестибюль', 1.1, '#f97316'); l3.position.set(4.2, ENTRY_Y + 2.3, 22.0); entry.add(l3); roomLabels.push(l3);
+}
+
+/* ----- маркеры ----- */
+const geoByType = {
+  valve: new THREE.SphereGeometry(.42, 20, 16), panel: new THREE.BoxGeometry(.85, 1.1, .3), door: new THREE.BoxGeometry(1.0, 2.1, .2),
+  unit: new THREE.BoxGeometry(1.5, 1.1, 1.0), group: new THREE.SphereGeometry(.3, 14, 10), zone: new THREE.BoxGeometry(1, 1, 1), room: new THREE.SphereGeometry(.01, 4, 4),
+};
+for (const it of ITEMS){
+  if (it.type === 'room') continue;
+  const col = SYS[it.sys].color;
+  const g = new THREE.Group();
+  const geo = it.shape?.box ? new THREE.BoxGeometry(...it.shape.box) : geoByType[it.type];
+  const ghost = !!it.ghost;
+  const mat = new THREE.MeshStandardMaterial({color:col, emissive:col, emissiveIntensity: ghost ? .15 : .35, roughness:.4, transparent: !!(ghost || it.soft), opacity: ghost ? .18 : it.soft ? .55 : 1, depthWrite: !ghost});
+  const mesh = new THREE.Mesh(geo, mat);
+  if (it.scale) mesh.scale.setScalar(it.scale);
+  if (!it.hidden) g.add(mesh);
+  for (const b of (it.shape?.boxes || [])){ const m = new THREE.Mesh(new THREE.BoxGeometry(b[3], b[4], b[5]), mat); m.position.set(b[0], b[1], b[2]); m.userData.item = it; g.add(m); pickables.push(m); }
+  if (!it.hidden){
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.55*(it.scale||1),.75*(it.scale||1),32), new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:.8, side:THREE.DoubleSide, depthWrite:false}));
+    ring.rotation.x = -Math.PI/2; ring.position.y = -it.pos[1] + .06; g.add(ring);
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -it.pos[1] + .05, 0), new THREE.Vector3(0,0,0)]), new THREE.LineBasicMaterial({color:col, transparent:true, opacity:.5})));
+    markers[it.id] = {group:g, mesh, ring, item:it};
+  } else markers[it.id] = {group:g, mesh, ring:null, mat, item:it};
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(it.hidden ? .5 : 1.0, 8, 8), new THREE.MeshBasicMaterial({visible:false}));
+  hit.userData.item = it; g.add(hit); pickables.push(hit);
+  g.position.set(...it.pos); scene.add(g); layers[it.sys].push(g);
+}
+
+/* ================= UI ================= */
+const $ = s => document.querySelector(s);
+const sysFilter = Object.fromEntries(Object.keys(SYS).map(k=>[k, true]));
+for (const [k,s] of Object.entries(SYS)){
+  const b = document.createElement('button'); b.className = 'chip';
+  b.innerHTML = `<span class="dot" style="background:${s.css}"></span>${s.label}`;
+  b.onclick = () => { sysFilter[k]=!sysFilter[k]; b.classList.toggle('off',!sysFilter[k]); applyFilter(); };
+  $('#chips').appendChild(b);
+}
+let entryOn = true;
+const entBtn = document.createElement('button'); entBtn.className = 'chip'; entBtn.textContent = '🏠 Вход (1 этаж)';
+entBtn.onclick = () => { entryOn = !entryOn; entBtn.classList.toggle('off', !entryOn); entry.visible = entryOn; };
+$('#chips').appendChild(entBtn);
+let labelsOn = !isMobileView;
+const lblBtn = document.createElement('button');
+lblBtn.className = 'chip' + (labelsOn ? '' : ' off'); lblBtn.textContent = '🏷 Подписи';
+const applyLabels = () => { for (const l of roomLabels) l.visible = labelsOn; };
+lblBtn.onclick = () => { labelsOn = !labelsOn; lblBtn.classList.toggle('off', !labelsOn); applyLabels(); };
+$('#chips').appendChild(lblBtn); applyLabels();
+$('#scentoggle').onclick = () => $('#scen').classList.toggle('show');
+function applyFilter(){
+  for (const [sys, arr] of Object.entries(layers)) for (const o of arr) o.visible = sysFilter[sys];
+  renderList();
+}
+function renderList(){
+  const el = $('#list'); el.innerHTML='';
+  for (const it of ITEMS){
+    if (!sysFilter[it.sys]) continue;
+    const d = document.createElement('div'); d.className = 'li'; d.dataset.id = it.id;
+    d.innerHTML = `<span class="dot" style="background:${SYS[it.sys].css}"></span><span>${it.name}</span>`;
+    d.onclick = () => { openCard(it); flyTo(it); };
+    el.appendChild(d);
+  }
+}
+renderList(); homeView();
+let listOpen = !isMobileView;
+$('#list').style.display = listOpen ? 'block' : 'none';
+$('#listhead').onclick = () => { listOpen = !listOpen; $('#list').style.display = listOpen?'block':'none'; $('#listarrow').textContent = listOpen?'▾':'▸'; };
+
+let selected = null;
+function openCard(it){
+  closeScenario(); selected = it;
+  $('#cName').textContent = it.name;
+  const s = SYS[it.sys];
+  $('#cSys').textContent = s.label + ' · ' + (TYPES[it.type] || it.type);
+  $('#cSys').style.background = s.css;
+  $('#cLoc').textContent = '📍 ' + it.loc; $('#cDesc').textContent = it.desc; $('#cOff').textContent = it.off || '—';
+  $('#cSteps').innerHTML = (it.steps || []).map(x=>`<li>${x}</li>`).join('');
+  $('#cWarn').style.display = it.warn ? 'block' : 'none'; $('#cWarn').innerHTML = it.warn ? '⚠️ ' + it.warn : '';
+  $('#card').classList.add('open');
+  document.querySelectorAll('.li').forEach(e=>e.classList.toggle('sel', e.dataset.id===it.id));
+}
+$('#xcard').onclick = () => { $('#card').classList.remove('open'); selected=null; document.querySelectorAll('.li').forEach(e=>e.classList.remove('sel')); };
+$('#flybtn').onclick = () => selected && flyTo(selected);
+
+let activeScen = null; const badges = [];
+for (const sc of SCENARIOS){
+  const b = document.createElement('button'); b.className='scbtn'; b.textContent = sc.btn; b.dataset.id = sc.id;
+  b.onclick = () => activeScen===sc.id ? closeScenario() : openScenario(sc);
+  $('#scen').appendChild(b);
+}
+function openScenario(sc){
+  closeScenario(); $('#card').classList.remove('open');
+  if (isMobileView) $('#scen').classList.remove('show');
+  activeScen = sc.id;
+  document.querySelectorAll('.scbtn').forEach(e=>e.classList.toggle('active', e.dataset.id===sc.id));
+  $('#spTitle').textContent = sc.title;
+  const wrap = $('#spSteps'); wrap.innerHTML=''; let n = 0;
+  for (const st of sc.steps){
+    n++; const d = document.createElement('div'); d.className='step';
+    d.innerHTML = `<div class="n">${n}</div><p>${st.text}</p>`;
+    if (st.ref){
+      const it = ITEMS.find(i=>i.id===st.ref);
+      if (it){ d.onclick = () => { flyTo(it); }; const bg = makeBadge(n, SYS[it.sys].css); bg.position.set(it.pos[0], it.pos[1]+1.5, it.pos[2]); scene.add(bg); badges.push(bg); }
+    }
+    wrap.appendChild(d);
+  }
+  $('#scenpanel').classList.add('open');
+}
+function closeScenario(){
+  activeScen = null; $('#scenpanel').classList.remove('open');
+  document.querySelectorAll('.scbtn').forEach(e=>e.classList.remove('active'));
+  for (const b of badges) scene.remove(b); badges.length = 0;
+}
+$('#xscen').onclick = closeScenario;
+function makeBadge(n, css){
+  const c = document.createElement('canvas'); c.width=c.height=96; const ctx = c.getContext('2d');
+  ctx.fillStyle = css; ctx.beginPath(); ctx.arc(48,48,44,0,7); ctx.fill();
+  ctx.fillStyle = '#0b0f17'; ctx.font='700 52px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(n, 48, 52);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c), depthTest:false, transparent:true}));
+  sp.scale.set(1.6,1.6,1); sp.renderOrder = 99; return sp;
+}
+function flyTo(it){
+  const p = new THREE.Vector3(...it.pos);
+  const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  const dist = it.type === 'room' ? 10 + Math.sqrt(it.room?.areaCalc || 20) : 12;
+  const camTo = p.clone().add(dir.multiplyScalar(dist)).add(new THREE.Vector3(0,6,0));
+  flight = { t:0, c0:camera.position.clone(), c1:camTo, g0:controls.target.clone(), g1:p }; zoomGoal = null;
+}
+
+/* ---- ползунок дальности ---- */
+const zslider = $('#zslider'), zval = $('#zval');
+const logMin = Math.log(controls.minDistance), logMax = Math.log(controls.maxDistance);
+const distToSlider = (d) => Math.round((Math.log(d) - logMin) / (logMax - logMin) * 1000);
+const sliderToDist = (v) => Math.exp(logMin + (v / 1000) * (logMax - logMin));
+let sliderBusy = false;
+zslider.addEventListener('input', () => { sliderBusy = true; setZoomGoal(sliderToDist(+zslider.value)); });
+zslider.addEventListener('change', () => { sliderBusy = false; });
+const holdZoom = (btn, factor) => {
+  let timer = null; const step = () => setZoomGoal((zoomGoal ?? camDist()) * factor);
+  const start = (e) => { e.preventDefault(); step(); timer = setInterval(step, 60); };
+  const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+  btn.addEventListener('pointerdown', start); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, stop);
+};
+holdZoom($('#zin'), 0.93); holdZoom($('#zout'), 1 / 0.93);
+
+/* ================= взаимодействие ================= */
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2(); const tip = $('#tip'); let downAt = null;
+function setPtr(e){
+  const x = e.touches ? e.touches[0].clientX : e.clientX, y = e.touches ? e.touches[0].clientY : e.clientY;
+  ptr.x = (x/innerWidth)*2-1; ptr.y = -(y/innerHeight)*2+1; return {x,y};
+}
+function visibleUp(o){ while (o){ if (o.visible === false) return false; o = o.parent; } return true; }
+function pick(){
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(pickables, false).filter(h => visibleUp(h.object));
+  // маркеры и мебель — приоритетнее пола помещения
+  const nonRoom = hits.find(h => h.object.userData.item?.type !== 'room');
+  if (nonRoom && nonRoom.distance - hits[0].distance < 3) return nonRoom.object.userData.item;
+  return hits[0]?.object.userData.item || null;
+}
+let hoverRoom = null;
+canvas.addEventListener('pointermove', e=>{
+  const {x,y} = setPtr(e); const it = pick(); canvas.style.cursor = it ? 'pointer' : 'grab';
+  if (it){ tip.textContent = it.name; tip.style.display='block'; tip.style.left = Math.min(x+14, innerWidth-tip.offsetWidth-8)+'px'; tip.style.top = (y+14)+'px'; }
+  else tip.style.display='none';
+  const rm = it?.type === 'room' ? roomMeshes[it.room.no] : null;
+  if (hoverRoom && hoverRoom !== rm) hoverRoom.material.opacity = .38;
+  if (rm) rm.material.opacity = .6;
+  hoverRoom = rm;
+});
+canvas.addEventListener('pointerdown', e=>{ downAt=[e.clientX,e.clientY]; });
+canvas.addEventListener('pointerup', e=>{
+  if (!downAt) return; const moved = Math.hypot(e.clientX-downAt[0], e.clientY-downAt[1]); downAt=null;
+  if (moved>6) return; setPtr(e); const it = pick(); if (it) openCard(it);
+});
+
+/* ================= цикл ================= */
+function resize(){ renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const clock = new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  const t = clock.getElapsedTime();
+  for (const m of Object.values(markers)){
+    const isSel = selected && selected.id === m.item.id;
+    if (m.ring){
+      m.ring.scale.setScalar(1 + Math.sin(t*3 + m.group.position.x)*0.12);
+      m.mesh.material.emissiveIntensity = isSel ? .9+.4*Math.sin(t*6) : .35;
+      if (isSel) m.mesh.rotation.y = t*1.5;
+    } else if (m.mat){ m.mat.emissiveIntensity = isSel ? .6+.3*Math.sin(t*6) : (m.item.ghost ? .15 : .35); }
+  }
+  if (selected?.type === 'room'){ const rm = roomMeshes[selected.room.no]; if (rm) rm.material.opacity = .5 + .15*Math.sin(t*4); }
+  for (const b of badges) b.position.y += Math.sin(t*2.5)*0.002;
+  if (flight){
+    flight.t = Math.min(1, flight.t + 0.025);
+    const e = flight.t<.5 ? 2*flight.t*flight.t : 1-Math.pow(-2*flight.t+2,2)/2;
+    camera.position.lerpVectors(flight.c0, flight.c1, e); controls.target.lerpVectors(flight.g0, flight.g1, e);
+    if (flight.t>=1) flight=null;
+  }
+  if (zoomGoal !== null && !flight){
+    const d = camDist(); const nd = THREE.MathUtils.lerp(d, zoomGoal, 0.14);
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+    camera.position.copy(controls.target).add(dir.multiplyScalar(nd));
+    if (Math.abs(nd - zoomGoal) < 0.005) zoomGoal = null;
+  }
+  const dNow = camDist();
+  if (!sliderBusy) zslider.value = distToSlider(dNow);
+  zval.textContent = dNow < 10 ? dNow.toFixed(1) + ' м' : Math.round(dNow) + ' м';
+  controls.update(); renderer.render(scene, camera);
+}
+loop();
+</script>
+</body>
+</html>

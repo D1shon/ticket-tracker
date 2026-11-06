@@ -5,7 +5,7 @@
 export const CLUB_MODELS = [
   { club: 'COLIBRI',     slug: 'colibri',    ready: true,  title: '«Инвиктус», Валиханова 170', url: '/models/colibri/index.html' },
   { club: '4YOU',        slug: '4you',       ready: true,  title: 'ЖК «4you», 3 уровня',        url: '/models/4you/index.html' },
-  { club: 'VILLA',       slug: 'villa',      ready: false },
+  { club: 'VILLA',       slug: 'villa',      ready: true,  title: 'Villa, цокольный этаж',      url: '/models/villa/index.html' },
   { club: 'NURLY ORDA',  slug: 'nurly-orda', ready: false },
   { club: 'PROMENADE',   slug: 'promenade',  ready: false },
   { club: 'EUROPE CITY', slug: 'europe-city', ready: false },
