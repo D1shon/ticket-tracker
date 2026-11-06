@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { ShieldCheck, X, Clock, Users, Shield, History, ChevronDown, ClipboardList, Camera } from 'lucide-react';
 import { format, addDays, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -122,6 +123,15 @@ const AttendancePage = () => {
   const [checkedItems, setCheckedItems] = useState([]);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(null);
   const [gateways, setGateways]           = useState({});
+
+  // Пока открыт чеклист чекаута, страница под ним не прокручивается: на iOS
+  // прокрутка фона сдвигала fixed-оверлей и карточка уезжала за верх экрана
+  useEffect(() => {
+    if (!checklistOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [checklistOpen]);
 
   // «Сегодня» пересчитывается каждую минуту: у менеджеров страница висит открытой
   // сутками, и после полуночи список продолжал показывать вчерашний день —
@@ -656,8 +666,8 @@ const AttendancePage = () => {
         </div>
       )}
 
-      {/* Полноэкранный просмотр фото кассы */}
-      {photoModal && (
+      {/* Полноэкранный просмотр фото кассы (портал — см. комментарий у чеклиста) */}
+      {photoModal && ReactDOM.createPortal(
         <div onClick={() => setPhotoModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ maxWidth: 640, width: '100%', background: 'var(--bg-card)', borderRadius: 18, padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
@@ -671,7 +681,8 @@ const AttendancePage = () => {
             </div>
             <img src={photoModal.url} alt="касса" style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 12, background: '#000' }} />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {viewMode === 'today' && <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: isMobile ? 16 : 24, overflow: 'hidden' }}>
@@ -778,15 +789,18 @@ const AttendancePage = () => {
       {checklistOpen && (() => {
         const closingShift = new Date().getHours() >= 20;
         const checklist = closingShift ? EVENING_CHECKLIST : DAY_CHECKLIST;
-        return (
+        /* Портал в document.body, как у остальных модалок платформы: внутри
+           прокручиваемого <main> на iOS fixed-оверлей ехал вместе со страницей */
+        return ReactDOM.createPortal(
         <div
           onClick={() => setChecklistOpen(false)}
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
             background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex',
             padding: 'max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))',
             overflowY: 'auto',
+            animation: 'checkoutFade 0.2s ease',
           }}
         >
           <div
@@ -796,10 +810,14 @@ const AttendancePage = () => {
               borderRadius: 24, width: '100%', maxWidth: 420,
               boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
               overflow: 'hidden',
+              /* margin:auto вместо align/justify-center: центрирует карточку, но при
+                 переполнении не срезает ей верх — он остаётся досягаемым прокруткой */
+              margin: 'auto',
               /* на телефоне вечерний список (8 пунктов + фото + кнопка) выше экрана:
                  карточка ограничена высотой окна, прокручивается только список пунктов,
                  шапка и кнопка подтверждения всегда на виду */
               maxHeight: 'calc(100dvh - 24px)', display: 'flex', flexDirection: 'column',
+              animation: 'checkoutRise 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
             {/* Шапка */}
@@ -946,12 +964,15 @@ const AttendancePage = () => {
               })()}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
         );
       })()}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes checkoutFade { from { opacity: 0; } }
+        @keyframes checkoutRise { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
       `}</style>
     </div>
   );
