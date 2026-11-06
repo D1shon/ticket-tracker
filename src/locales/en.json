@@ -4362,5 +4362,8 @@
   "Модель в работе": "Model in progress",
   ": модель в работе": ": model in progress",
   "Пришлите чертежи (планы ОВ и ВК) и фото инженерных помещений — соберём модель, как у COLIBRI.": "Send the drawings (HVAC and plumbing plans) and photos of the plant rooms — we will build a model like COLIBRI's.",
-  "Клуб и справочники": "Club & references"
+  "Клуб и справочники": "Club & references",
+  "Поделиться": "Share",
+  "Ссылка на модель скопирована — откроется у любого без входа в HJ Track": "Model link copied — opens for anyone, no HJ Track login needed",
+  "Ссылка для тех, у кого нет аккаунта": "Link for people without an account"
 }

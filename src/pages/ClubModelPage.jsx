@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Building2, ExternalLink, RotateCcw, Hammer } from 'lucide-react';
+import { Building2, ExternalLink, RotateCcw, Hammer, Share2, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { useTickets } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
 import { CLUB_MODELS, hasModelAccess, modelsFor, userClubs } from '../data/clubModels';
@@ -9,6 +10,12 @@ import { CLUB_MODELS, hasModelAccess, modelsFor, userClubs } from '../data/clubM
 // пульты в модели кликабельны — у каждого карточка «что это / что будет, если перекрыть / инструкция»
 // плюс аварийные сценарии. У клубов без модели — заглушка «в работе».
 // Шеф видит вкладки всех клубов, сотрудник — только своих (правило доступа в navAccess.js).
+// «Поделиться» — публичная ссылка на модель конкретного клуба: /model/<slug> (редирект в vercel.json на
+// статичный public/models/<slug>/index.html), открывается без аккаунта HJ Track. Домен — только рабочий
+// ticket-tracker-inky.vercel.app (track.hj.fit в DNS не живёт).
+
+const PUBLIC_ORIGIN = 'https://ticket-tracker-inky.vercel.app';
+const shareUrl = (m) => `${PUBLIC_ORIGIN}/model/${m.slug}`;
 
 const ClubModelPage = () => {
   const { user } = useTickets();
@@ -25,6 +32,22 @@ const ClubModelPage = () => {
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [iframeKey, setIframeKey] = useState(0); // смена key = перезагрузка iframe
   useEffect(() => { setIframeLoaded(false); }, [club]);
+
+  const [copied, setCopied] = useState(false);
+  const share = async () => {
+    const url = shareUrl(active);
+    const text = `3D-модель клуба ${active.club}${active.title ? ` · ${active.title}` : ''}`;
+    if (isMobileDevice() && navigator.share) {
+      try { await navigator.share({ title: text, text, url }); return; } catch (e) { if (e?.name === 'AbortError') return; }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true); setTimeout(() => setCopied(false), 2500);
+      toast.success('Ссылка на модель скопирована — откроется у любого без входа в HJ Track');
+    } catch {
+      window.prompt('Ссылка для тех, у кого нет аккаунта', url);
+    }
+  };
 
   const [isMobile, setIsMobile] = useState(() => isMobileDevice());
   useEffect(() => {
@@ -74,6 +97,9 @@ const ClubModelPage = () => {
             </button>
             <button onClick={() => window.open(active.url, '_blank', 'noopener')} title="Открыть в новом окне" style={btnStyle}>
               <ExternalLink size={13} />{!isMobile && 'В новом окне'}
+            </button>
+            <button onClick={share} title="Ссылка для тех, у кого нет аккаунта" style={{ ...btnStyle, borderColor: copied ? '#22c55e' : '#9b5de5', color: copied ? '#22c55e' : '#9b5de5' }}>
+              {copied ? <Check size={13} /> : <Share2 size={13} />}{!isMobile && 'Поделиться'}
             </button>
           </div>
         )}
