@@ -62,6 +62,12 @@ const SalesPage = () => {
   const [selectedSalesperson, setSelectedSalesperson] = useState('');
   const [notes, setNotes] = useState('');
   const [saleSize, setSaleSize] = useState(''); // размер для товаров с размерной сеткой
+  // Чек из нескольких позиций: атлет берёт 2+ вещи — пробиваются одним чеком.
+  // В Firestore каждая позиция остаётся отдельным доком merch_sales (аналитика,
+  // merch-sync и отмена по одной позиции работают как раньше); позиции одной
+  // покупки связывает общий saleGroupId.
+  const [cart, setCart] = useState([]);
+  const [checkoutOpen, setCheckoutOpen] = useState(false); // мобильная шторка «оформить чек», когда товар не открыт
 
   useEffect(() => {
     if (!activeClub) return;
@@ -156,66 +162,159 @@ const SalesPage = () => {
 
   const currentSalePrice = isFree ? 0 : (customPrice !== '' ? (parseFloat(customPrice) || 0) : (selectedProduct?.salePrice || 0));
   const saleTotal = currentSalePrice * qty;
+  const cartTotal = cart.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const receiptTotal = (isFree ? 0 : cartTotal) + (selectedProduct ? saleTotal : 0);
+  const receiptCount = cart.length + (selectedProduct ? 1 : 0);
+
+  // Текущий товар формы → позиция чека. Проверки учитывают уже набранное в чек
+  // (две позиции одного товара не должны вместе превышать остаток). null = ошибка показана.
+  const buildCurrentItem = () => {
+    if (!selectedProduct) return null;
+    const hasSizes = selectedProduct.sizes && Object.keys(selectedProduct.sizes).length > 0;
+    if (hasSizes && !saleSize) { toast.error('Выберите размер — у этого товара размерная сетка'); return null; }
+    if (qty <= 0) { toast.error('Укажите количество'); return null; }
+    const inCart = cart.filter(i => i.productId === selectedProduct.id).reduce((s, i) => s + i.qty, 0);
+    if (qty + inCart > (selectedProduct.stock || 0)) {
+      toast.error(`Недостаточно товара: в наличии ${selectedProduct.stock || 0} шт${inCart ? `, из них ${inCart} уже в чеке` : ''}`);
+      return null;
+    }
+    if (hasSizes) {
+      const inCartSize = cart.filter(i => i.productId === selectedProduct.id && i.size === saleSize).reduce((s, i) => s + i.qty, 0);
+      const szStock = selectedProduct.sizes[saleSize] || 0;
+      if (qty + inCartSize > szStock) {
+        toast.error(`Недостаточно размера ${saleSize}: в наличии ${szStock} шт${inCartSize ? `, из них ${inCartSize} уже в чеке` : ''}`);
+        return null;
+      }
+    }
+    return {
+      productId: selectedProduct.id,
+      productName: selectedProduct.name,
+      category: selectedProduct.category || '',
+      sku: selectedProduct.sku || '',
+      size: hasSizes ? saleSize : null,
+      qty,
+      unitPrice: customPrice !== '' ? (parseFloat(customPrice) || 0) : (selectedProduct.salePrice || 0),
+      costPrice: selectedProduct.costPrice || 0,
+      imageUrl: selectedProduct.imageUrl || null,
+    };
+  };
+
+  const resetItemForm = () => { setSelectedProduct(null); setSaleSize(''); setQty(1); setCustomPrice(''); };
+
+  // «+ Ещё» — отложить позицию в чек и выбрать следующий товар
+  const addToCart = () => {
+    const item = buildCurrentItem();
+    if (!item) return;
+    setCart(prev => [...prev, item]);
+    resetItemForm();
+    setSearch('');
+    toast.success(`В чеке: ${item.productName}${item.size ? ` · ${item.size}` : ''} × ${item.qty}`);
+  };
 
   const handleSubmit = async () => {
-    if (!selectedProduct) return toast.error('Выберите товар');
-    if (qty <= 0) return toast.error('Укажите количество');
-    if (qty > selectedProduct.stock) return toast.error(`Недостаточно товара (в наличии: ${selectedProduct.stock} шт)`);
+    // Чек = отложенные позиции + (если открыт товар) текущая позиция формы
+    const items = [...cart];
+    if (selectedProduct) {
+      const current = buildCurrentItem();
+      if (!current) return;
+      items.push(current);
+    }
+    if (items.length === 0) return toast.error('Выберите товар');
     if (filteredEmployees.length > 0 && !selectedSalesperson) {
       return toast.error('Выберите сотрудника, кому идёт продажа');
     }
     setSubmitting(true);
     try {
-      const finalSalePrice = isFree ? 0 : (customPrice !== '' ? (parseFloat(customPrice) || 0) : (selectedProduct.salePrice || 0));
-      // Продажа и списание — атомарной транзакцией: либо обе записи, либо ни одной
+      const clientNameFinal = buyerName.trim() || (buyerType === 'employee' ? 'Сотрудник' : 'Гость');
+      // Весь чек — одной транзакцией: либо все позиции и списания, либо ничего
       await runTransaction(db, async (tx) => {
-        const prodRef = doc(db, 'merch_products', selectedProduct.id);
-        const prodSnap = await tx.get(prodRef);
-        if (!prodSnap.exists()) throw new Error('PRODUCT_MISSING');
-        const live = prodSnap.data();
-        const liveStock = live.stock || 0;
-        if (qty > liveStock) throw new Error(`NOT_ENOUGH:${liveStock}`);
-        // Размерная сетка: размер обязателен, списание по размеру
-        const hasSizes = live.sizes && Object.keys(live.sizes).length > 0;
-        if (hasSizes) {
-          if (!saleSize) throw new Error('SIZE_REQUIRED');
-          const szStock = live.sizes[saleSize] || 0;
-          if (qty > szStock) throw new Error(`NOT_ENOUGH_SIZE:${saleSize}:${szStock}`);
+        // Позиции группируются по товару: одна карточка может встретиться дважды (разные размеры)
+        const byProduct = new Map();
+        items.forEach(i => {
+          if (!byProduct.has(i.productId)) byProduct.set(i.productId, []);
+          byProduct.get(i.productId).push(i);
+        });
+        // Сначала все чтения (требование транзакций Firestore), потом записи
+        const liveByProduct = new Map();
+        for (const pid of byProduct.keys()) {
+          const snap = await tx.get(doc(db, 'merch_products', pid));
+          if (!snap.exists()) throw new Error('PRODUCT_MISSING');
+          liveByProduct.set(pid, snap.data());
         }
-        tx.set(doc(collection(db, 'merch_sales')), {
-          productId: selectedProduct.id,
-          productName: selectedProduct.name,
-          size: hasSizes ? saleSize : null,
-          category: selectedProduct.category || '',
-          sku: selectedProduct.sku || '',
-          club: activeClub,
-          qty,
-          costPrice: selectedProduct.costPrice || 0,
-          salePrice: finalSalePrice,
-          totalSum: saleTotal,
-          netProfit: isFree ? -(selectedProduct.costPrice || 0) * qty : saleTotal - (selectedProduct.costPrice || 0) * qty,
-          paymentMethod: isFree ? freeReason : paymentMethod,
-          isFree,
-          buyerType: isFree ? 'client' : buyerType,
-          clientName: buyerName.trim() || (buyerType === 'employee' ? 'Сотрудник' : 'Гость'),
-          notes: notes.trim() || null,
-          cashierName: user?.name || user?.email || 'Менеджер',
-          salespersonName: selectedSalesperson || null,
-          createdAt: serverTimestamp(),
-        });
-        tx.update(prodRef, {
-          stock: increment(-qty),
-          ...(hasSizes ? { [`sizes.${saleSize}`]: increment(-qty) } : {}),
-          updatedAt: serverTimestamp(),
-        });
+        for (const [pid, its] of byProduct) {
+          const live = liveByProduct.get(pid);
+          const totalQty = its.reduce((s, i) => s + i.qty, 0);
+          if (totalQty > (live.stock || 0)) throw new Error(`NOT_ENOUGH:${live.stock || 0}`);
+          const hasSizes = live.sizes && Object.keys(live.sizes).length > 0;
+          if (hasSizes) {
+            const bySize = {};
+            for (const i of its) {
+              if (!i.size) throw new Error('SIZE_REQUIRED');
+              bySize[i.size] = (bySize[i.size] || 0) + i.qty;
+            }
+            for (const [sz, q] of Object.entries(bySize)) {
+              const szStock = live.sizes[sz] || 0;
+              if (q > szStock) throw new Error(`NOT_ENOUGH_SIZE:${sz}:${szStock}`);
+            }
+          }
+        }
+        // Общий id чека связывает позиции одной покупки; у одиночной продажи
+        // поле null — формат дока не отличается от прежнего
+        const saleGroupId = items.length > 1 ? doc(collection(db, 'merch_sales')).id : null;
+        for (const item of items) {
+          const live = liveByProduct.get(item.productId);
+          const hasSizes = live.sizes && Object.keys(live.sizes).length > 0;
+          const finalSalePrice = isFree ? 0 : item.unitPrice;
+          const totalSum = finalSalePrice * item.qty;
+          tx.set(doc(collection(db, 'merch_sales')), {
+            productId: item.productId,
+            productName: item.productName,
+            size: hasSizes ? item.size : null,
+            category: item.category,
+            sku: item.sku,
+            club: activeClub,
+            qty: item.qty,
+            costPrice: item.costPrice,
+            salePrice: finalSalePrice,
+            totalSum,
+            netProfit: isFree ? -item.costPrice * item.qty : totalSum - item.costPrice * item.qty,
+            paymentMethod: isFree ? freeReason : paymentMethod,
+            isFree,
+            buyerType: isFree ? 'client' : buyerType,
+            clientName: clientNameFinal,
+            notes: notes.trim() || null,
+            cashierName: user?.name || user?.email || 'Менеджер',
+            salespersonName: selectedSalesperson || null,
+            saleGroupId,
+            createdAt: serverTimestamp(),
+          });
+        }
+        for (const [pid, its] of byProduct) {
+          const live = liveByProduct.get(pid);
+          const hasSizes = live.sizes && Object.keys(live.sizes).length > 0;
+          const totalQty = its.reduce((s, i) => s + i.qty, 0);
+          const sizeUpdates = {};
+          if (hasSizes) {
+            const bySize = {};
+            its.forEach(i => { bySize[i.size] = (bySize[i.size] || 0) + i.qty; });
+            Object.entries(bySize).forEach(([sz, q]) => { sizeUpdates[`sizes.${sz}`] = increment(-q); });
+          }
+          tx.update(doc(db, 'merch_products', pid), {
+            stock: increment(-totalQty),
+            ...sizeUpdates,
+            updatedAt: serverTimestamp(),
+          });
+        }
       });
-      toast.success(`${isFree ? '🎁 Бесплатно' : '✅ Продажа'}: ${selectedProduct.name} × ${qty}`);
-      setSelectedProduct(null);
-      setSaleSize('');
-      setQty(1);
+      const grandTotal = isFree ? 0 : items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+      toast.success(items.length > 1
+        ? `${isFree ? '🎁 Бесплатно' : '✅ Чек'}: ${items.length} поз. на ${grandTotal.toLocaleString()} ₸`
+        : `${isFree ? '🎁 Бесплатно' : '✅ Продажа'}: ${items[0].productName} × ${items[0].qty}`);
+      setCart([]);
+      setCheckoutOpen(false);
+      resetItemForm();
       setSearch('');
       setIsFree(false);
-      setCustomPrice('');
       setBuyerType('client');
       setBuyerName('');
       setNotes('');
@@ -295,7 +394,7 @@ const SalesPage = () => {
               const cc = CLUB_COLORS[c];
               const active = activeClub === c;
               return (
-                <button key={c} onClick={() => { setActiveClub(c); setSelectedProduct(null); setSearch(''); }}
+                <button key={c} onClick={() => { setActiveClub(c); setSelectedProduct(null); setSearch(''); setCart([]); setCheckoutOpen(false); }}
                   style={{
                     padding: isMobile ? '8px 14px' : '6px 14px', borderRadius: 10, fontSize: 11, fontWeight: 800,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -340,7 +439,13 @@ const SalesPage = () => {
                   const isOut = p.stock <= 0;
                   const isSel = selectedProduct?.id === p.id;
                   return (
-                    <button key={p.id} onClick={() => { if (!isOut) { setSelectedProduct(p); setQty(1); setSaleSize(''); setCustomPrice(String(p.salePrice || 0)); setBuyerType('client'); setBuyerName(''); setNotes(''); } }} disabled={isOut}
+                    <button key={p.id} onClick={() => { if (!isOut) {
+                        setSelectedProduct(p); setQty(1); setSaleSize('');
+                        // поля чека (покупатель, имя, коммент) сбрасываются только при НОВОМ чеке;
+                        // при добавлении позиции цена подставляется по уже выбранному покупателю
+                        setCustomPrice(String((cart.length > 0 && buyerType === 'employee' ? (p.employeePrice || p.salePrice) : p.salePrice) || 0));
+                        if (cart.length === 0) { setBuyerType('client'); setBuyerName(''); setNotes(''); }
+                      } }} disabled={isOut}
                       style={{
                         textAlign: 'left', border: `1px solid ${isSel ? accentColor : 'var(--border)'}`,
                         borderRadius: 12, overflow: 'hidden', padding: 0, cursor: isOut ? 'not-allowed' : 'pointer',
@@ -429,8 +534,49 @@ const SalesPage = () => {
               <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', fontStyle: 'italic', letterSpacing: '0.06em' }}>Оформить продажу</span>
             </div>
 
-            {selectedProduct ? (
+            {(selectedProduct || cart.length > 0) ? (
               <>
+                {/* Позиции, уже добавленные в чек кнопкой «+ Ещё» */}
+                {cart.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>
+                      🧾 В чеке · {cart.length} поз.
+                    </div>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                      {cart.map((it, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: idx < cart.length - 1 ? '1px solid var(--border)' : 'none', background: 'var(--bg-hover)' }}>
+                          {it.imageUrl ? (
+                            <img src={it.imageUrl} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Package size={14} style={{ opacity: 0.3, color: 'var(--text-muted)' }} />
+                            </div>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.productName}</div>
+                            <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)' }}>
+                              {it.size ? `${it.size} · ` : ''}{it.qty} шт × {isFree ? '🎁 0' : it.unitPrice.toLocaleString()} ₸
+                            </div>
+                          </div>
+                          <span style={{ fontSize: 11.5, fontWeight: 900, color: isFree ? '#f97316' : '#34d399', flexShrink: 0 }}>
+                            {isFree ? '0 ₸' : `${(it.unitPrice * it.qty).toLocaleString()} ₸`}
+                          </span>
+                          <button onClick={() => setCart(prev => prev.filter((_, i) => i !== idx))} title="Убрать из чека"
+                            style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: '1px solid rgba(176,106,106,0.2)', background: 'rgba(176,106,106,0.05)', color: '#B06A6A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {!selectedProduct && (
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginTop: 6 }}>
+                        Выберите ещё товар из списка — он добавится в этот же чек
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedProduct && (<>
                 {/* Product chip */}
                 <div style={{ background: 'var(--bg-primary)', border: `1px solid var(--border)`, borderRadius: 12, overflow: 'hidden', marginBottom: 10, boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)' }}>
                   {selectedProduct.imageUrl ? (
@@ -461,6 +607,7 @@ const SalesPage = () => {
                     </div>
                   </div>
                 </div>
+                </>)}
 
                 {/* Тип продажи — как в модалке Склада */}
                 <div style={{ marginBottom: 12 }}>
@@ -488,14 +635,14 @@ const SalesPage = () => {
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Кто покупает?</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <button type="button" onClick={() => { setBuyerType('client'); setCustomPrice(String(selectedProduct.salePrice || 0)); }}
+                      <button type="button" onClick={() => { setBuyerType('client'); if (selectedProduct) setCustomPrice(String(selectedProduct.salePrice || 0)); }}
                         style={{
                           padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
                           border: `1px solid ${buyerType === 'client' ? 'var(--accent-purple)' : 'var(--border)'}`,
                           background: buyerType === 'client' ? 'var(--accent-purple)' : 'var(--bg-hover)',
                           color: buyerType === 'client' ? '#fff' : 'var(--text-secondary)',
                         }}>Клиент</button>
-                      <button type="button" onClick={() => { setBuyerType('employee'); setCustomPrice(String(selectedProduct.employeePrice || selectedProduct.salePrice || 0)); }}
+                      <button type="button" onClick={() => { setBuyerType('employee'); if (selectedProduct) setCustomPrice(String(selectedProduct.employeePrice || selectedProduct.salePrice || 0)); }}
                         style={{
                           padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
                           border: `1px solid ${buyerType === 'employee' ? 'var(--accent-purple)' : 'var(--border)'}`,
@@ -525,7 +672,7 @@ const SalesPage = () => {
                 )}
 
                 {/* Размер — для товаров с размерной сеткой */}
-                {selectedProduct.sizes && Object.keys(selectedProduct.sizes).length > 0 && (
+                {selectedProduct && selectedProduct.sizes && Object.keys(selectedProduct.sizes).length > 0 && (
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Размер</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -541,8 +688,9 @@ const SalesPage = () => {
                   </div>
                 )}
 
-                {/* Кол-во / Цена / Оплата — сетка как в Складе */}
-                <div style={{ display: 'grid', gridTemplateColumns: isFree ? '1fr' : '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+                {/* Кол-во / Цена — для текущего товара */}
+                {selectedProduct && (
+                <div style={{ display: 'grid', gridTemplateColumns: isFree ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 12 }}>
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Кол-во (шт)</div>
                     <input type="number" min="1" max={selectedProduct.stock} value={qty}
@@ -550,22 +698,32 @@ const SalesPage = () => {
                       style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', outline: 'none' }} />
                   </div>
                   {!isFree && (
-                    <>
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Цена (₸/шт)</div>
-                        <input type="number" min="0" value={customPrice} onChange={e => setCustomPrice(e.target.value)}
-                          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 14, fontWeight: 800, color: '#34d399', outline: 'none' }} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Оплата</div>
-                        <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
-                          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 8px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)', outline: 'none', height: 42 }}>
-                          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                      </div>
-                    </>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Цена (₸/шт)</div>
+                      <input type="number" min="0" value={customPrice} onChange={e => setCustomPrice(e.target.value)}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-hover)', fontSize: 14, fontWeight: 800, color: '#34d399', outline: 'none' }} />
+                    </div>
                   )}
                 </div>
+                )}
+
+                {/* Оплата — одна на весь чек */}
+                {!isFree && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>Оплата</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                      {PAYMENT_METHODS.map(m => (
+                        <button key={m} type="button" onClick={() => setPaymentMethod(m)}
+                          style={{
+                            padding: '10px 8px', borderRadius: 12, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
+                            border: `1px solid ${paymentMethod === m ? accentColor : 'var(--border)'}`,
+                            background: paymentMethod === m ? `${accentColor}18` : 'var(--bg-hover)',
+                            color: paymentMethod === m ? accentColor : 'var(--text-secondary)',
+                          }}>{m}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Buyer name input */}
                 <div style={{ marginBottom: 12 }}>
@@ -640,26 +798,37 @@ const SalesPage = () => {
 
                 {/* Итого — как в модалке Склада */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 12, marginBottom: 12 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Итого к оплате:</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Итого к оплате{receiptCount > 1 ? ` · ${receiptCount} поз.` : ''}:
+                  </span>
                   <span style={{ fontSize: 20, fontWeight: 950, color: isFree ? '#f97316' : '#34d399' }}>
-                    {isFree ? '🎁 0 ₸' : `${saleTotal.toLocaleString()} ₸`}
+                    {isFree ? '🎁 0 ₸' : `${receiptTotal.toLocaleString()} ₸`}
                   </span>
                 </div>
 
-                {selectedProduct.stock <= qty && (
+                {selectedProduct && selectedProduct.stock <= qty && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'rgba(192,143,79,0.07)', border: '1px solid rgba(192,143,79,0.2)', borderRadius: 9, marginBottom: 8 }}>
                     <AlertTriangle size={11} color="#C08F4F" />
                     <span style={{ fontSize: 10, fontWeight: 700, color: '#C08F4F' }}>Последний товар на складе</span>
                   </div>
                 )}
 
-                {/* Кнопки — как в модалке Склада: Отмена + зелёная Провести чек */}
+                {/* Кнопки: Отмена/Очистить · «+ Ещё» (копит чек) · Провести чек */}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { setSelectedProduct(null); setQty(1); setIsFree(false); }}
-                    style={{ padding: isMobile ? '13px 20px' : '11px 18px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, fontWeight: 800, textTransform: 'uppercase' }}>
-                    Отмена
+                  <button onClick={() => {
+                      if (selectedProduct) { resetItemForm(); if (cart.length === 0) setIsFree(false); }
+                      else { setCart([]); setCheckoutOpen(false); }
+                    }}
+                    style={{ padding: isMobile ? '13px 14px' : '11px 14px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, fontWeight: 800, textTransform: 'uppercase' }}>
+                    {selectedProduct ? 'Отмена' : 'Очистить'}
                   </button>
-                  <button onClick={handleSubmit} disabled={submitting || qty > selectedProduct.stock}
+                  {selectedProduct && (
+                    <button onClick={addToCart} title="Отложить позицию и выбрать ещё товар в этот же чек"
+                      style={{ padding: isMobile ? '13px 12px' : '11px 12px', borderRadius: 14, border: '1px solid #34d399', background: 'rgba(52,211,153,0.08)', color: '#34d399', cursor: 'pointer', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      + Ещё
+                    </button>
+                  )}
+                  <button onClick={handleSubmit} disabled={submitting || (selectedProduct && qty > selectedProduct.stock)}
                     style={{
                       flex: 1, padding: isMobile ? '13px 9px' : '11px', borderRadius: 14, border: 'none',
                       background: submitting ? 'var(--bg-hover)' : isFree ? '#f97316' : '#10b981',
@@ -670,7 +839,7 @@ const SalesPage = () => {
                       boxShadow: submitting ? 'none' : '0 6px 18px rgba(16,185,129,0.25)',
                     }}>
                     {isFree ? <Gift size={14} /> : <Check size={14} />}
-                    {submitting ? 'Ждите...' : isFree ? 'Выдать бесплатно' : 'Провести чек'}
+                    {submitting ? 'Ждите...' : isFree ? 'Выдать бесплатно' : receiptCount > 1 ? `Провести чек · ${receiptCount}` : 'Провести чек'}
                   </button>
                 </div>
               </>
@@ -684,13 +853,17 @@ const SalesPage = () => {
           );
           // Десктоп — форма стоит в правой колонке как раньше
           if (!isMobile) return formBox;
-          // Мобильный — форма появляется шторкой снизу только когда выбран товар
-          if (!selectedProduct) return null;
+          // Мобильный — шторка снизу: когда выбран товар ИЛИ оформляется чек из полоски
+          if (!selectedProduct && !checkoutOpen) return null;
           // zIndex 300 — выше нижней панели навигации (200): иначе она рисуется
           // поверх шторки и перекрывает кнопку «Провести продажу»
           return ReactDOM.createPortal(
             <div
-              onClick={() => { setSelectedProduct(null); setQty(1); setIsFree(false); }}
+              onClick={() => {
+                // тап по фону: закрыть текущий товар (чек сохраняется) или шторку оформления
+                if (selectedProduct) { resetItemForm(); if (cart.length === 0) setIsFree(false); }
+                else setCheckoutOpen(false);
+              }}
               style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
             >
               {/* maxHeight:100% от оверлея (а он ровно во весь экран) — это и есть
@@ -700,6 +873,28 @@ const SalesPage = () => {
             document.body
           );
           })()}
+
+          {/* Мобильный: плавающая полоска начатого чека над нижней навигацией —
+              видна, пока выбирают следующий товар; тап открывает оформление */}
+          {isMobile && cart.length > 0 && !selectedProduct && !checkoutOpen && ReactDOM.createPortal(
+            <button onClick={() => setCheckoutOpen(true)}
+              style={{
+                position: 'fixed', left: 12, right: 12,
+                bottom: 'calc(72px + env(safe-area-inset-bottom))', zIndex: 250,
+                padding: '13px 18px', borderRadius: 16, border: 'none', cursor: 'pointer',
+                background: isFree ? '#f97316' : '#10b981', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+                fontSize: 12.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em',
+                animation: 'cartBarRise 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+              }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShoppingCart size={15} /> Чек · {cart.length} поз.
+              </span>
+              <span>{isFree ? '🎁 0 ₸' : `${cartTotal.toLocaleString()} ₸`} · Оформить →</span>
+            </button>,
+            document.body
+          )}
 
           {/* Today's log */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-card)', flex: 1 }}>
@@ -716,6 +911,7 @@ const SalesPage = () => {
                   : { padding: '8px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7, background: s.isFree ? 'rgba(192,143,79,0.03)' : 'transparent' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.saleGroupId ? <span title="Часть одного чека из нескольких позиций">🧾 </span> : null}
                       {s.isFree ? '🎁 ' : ''}{s.productName}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
@@ -752,6 +948,10 @@ const SalesPage = () => {
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes cartBarRise { from { opacity: 0; transform: translateY(16px); } }
+      `}</style>
     </div>
   );
 };
