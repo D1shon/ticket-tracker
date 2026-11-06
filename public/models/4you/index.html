@@ -653,12 +653,12 @@ for (const L of GEOM.levels) buildLevel(L);
   const concrete = new THREE.MeshStandardMaterial({color:0xb5b9bd, roughness:.95});
   const box = (w,h,d,x,y,z,mat) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat); m.position.set(x,y,z); g.add(m); return m; };
   const lbl = (t, x, y, z, sc=.85, c='#94a3b8') => { const l = makeLabel(t, sc, c); l.position.set(x,y,z); g.add(l); roomLabels.push(l); };
-  /* парапет с запада, севера и востока; с юга (сторона входа, ось А) — высокая стена жилого дома ЖК, к ней примыкает блок */
+  /* парапет с запада, севера и востока; с юга (сторона входа, ось А) блок примыкает к жилому дому ЖК —
+     сама стена дома не рисуется (загораживала кровлю и 2 этаж), оставлен только низкий парапет-граница */
   box(.3, .7, z1-z0, x0-.15, Y+.35, (z0+z1)/2, white);
   box(.3, .7, z1-z0, x1+.15, Y+.35, (z0+z1)/2, white);
   box(x1-x0+.6, .7, .3, (x0+x1)/2, Y+.35, z0-.15, white);
-  box(x1-x0+2, 9, .5, (x0+x1)/2, Y+4.5, z1+.4, new THREE.MeshStandardMaterial({color:0xb5b9bd, roughness:.9, transparent:true, opacity:.5, depthWrite:false}));
-  lbl('стена жилого дома ЖК', (x0+x1)/2, Y+7.5, z1+.6, 1.0, '#64748b');
+  box(x1-x0+.6, .7, .3, (x0+x1)/2, Y+.35, z1+.15, white);
   /* венткамера: стальной каркас, односкатная крыша, дверь и решётка с юга (сами стены — полупрозрачный маркер ventroom) */
   const R = {x0:.5, x1:5.5, z0:14.7, z1:23.1, h:3.1};
   for (const x of [R.x0, R.x1]) for (const z of [R.z0, (R.z0+R.z1)/2, R.z1]) box(.16, R.h, .16, x, Y+R.h/2, z, steel);
