@@ -3,7 +3,9 @@
 // одиночным размерам и сдвоенные (S-M…) не показывались — продажа не проходила.
 // Основная сетка — одиночные размеры; сдвоенные — второстепенный блок у части мерча.
 export const SIZES_SINGLE = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
-export const SIZES_COMBO = ['S-M', 'L-XL', 'XL-XXL'];
+// Третья пара была «XL-XXL» — переименована в 2XL-3XL (реальные размеры партии);
+// старые документы мигрированы скриптом migrate_merch_sizes.mjs.
+export const SIZES_COMBO = ['S-M', 'L-XL', '2XL-3XL'];
 export const SIZES = [...SIZES_SINGLE, ...SIZES_COMBO];
 
 // Размеры товара для продажи/перемещения: в порядке SIZES + любые ключи из
