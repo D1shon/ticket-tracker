@@ -3,7 +3,8 @@
 // рядом лежат её данные (club-geom.json, club-plan.jpg). Новая модель = папка в public/models
 // + ready: true здесь; доступ к вкладке считается по этому же списку (navAccess.js).
 export const CLUB_MODELS = [
-  { club: 'COLIBRI',     slug: 'colibri',    ready: true,  title: '«Инвиктус», Валиханова 170', url: '/models/colibri/index.html' },
+  // tour — фототур по инженерному помещению (public/models/<slug>/tour/, точки обзора по фото + кликабельные объекты)
+  { club: 'COLIBRI',     slug: 'colibri',    ready: true,  title: '«Инвиктус», Валиханова 170', url: '/models/colibri/index.html', tour: '/models/colibri/tour/index.html', tourTitle: 'Фототур ТП' },
   { club: '4YOU',        slug: '4you',       ready: true,  title: 'ЖК «4you», 3 уровня',        url: '/models/4you/index.html' },
   { club: 'VILLA',       slug: 'villa',      ready: true,  title: 'Villa, цокольный этаж',      url: '/models/villa/index.html' },
   { club: 'NURLY ORDA',  slug: 'nurly-orda', ready: false },

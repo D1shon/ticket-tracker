@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Building2, ExternalLink, RotateCcw, Hammer, Share2, Check } from 'lucide-react';
+import { Building2, Camera, ExternalLink, RotateCcw, Hammer, Share2, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTickets } from '../store/TicketContext';
 import { isMobileDevice } from '../lib/isMobile';
@@ -14,8 +14,11 @@ import { CLUB_MODELS, hasModelAccess, modelsFor, userClubs } from '../data/clubM
 // статичный public/models/<slug>/index.html), открывается без аккаунта HJ Track. Домен — только рабочий
 // ticket-tracker-inky.vercel.app (track.hj.fit в DNS не живёт).
 
+// У клуба может быть ещё «фототур» (поле tour в реестре): точки обзора по фото инженерного помещения
+// с кликабельными объектами. Переключатель «3D-модель / Фототур» над iframe, публичная ссылка /model/<slug>/tour.
+
 const PUBLIC_ORIGIN = 'https://ticket-tracker-inky.vercel.app';
-const shareUrl = (m) => `${PUBLIC_ORIGIN}/model/${m.slug}`;
+const shareUrl = (m, view) => `${PUBLIC_ORIGIN}/model/${m.slug}${view === 'tour' ? '/tour' : ''}`;
 
 const ClubModelPage = () => {
   const { user } = useTickets();
@@ -29,14 +32,21 @@ const ClubModelPage = () => {
   });
   const active = tabs.find(m => m.club === club) || tabs[0];
 
+  const [view, setView] = useState('model'); // 'model' | 'tour'
+  const hasTour = !!active?.tour;
+  const showTour = hasTour && view === 'tour';
+  const frameUrl = showTour ? active.tour : active?.url;
+
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [iframeKey, setIframeKey] = useState(0); // смена key = перезагрузка iframe
-  useEffect(() => { setIframeLoaded(false); }, [club]);
+  useEffect(() => { setIframeLoaded(false); }, [club, view]);
 
   const [copied, setCopied] = useState(false);
   const share = async () => {
-    const url = shareUrl(active);
-    const text = `3D-модель клуба ${active.club}${active.title ? ` · ${active.title}` : ''}`;
+    const url = shareUrl(active, showTour ? 'tour' : 'model');
+    const text = showTour
+      ? `${active.tourTitle || 'Фототур'} · ${active.club}`
+      : `3D-модель клуба ${active.club}${active.title ? ` · ${active.title}` : ''}`;
     if (isMobileDevice() && navigator.share) {
       try { await navigator.share({ title: text, text, url }); return; } catch (e) { if (e?.name === 'AbortError') return; }
     }
@@ -86,7 +96,9 @@ const ClubModelPage = () => {
               Модель клуба · {active.club}{active.title ? ` · ${active.title}` : ''}
             </div>
             <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)' }}>
-              {active.ready ? 'Нажмите на кран или пульт — появится инструкция' : 'Модель этого клуба ещё не загружена'}
+              {!active.ready ? 'Модель этого клуба ещё не загружена'
+                : showTour ? 'Переходите по точкам обзора и нажимайте на метки — появится описание'
+                : 'Нажмите на кран или пульт — появится инструкция'}
             </div>
           </div>
         </div>
@@ -95,7 +107,7 @@ const ClubModelPage = () => {
             <button onClick={() => { setIframeLoaded(false); setIframeKey(k => k + 1); }} title="Перезагрузить" style={btnStyle}>
               <RotateCcw size={13} />{!isMobile && 'Обновить'}
             </button>
-            <button onClick={() => window.open(active.url, '_blank', 'noopener')} title="Открыть в новом окне" style={btnStyle}>
+            <button onClick={() => window.open(frameUrl, '_blank', 'noopener')} title="Открыть в новом окне" style={btnStyle}>
               <ExternalLink size={13} />{!isMobile && 'В новом окне'}
             </button>
             <button onClick={share} title="Ссылка для тех, у кого нет аккаунта" style={{ ...btnStyle, borderColor: copied ? '#22c55e' : '#9b5de5', color: copied ? '#22c55e' : '#9b5de5' }}>
@@ -126,6 +138,24 @@ const ClubModelPage = () => {
         </div>
       )}
 
+      {/* переключатель «3D-модель / Фототур» — только у клубов, где есть фототур */}
+      {active.ready && hasTour && (
+        <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 999, border: '1px solid var(--border)', background: 'var(--bg-card)', alignSelf: 'flex-start' }}>
+          {[{ id: 'model', label: '3D-модель', Icon: Building2 }, { id: 'tour', label: active.tourTitle || 'Фототур', Icon: Camera }].map(({ id, label, Icon }) => {
+            const on = (view === id);
+            return (
+              <button key={id} onClick={() => setView(id)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, border: 'none',
+                background: on ? '#9b5de5' : 'transparent', color: on ? '#fff' : 'var(--text-muted)',
+                fontSize: 12, fontWeight: 800, cursor: 'pointer',
+              }}>
+                <Icon size={13} />{label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ position: 'relative', flex: 1, minHeight: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border)', background: '#0b0f17' }}>
         {active.ready ? (
           <>
@@ -136,9 +166,9 @@ const ClubModelPage = () => {
               </div>
             )}
             <iframe
-              key={`${active.club}-${iframeKey}`}
-              src={active.url}
-              title={`3D-модель клуба ${active.club}`}
+              key={`${active.club}-${view}-${iframeKey}`}
+              src={frameUrl}
+              title={showTour ? `Фототур · ${active.club}` : `3D-модель клуба ${active.club}`}
               onLoad={() => setIframeLoaded(true)}
               style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
               allow="fullscreen"

@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Фототур по тепловому пункту клуба COLIBRI: статика, без Vercel-функций. Точки обзора и объекты — массив STATIONS ниже.
+     Новая точка = фото в photos/ + запись в STATIONS; координаты объекта в % от фото (Alt+клик на фото показывает их). -->
+<title>Фототур ТП Colibri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen app. Photo stage left, object card right; nav + minimap in the footer. Dark by choice: the room is dark, photos are dark. */
+:root{
+  --bg:#0d0f12; --panel:#161a20; --panel2:#1d2229; --line:#2a313b;
+  --fg:#f1f3f6; --fg2:#a7b0bd; --fg3:#6c7684;
+  --accent:#ff7a2f; --accent2:#ffb27a;
+  --k-valve:#ff7a2f; --k-kip:#4fb3ff; --k-equip:#3fd2a8; --k-el:#ffd23f; --k-safe:#ff5c7a; --k-pipe:#b08cff;
+  --font:'Manrope','Segoe UI',system-ui,sans-serif; --mono:'JetBrains Mono',Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.4;overflow:hidden}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+.app{height:100%;display:grid;grid-template-rows:auto 1fr auto;padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+header{display:flex;align-items:center;gap:14px;padding:10px max(16px,env(safe-area-inset-left,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{margin:0;font-size:15px;font-weight:800;letter-spacing:.01em;white-space:nowrap}
+header .where{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
+header .where .st{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .where .cnt{font-family:var(--mono);font-size:12px;color:var(--fg3);white-space:nowrap}
+header .tag{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:3px 9px;white-space:nowrap}
+main{display:grid;grid-template-columns:1fr 340px;min-height:0}
+.stage{position:relative;display:flex;align-items:center;justify-content:center;background:#07080a;min-height:0;overflow:hidden}
+.frame{position:relative;aspect-ratio:3/4;height:100%;max-width:100%;max-height:100%;user-select:none}
+.frame img{display:block;width:100%;height:100%;object-fit:fill;border-radius:0}
+.hs{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;border:2px solid #fff;background:var(--c,#fff);box-shadow:0 0 0 3px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#0b0c0e;transition:transform .15s}
+.hs::before{content:"";position:absolute;inset:-2px;border-radius:50%;border:2px solid var(--c,#fff);animation:ring 1.8s ease-out infinite}
+.hs:hover,.hs.on{transform:scale(1.2)}
+.hs.on{box-shadow:0 0 0 4px var(--accent2),0 2px 10px rgba(0,0,0,.6)}
+@keyframes ring{0%{transform:scale(1);opacity:.9}100%{transform:scale(2.1);opacity:0}}
+.hint{position:absolute;left:12px;bottom:12px;font-size:12px;color:var(--fg2);background:rgba(13,15,18,.75);padding:6px 10px;border-radius:8px;backdrop-filter:blur(6px)}
+.nav-arrow{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;border-radius:12px;background:rgba(13,15,18,.72);border:1px solid var(--line);color:var(--fg);font-size:22px;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+.nav-arrow:hover{background:var(--panel2)}
+.nav-arrow.l{left:12px}.nav-arrow.r{right:12px}
+.nav-arrow[disabled]{opacity:.25;cursor:default}
+.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:8px;font-family:var(--mono);font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+aside{border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.card{padding:16px;border-bottom:1px solid var(--line)}
+.card .kind{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2)}
+.card .kind i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.card h2{margin:6px 0 8px;font-size:18px;font-weight:800;line-height:1.2;text-wrap:balance}
+.card p{margin:0 0 8px;color:var(--fg2)}
+.card .how{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--panel2);font-size:13px}
+.card .how b{color:var(--accent2)}
+.card.empty h2{color:var(--fg2);font-weight:600}
+.list{overflow:auto;min-height:0;padding:8px 8px 12px}
+.list h3{margin:8px 8px 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--fg3)}
+.item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:10px}
+.item:hover,.item.on{background:var(--panel2)}
+.item .n{width:22px;height:22px;border-radius:50%;background:var(--c);color:#0b0c0e;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.item .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.item .k{font-size:11px;color:var(--fg3)}
+footer{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px max(16px,env(safe-area-inset-right,0px)) max(10px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--line);background:var(--panel)}
+.stations{display:flex;gap:8px;flex-wrap:wrap;min-width:0}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);font-weight:600;font-size:13px}
+.chip .num{font-family:var(--mono);font-size:11px;color:var(--fg3)}
+.chip.on{border-color:var(--accent);background:rgba(255,122,47,.12);color:var(--accent2)}
+.chip.on .num{color:var(--accent)}
+.map{width:300px;height:118px}
+.map rect.room{fill:#0f1216;stroke:var(--line);stroke-width:1.5}
+.map .lbl{font:600 9px var(--font);fill:var(--fg3);letter-spacing:.06em;text-transform:uppercase}
+.map .eq{fill:#1f262f;stroke:#2f3844;stroke-width:1}
+.map .eqlbl{font:500 8px var(--font);fill:var(--fg3)}
+.map .cone{fill:var(--accent);opacity:.22}
+.map .dot{fill:var(--panel2);stroke:var(--fg2);stroke-width:1.5;cursor:pointer}
+.map .dot.on{fill:var(--accent);stroke:#fff}
+.map .dn{font:700 8px var(--mono);fill:var(--fg);pointer-events:none}
+.legend{display:none}
+@media (max-width:860px){
+  main{grid-template-columns:1fr;grid-template-rows:1fr auto}
+  aside{border-left:0;border-top:1px solid var(--line);max-height:42vh}
+  .list{display:none}
+  header h1{display:none}
+  .map{display:none}
+  .hint{display:none}
+  footer{grid-template-columns:1fr}
+  .nav-arrow{width:38px;height:54px}
+}
+@media (prefers-reduced-motion:reduce){.hs::before{animation:none}.hs{transition:none}}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>ТП Colibri · фототур</h1>
+    <div class="where"><span class="st" id="stName"></span><span class="cnt" id="stCnt"></span></div>
+    <a class="tag" href="../index.html" style="text-decoration:none">3D-модель</a>
+  </header>
+  <main>
+    <section class="stage" id="stage">
+      <div class="frame" id="frame">
+        <img id="photo" alt="">
+      </div>
+      <button class="nav-arrow l" id="prevBtn" aria-label="Предыдущая точка">‹</button>
+      <button class="nav-arrow r" id="nextBtn" aria-label="Следующая точка">›</button>
+      <div class="hint" id="hint">Нажми на точку, чтобы узнать, что это. Стрелки ← → ведут по комнате</div>
+      <div class="toast" id="toast"></div>
+    </section>
+    <aside>
+      <div class="card empty" id="card">
+        <span class="kind">объект</span>
+        <h2>Выбери точку на фото</h2>
+        <p>Цветные метки стоят на оборудовании. Нажми на любую, и здесь появится, что это и зачем оно нужно.</p>
+      </div>
+      <div class="list" id="list"></div>
+    </aside>
+  </main>
+  <footer>
+    <div class="stations" id="chips"></div>
+    <svg class="map" id="map" viewBox="0 0 300 118" role="img" aria-label="План теплового пункта с точками обзора"></svg>
+  </footer>
+</div>
+
+<script>
+const KINDS = {
+  valve:{c:'var(--k-valve)',n:'арматура'},
+  kip:{c:'var(--k-kip)',n:'КИП, приборы'},
+  equip:{c:'var(--k-equip)',n:'оборудование'},
+  el:{c:'var(--k-el)',n:'электрика'},
+  safe:{c:'var(--k-safe)',n:'безопасность'},
+  pipe:{c:'var(--k-pipe)',n:'трубопровод'},
+};
+
+// Room: X 48.2–54.2 м (6 м вдоль), Z 4.6–6.9 м (2.3 м поперёк). Вход у западного торца. map pos = доли длины/ширины, dir = куда смотрит камера (0 = восток, 90 = юг).
+const STATIONS = [
+  { id:'s1', name:'Вход', photo:'photos/p02.jpg', pos:[0.04,0.55], dir:0,
+    about:'Стоим в дверях ТП и смотрим вдоль комнаты на восток. Справа два пластинчатых теплообменника, по центру рама с арматурой, слева у стены насосы и щиты в дальнем торце.',
+    hs:[
+      {x:76,y:58,k:'equip',t:'Пластинчатые теплообменники ТО-1 и ТО-2',d:'Два разборных пластинчатых теплообменника. Через них тепло из сети «ЭнКо» (до 132 °C) передаётся воде клуба. Один греет отопление, второй готовит горячую воду. На переднем висит паспорт с номером.',how:'Если ТО холодный на выходе при горячем входе, пластины забиты, нужна промывка. Сами не разбирать, только сервис.'},
+      {x:52,y:21,k:'valve',t:'Регулирующий клапан с электроприводом',d:'Синий седельный клапан с приводом сверху. Контроллер двигает его и меняет, сколько сетевой воды идёт через теплообменник, так держится заданная температура.',how:'Если в клубе холодно, а сеть горячая, первым делом смотреть, открывается ли этот клапан. Положение видно по штоку.'},
+      {x:60,y:33,k:'valve',t:'Шаровые краны V&G (красные ручки)',d:'Отсечная арматура на подводках. Ручка вдоль трубы = открыто, поперёк = закрыто.',how:'При протечке на раме закрывать ближайший кран ДО и ПОСЛЕ места течи.'},
+      {x:30,y:45,k:'equip',t:'Циркуляционный насос контура отопления',d:'Насос с синим двигателем гоняет воду по отопительному контуру клуба. Обычно их два, рабочий и резервный.',how:'Гудит, но трубы после него холодные: завоздушен или заклинил. Перекинуть на резервный с пульта в торце.'},
+      {x:40,y:57,k:'kip',t:'Манометры на раме',d:'Показывают давление до и после насосов и теплообменников. Разница на входе и выходе ТО говорит о загрязнении.',how:'Нормальная рабочая зона обычно отмечена на шкале. Стрелка на нуле при работающем насосе = датчик или кран манометра закрыт.'},
+      {x:14,y:25,k:'el',t:'Щиты в дальнем торце',d:'У восточного торца стоят щит учёта тепла «ЭнКо» и щиток автоматов. Подробно на точке «Щиты».'},
+    ]},
+  { id:'s2', name:'Сепараторы и насосы', photo:'photos/p11.jpg', pos:[0.38,0.68], dir:-40,
+    about:'Середина комнаты, смотрим на раму с северной стороны. Главное здесь: серый сепаратор над магистралью, насос слева внизу и узел счётчиков.',
+    hs:[
+      {x:62,y:38,k:'equip',t:'Сепаратор (грязевик-воздухоотделитель)',d:'Серый цилиндр, врезан в магистраль. Отделяет пузырьки воздуха и шлам из воды. Сверху воздухоотводчик, снизу кран для сброса грязи. Маркером на корпусе: 2022 год.',how:'Раз в месяц приоткрыть нижний кран в ведро, пока не пойдёт чистая вода.'},
+      {x:8,y:76,k:'equip',t:'Циркуляционный насос',d:'Фланцевый насос с синим корпусом на нижней линии рамы. Подаёт воду в контур.',how:'Температура корпуса выше 70 °C на ощупь или посторонний шум подшипника: вызывать сервис, перейти на резервный.'},
+      {x:92,y:20,k:'kip',t:'Термометр',d:'Биметаллический термометр в гильзе на магистрали. Показывает температуру воды в этой трубе.'},
+      {x:30,y:50,k:'kip',t:'Манометры на подводках',d:'Пара манометров на входе и выходе через кран-отсекатель.'},
+      {x:78,y:62,k:'kip',t:'Капиллярные трубки регуляторов',d:'Тонкие медные трубки передают давление из трубы на мембраны регуляторов перепада. Хрупкие, гнуть и опираться нельзя.',how:'Перелом капилляра = регулятор перестаёт держать перепад. Видно по подтёку на меди.'},
+      {x:44,y:87,k:'kip',t:'Счётчик воды (подпитка)',d:'Крыльчатый водомер на линии подпитки. Показывает, сколько воды долито в контур.',how:'Если счётчик крутится постоянно, в контуре утечка.'},
+      {x:90,y:67,k:'valve',t:'Кран с белым рычагом',d:'Шаровой кран на отводе от рамы. Белая длинная рукоять для кранов большого диаметра.'},
+    ]},
+  { id:'s3', name:'Узел регуляторов', photo:'photos/p15.jpg', pos:[0.5,0.72], dir:-90,
+    about:'Крупный план рамы: синий балансировочный клапан наверху, регуляторы с жёлтыми пружинами, датчики и манометры.',
+    hs:[
+      {x:35,y:22,k:'valve',t:'Балансировочный клапан (синий, фланцевый)',d:'Наклонный фланцевый клапан с измерительными ниппелями. Настроен на проектный расход, чтобы контур не тянул больше воды, чем нужно.',how:'Положение шкалы менять только наладчику. Если крутили, вернуть на цифру из акта наладки.'},
+      {x:10,y:26,k:'equip',t:'Сепаратор второго контура',d:'Второй серый сепаратор, такой же, как на соседней точке, но на другой линии.'},
+      {x:28,y:36,k:'el',t:'Электропривод регулирующего клапана',d:'Красный привод на штоке клапана. Его двигает контроллер по датчикам температуры.',how:'Индикатор на приводе и ручной маховик для аварийного режима. Если привод обесточен, клапан можно открыть вручную.'},
+      {x:14,y:52,k:'valve',t:'Регулятор давления (жёлтая пружина)',d:'Регулятор перепада давления или «после себя». Пружина задаёт уставку, мембрана держит давление без электричества.',how:'Гайка пружины залита или опломбирована. Самим не крутить.'},
+      {x:64,y:40,k:'kip',t:'Датчики температуры (белые головки)',d:'Погружные датчики в гильзах. Передают температуру в контроллер, по ним работает регулирующий клапан.'},
+      {x:87,y:45,k:'kip',t:'Манометр на магистрали',d:'Давление в подающей магистрали после узла.'},
+      {x:66,y:56,k:'kip',t:'Манометр после регулятора',d:'Показывает, что регулятор держит. Сравнивать с соседним до регулятора.'},
+      {x:56,y:56,k:'valve',t:'Шаровой кран V&G',d:'Отсечка на линии к датчикам и манометрам.'},
+      {x:25,y:60,k:'valve',t:'Редуктор давления (латунь)',d:'Латунный редуктор на тонкой линии подпитки. Не даёт давлению сети задавить контур клуба.'},
+      {x:28,y:88,k:'equip',t:'Насос (нижний ярус)',d:'Насос нижней линии рамы, виден синий корпус двигателя.'},
+    ]},
+  { id:'s4', name:'Бак и приямок', photo:'photos/p05.jpg', pos:[0.62,0.25], dir:20,
+    about:'Южная стена комнаты. Под ногами решётка приямка, у стены красный расширительный бак, трубы уходят через стену к клубу.',
+    hs:[
+      {x:88,y:80,k:'safe',t:'Расширительный бак',d:'Красный мембранный бак. Принимает лишний объём воды при нагреве, чтобы давление в контуре не росло.',how:'Раз в полгода проверять давление воздуха за мембраной через ниппель (при пустом контуре). Если из ниппеля идёт вода, мембрана порвана, бак менять.'},
+      {x:50,y:86,k:'safe',t:'Приямок с решёткой и дренажный насос',d:'Под решёткой приямок, в нём дренажный насос Grundfos Unilift с поплавком. Собирает воду при протечках и сбросах и откачивает в канализацию.',how:'Раз в месяц поднять поплавок рукой: насос должен запуститься. Если нет, при протечке зальёт пол.'},
+      {x:40,y:50,k:'pipe',t:'Трубы к клубу',d:'Подача и обратка отопления, уходят через южную стену в зал. Изоляция чёрная, под ней сталь.',how:'Мокрая изоляция = течь под ней. Снять кусок и смотреть.'},
+      {x:15,y:85,k:'pipe',t:'Дренажная линия (белая труба)',d:'Пластиковая труба от сбросов и предохранительных клапанов в приямок.'},
+      {x:60,y:48,k:'equip',t:'Насос у стены',d:'Насос с синим двигателем на нижней линии, видна горизонтальная крыльчатка.'},
+      {x:77,y:30,k:'equip',t:'Сепаратор',d:'Серый сепаратор в дальней части рамы, тот же, что на точке «Сепараторы и насосы».'},
+    ]},
+  { id:'s5', name:'Щиты', photo:'photos/p07.jpg', pos:[0.9,0.5], dir:15,
+    about:'Восточный торец. Щит учёта тепла, щиток автоматов, пульт насосов и подводка с манометрами.',
+    hs:[
+      {x:5,y:55,k:'el',t:'Щит учёта «ЭнКо»',d:'Серый шкаф теплоснабжающей организации. Внутри вычислитель теплосчётчика и пломбы. Открывать нельзя, показания снимают с дисплея.',how:'Показания для акта сверки с «ЭнКо» смотреть здесь, а не на манометрах.'},
+      {x:25,y:54,k:'el',t:'Щиток автоматов',d:'Маленький пластиковый бокс с автоматами на свет и насосы ТП.',how:'Выбило автомат: включить один раз. Выбивает снова, не включать, звать электрика.'},
+      {x:60,y:70,k:'el',t:'Пульт управления насосами',d:'Шкаф с зелёными кнопками «Пуск» и переключателем «рабочий / резервный». Отсюда переключают насосы.',how:'Горит зелёная лампа = насос работает. При переключении на резервный дождаться, пока стрелка манометра успокоится.'},
+      {x:36,y:49,k:'kip',t:'Манометр на вводе',d:'Давление на вводе тепловой сети. Самое высокое давление в комнате.'},
+      {x:43,y:45,k:'valve',t:'Кран на вводе с дренажом',d:'Шаровой кран на вертикальной подводке, рядом сливной штуцер.'},
+      {x:33,y:83,k:'el',t:'Силовые разъёмы насоса',d:'Красные разъёмы питания 380 В к насосу. Не трогать при включённом автомате.'},
+    ]},
+];
+
+const EQUIP = [ // minimap furniture (fractions of room)
+  {x:0.08,y:0.12,w:0.14,h:0.76,l:'ТО'},
+  {x:0.28,y:0.3,w:0.5,h:0.42,l:'рама'},
+  {x:0.6,y:0.05,w:0.12,h:0.2,l:'бак'},
+  {x:0.42,y:0.06,w:0.2,h:0.14,l:'приямок'},
+  {x:0.9,y:0.1,w:0.07,h:0.8,l:'щиты'},
+];
+
+let cur = 0, sel = -1;
+const $ = s => document.querySelector(s);
+const photo=$('#photo'), frame=$('#frame'), card=$('#card'), list=$('#list'), chips=$('#chips'), map=$('#map');
+
+function go(i, keepHash){
+  cur = (i+STATIONS.length)%STATIONS.length; sel=-1;
+  const st = STATIONS[cur];
+  photo.src = st.photo; photo.alt = 'Точка обзора: '+st.name;
+  frame.querySelectorAll('.hs').forEach(e=>e.remove());
+  st.hs.forEach((h,n)=>{
+    const b=document.createElement('button'); b.className='hs'; b.style.setProperty('--c',KINDS[h.k].c);
+    b.style.left=h.x+'%'; b.style.top=h.y+'%'; b.textContent=n+1; b.title=h.t; b.setAttribute('aria-label',h.t);
+    b.addEventListener('click',ev=>{ev.stopPropagation();pick(n)});
+    frame.appendChild(b);
+  });
+  $('#stName').textContent = st.name;
+  $('#stCnt').textContent = (cur+1)+' / '+STATIONS.length;
+  $('#prevBtn').disabled = cur===0; $('#nextBtn').disabled = cur===STATIONS.length-1;
+  renderCard(); renderList(); renderChips(); renderMap();
+  if(!keepHash){ try{ history.replaceState(null,'','#'+st.id) }catch(e){} }
+}
+function pick(n){ sel = (sel===n? -1 : n); renderCard(); renderList();
+  frame.querySelectorAll('.hs').forEach((e,i)=>e.classList.toggle('on',i===sel)); }
+
+function renderCard(){
+  const st=STATIONS[cur];
+  if(sel<0){ card.className='card empty'; card.innerHTML=`<span class="kind">точка обзора</span><h2>${st.name}</h2><p>${st.about}</p><p style="color:var(--fg3);font-size:12px">Описания черновые, по фото от 3 ноября и проекту ОВ. Что не так, напиши, поправим.</p>`; return; }
+  const h=st.hs[sel], k=KINDS[h.k];
+  card.className='card';
+  card.innerHTML=`<span class="kind"><i style="--c:${k.c}"></i>${k.n}</span><h2>${sel+1}. ${h.t}</h2><p>${h.d}</p>`+(h.how?`<div class="how"><b>Что проверять:</b> ${h.how}</div>`:'');
+}
+function renderList(){
+  const st=STATIONS[cur];
+  list.innerHTML='<h3>Объекты на этой точке</h3>'+st.hs.map((h,n)=>`<button class="item ${n===sel?'on':''}" data-n="${n}"><span class="n" style="--c:${KINDS[h.k].c}">${n+1}</span><span class="t">${h.t}</span><span class="k">${KINDS[h.k].n}</span></button>`).join('');
+  list.querySelectorAll('.item').forEach(b=>b.addEventListener('click',()=>pick(+b.dataset.n)));
+}
+function renderChips(){
+  chips.innerHTML=STATIONS.map((s,i)=>`<button class="chip ${i===cur?'on':''}" data-i="${i}"><span class="num">${i+1}</span>${s.name}</button>`).join('');
+  chips.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>go(+b.dataset.i)));
+}
+function renderMap(){
+  const W=300,H=118, rx=22, ry=22, rw=256, rh=78; // room box
+  const X=f=>rx+f*rw, Y=f=>ry+f*rh;
+  let s=`<rect class="room" x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="3"/>`;
+  s+=`<text class="lbl" x="${rx}" y="${ry-8}">ТП · 6 × 2.3 м</text><text class="lbl" x="${rx+rw}" y="${ry+rh+13}" text-anchor="end">восток →</text>`;
+  s+=`<rect x="${rx-5}" y="${Y(0.4)}" width="5" height="${rh*0.3}" fill="var(--accent)" opacity=".8"/><text class="eqlbl" x="${rx-7}" y="${Y(0.3)}" text-anchor="end">вход</text>`;
+  EQUIP.forEach(e=>{ s+=`<rect class="eq" x="${X(e.x)}" y="${Y(e.y)}" width="${e.w*rw}" height="${e.h*rh}" rx="2"/><text class="eqlbl" x="${X(e.x)+e.w*rw/2}" y="${Y(e.y)+e.h*rh/2+3}" text-anchor="middle">${e.l}</text>`; });
+  STATIONS.forEach((st,i)=>{
+    const cx=X(st.pos[0]), cy=Y(st.pos[1]);
+    if(i===cur){ const a=st.dir*Math.PI/180, sp=0.5, L=34;
+      const p1=[cx+L*Math.cos(a-sp),cy+L*Math.sin(a-sp)], p2=[cx+L*Math.cos(a+sp),cy+L*Math.sin(a+sp)];
+      s+=`<path class="cone" d="M${cx},${cy} L${p1[0].toFixed(1)},${p1[1].toFixed(1)} A${L},${L} 0 0 1 ${p2[0].toFixed(1)},${p2[1].toFixed(1)} Z"/>`; }
+  });
+  STATIONS.forEach((st,i)=>{ const cx=X(st.pos[0]), cy=Y(st.pos[1]);
+    s+=`<g data-i="${i}"><circle class="dot ${i===cur?'on':''}" cx="${cx}" cy="${cy}" r="8"/><text class="dn" x="${cx}" y="${cy+3}" text-anchor="middle">${i+1}</text><title>${st.name}</title></g>`; });
+  map.innerHTML=s;
+  map.querySelectorAll('g[data-i]').forEach(g=>g.addEventListener('click',()=>go(+g.dataset.i)));
+}
+
+// Alt+click (или долгое нажатие) на фото: показать координаты точки в процентах, чтобы размечать новые объекты
+let toastT;
+function showToast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2500); }
+function coordsAt(ev){ const r=frame.getBoundingClientRect(); const x=((ev.clientX-r.left)/r.width*100).toFixed(0), y=((ev.clientY-r.top)/r.height*100).toFixed(0); return {x,y}; }
+frame.addEventListener('click',ev=>{
+  if(ev.altKey){ const c=coordsAt(ev); const txt=`x:${c.x}, y:${c.y}`; showToast(txt+'  (скопировано)');
+    try{ navigator.clipboard.writeText(txt).catch(()=>{}) }catch(e){} }
+  else if(sel>=0){ pick(sel); }
+});
+let pressT;
+frame.addEventListener('touchstart',ev=>{ pressT=setTimeout(()=>{ const t=ev.touches[0]; const c=coordsAt(t); showToast(`x:${c.x}, y:${c.y}`); },600); },{passive:true});
+frame.addEventListener('touchend',()=>clearTimeout(pressT)); frame.addEventListener('touchmove',()=>clearTimeout(pressT),{passive:true});
+
+$('#prevBtn').addEventListener('click',()=>{ if(cur>0) go(cur-1) });
+$('#nextBtn').addEventListener('click',()=>{ if(cur<STATIONS.length-1) go(cur+1) });
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='ArrowLeft'&&cur>0) go(cur-1);
+  else if(ev.key==='ArrowRight'&&cur<STATIONS.length-1) go(cur+1);
+  else if(ev.key==='Escape'&&sel>=0) pick(sel);
+  else if(/^[1-9]$/.test(ev.key)){ const n=+ev.key-1; if(n<STATIONS[cur].hs.length) pick(n); }
+});
+function fromHash(){ const id=(location.hash||'').slice(1); const i=STATIONS.findIndex(s=>s.id===id); go(i>=0?i:0,true); }
+window.addEventListener('hashchange',fromHash);
+fromHash();
+</script>
+
+</body>
+</html>

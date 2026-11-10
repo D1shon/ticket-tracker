@@ -1001,6 +1001,11 @@ tpBtn.onclick = () => {
   zoomGoal = null;
 };
 $('#chips').appendChild(tpBtn);
+/* фототур по тому же ТП: отдельная статичная страница tour/index.html (точки обзора по фото, кликабельные объекты) */
+const tourBtn = document.createElement('button');
+tourBtn.className = 'chip'; tourBtn.textContent = '📷 Фототур ТП';
+tourBtn.onclick = () => { location.href = 'tour/index.html'; };
+$('#chips').appendChild(tourBtn);
 
 /* мобильная шторка сценариев */
 $('#scentoggle').onclick = () => $('#scen').classList.toggle('show');
